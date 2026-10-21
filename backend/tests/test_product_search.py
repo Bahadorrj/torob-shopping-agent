@@ -78,8 +78,9 @@ def test_missing_price(client):
 
 def test_per_meter_price(client):
     c = card(client, "کابل برق افشان 4*4 کرمان", "product_5533cda8594ee03ac993685a")
-    assert (c["price"]["per_meter"], c["price"]["min_toman"], c["price"]["max_toman"]) == (True, 3600000, 3600000)
-    assert "per_meter" in c["price_flags"]
+    # two per-meter offers are too few to call either one far from the median
+    assert (c["price"]["per_meter"], c["price"]["min_toman"], c["price"]["max_toman"]) == (True, 436000, 3600000)
+    assert c["price_flags"] == ["per_meter"]
 
 
 def test_placeholder_price_is_flagged_and_left_out_of_range(client):

@@ -106,6 +106,13 @@ def test_far_from_median_uses_valid_offers_of_same_product_and_unit():
     assert far == {"d", "e"}
 
 
+def test_far_from_median_needs_three_valid_prices():
+    rows = [("a", "1000000"), ("b", "5000000"), ("c", "700")]
+    offers = [clean_offer(offer_row(offer_id=o, price_toman=price)) for o, price in rows]
+    flag_far_from_median(offers)
+    assert not any("far_from_median" in o["price_flags"] for o in offers)
+
+
 def product_row(**kw):
     row = {
         "brand_name": "انکر",

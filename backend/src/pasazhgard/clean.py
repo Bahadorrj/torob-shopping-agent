@@ -69,12 +69,15 @@ def clean_offer(row: dict) -> dict:
 
 
 def flag_far_from_median(offers: list[dict]) -> None:
-    """Flag valid prices under half or over twice the median of their product's valid prices in the same unit."""
+    """Flag valid prices far from the median of their product's valid prices in the same unit."""
     groups = defaultdict(list)
     for o in offers:
         if not BAD_PRICE_FLAGS & set(o["price_flags"]):
             groups[o["product_id"], "per_meter" in o["price_flags"]].append(o)
     for group in groups.values():
+        # far means under 0.5x or over 2x the median; with two prices the median is their mean, so skip
+        if len(group) < 3:
+            continue
         mid = median(o["price_toman"] for o in group)
         for o in group:
             if not mid / 2 <= o["price_toman"] <= mid * 2:
