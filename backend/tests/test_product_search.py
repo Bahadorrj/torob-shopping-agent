@@ -5,6 +5,7 @@ import pytest
 
 from pasazhgard.api import app, get_now
 from pasazhgard.ingest import ingest
+from pasazhgard.search import _product_flags
 
 R50I = "product_92ac53fa75e18e8e73f20b56"
 
@@ -87,6 +88,12 @@ def test_placeholder_price_is_flagged_and_left_out_of_range(client):
     # "1 متری" in the seller title prices one meter
     assert (c["price"]["per_meter"], c["price"]["min_toman"], c["price"]["max_toman"]) == (True, 385000, 385000)
     assert c["price_flags"] == ["placeholder", "per_meter"]
+
+
+def test_per_meter_flag_ignores_offers_without_a_usable_price():
+    offers = [{"price_flags": ["missing", "per_meter"]}, {"price_flags": []}]
+    assert _product_flags(offers) == ["missing"]
+    assert _product_flags([*offers, {"price_flags": ["per_meter"]}]) == ["missing", "per_meter"]
 
 
 def test_invalid_price_is_flagged_and_left_out_of_range(client):

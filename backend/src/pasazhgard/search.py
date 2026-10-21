@@ -54,8 +54,20 @@ def price_age_bucket(days: int | None) -> PriceAgeBucket | None:
     return "<=7" if days <= 7 else "8-30"
 
 
+def _usable(offers: list[dict]) -> list[dict]:
+    return [o for o in offers if not (BAD_PRICE_FLAGS | {PriceFlag.FAR_FROM_MEDIAN}) & set(o["price_flags"])]
+
+
+def _product_flags(offers: list[dict]) -> list[PriceFlag]:
+    flags = {f for o in offers for f in o["price_flags"]}
+    # the per-meter note is about prices shown, so a per-meter offer with a dropped price does not count
+    if not any(PriceFlag.PER_METER in o["price_flags"] for o in _usable(offers)):
+        flags.discard(PriceFlag.PER_METER)
+    return [f for f in PriceFlag if f in flags]
+
+
 def _price_range(offers: list[dict], now: datetime) -> PriceRange:
-    usable = [o for o in offers if not (BAD_PRICE_FLAGS | {PriceFlag.FAR_FROM_MEDIAN}) & set(o["price_flags"])]
+    usable = _usable(offers)
     per_piece = [o for o in usable if PriceFlag.PER_METER not in o["price_flags"]]
     # prefer per-piece prices, fall back to per-meter when a product has only those
     priced = per_piece or usable
@@ -129,7 +141,6 @@ def search_products(conn, query: str, now: datetime, limit: int = 20) -> SearchR
     items = []
     for p in products:
         own = by_product.get(p["product_id"], [])
-        flags = {f for o in own for f in o["price_flags"]}
         items.append(
             ProductCard(
                 product_id=p["product_id"],
@@ -140,7 +151,7 @@ def search_products(conn, query: str, now: datetime, limit: int = 20) -> SearchR
                 key_specs=[s for s in p["specs"] if not any(w in s["key"] for w in title_spec_words)][:key_spec_count],
                 offer_count=len(own),
                 price=_price_range(own, now),
-                price_flags=[f for f in PriceFlag if f in flags],
+                price_flags=_product_flags(own),
             )
         )
     return SearchResult(query=query, items=items)
