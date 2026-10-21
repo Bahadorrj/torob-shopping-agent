@@ -9,13 +9,6 @@ from pydantic import BaseModel
 from pasazhgard.clean import BAD_PRICE_FLAGS
 from pasazhgard.normalize import normalize
 
-TEHRAN = ZoneInfo("Asia/Tehran")
-FLAG_ORDER = ["missing", "placeholder", "invalid", "per_meter", "far_from_median"]
-KEY_SPEC_COUNT = 3
-MIN_SCORE = 0.5
-# spec rows that repeat what the title already says
-_TITLE_SPEC_WORDS = ("برند", "مدل", "نام", "سازنده")
-
 PriceAgeBucket = Literal["<=7", "8-30", ">30"]
 
 
@@ -63,6 +56,7 @@ def price_age_bucket(days: int | None) -> PriceAgeBucket:
 def _price_range(offers: list[dict], now: datetime) -> PriceRange:
     usable = [o for o in offers if not (BAD_PRICE_FLAGS | {"far_from_median"}) & set(o["price_flags"])]
     per_piece = [o for o in usable if "per_meter" not in o["price_flags"]]
+    # prefer per-piece prices, fall back to per-meter when a product has only those
     priced = per_piece or usable
     if not priced:
         return PriceRange(
@@ -72,7 +66,8 @@ def _price_range(offers: list[dict], now: datetime) -> PriceRange:
     prices = [o["price_toman"] for o in priced]
     changes = [o["last_price_changed_at"] for o in priced if o["last_price_changed_at"]]
     newest = max(changes).astimezone(UTC) if changes else None
-    days = (now.astimezone(TEHRAN).date() - newest.astimezone(TEHRAN).date()).days if newest else None
+    tehran = ZoneInfo("Asia/Tehran")
+    days = (now.astimezone(tehran).date() - newest.astimezone(tehran).date()).days if newest else None
     return PriceRange(
         trust_level="listed",
         min_toman=min(prices),
@@ -102,7 +97,7 @@ def search_products(conn, query: str, now: datetime, limit: int = 20) -> SearchR
         ORDER BY score DESC, product_id
         LIMIT %(limit)s
         """,
-        {"tokens": tokens, "selective": selective, "min_score": MIN_SCORE, "limit": limit},
+        {"tokens": tokens, "selective": selective, "min_score": 0.5, "limit": limit},
     ).fetchall()
     offers = conn.execute(
         "SELECT product_id, price_toman, last_price_changed_at, price_flags FROM offers WHERE product_id = ANY(%s)",
@@ -112,6 +107,9 @@ def search_products(conn, query: str, now: datetime, limit: int = 20) -> SearchR
     for o in offers:
         by_product.setdefault(o["product_id"], []).append(o)
 
+    # spec rows that repeat what the title already says
+    title_spec_words = ("برند", "مدل", "نام", "سازنده")
+    key_spec_count = 3
     items = []
     for p in products:
         own = by_product.get(p["product_id"], [])
@@ -123,10 +121,10 @@ def search_products(conn, query: str, now: datetime, limit: int = 20) -> SearchR
                 brand=p["brand"],
                 category=p["category"],
                 image_url=next(iter(p["image_urls"]), None),
-                key_specs=[s for s in p["specs"] if not any(w in s["key"] for w in _TITLE_SPEC_WORDS)][:KEY_SPEC_COUNT],
+                key_specs=[s for s in p["specs"] if not any(w in s["key"] for w in title_spec_words)][:key_spec_count],
                 offer_count=len(own),
                 price=_price_range(own, now),
-                price_flags=[f for f in FLAG_ORDER if f in flags],
+                price_flags=[f for f in ["missing", "placeholder", "invalid", "per_meter", "far_from_median"] if f in flags],
             )
         )
     return SearchResult(query=query, items=items)
