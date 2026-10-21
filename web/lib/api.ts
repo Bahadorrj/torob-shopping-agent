@@ -28,3 +28,34 @@ export async function searchProducts(q: string): Promise<ProductCard[]> {
   if (!r.ok) throw new Error(`search failed: ${r.status}`);
   return (await r.json()).items;
 }
+
+// Mirrors ShopDetails in backend/src/pasazhgard/shops.py.
+export type Day = "sat" | "sun" | "mon" | "tue" | "wed" | "thu" | "fri";
+
+export type DayHours = {
+  day: Day;
+  status: "declared" | "closed" | "unsupported" | "unknown";
+  shifts: { start: string; end: string }[];
+};
+
+export type ShopDetails = {
+  shop_id: string;
+  name: string;
+  address: string | null;
+  pasaj: string | null;
+  floor: string | null;
+  unit: string | null;
+  landmark: string | null;
+  hours: { timezone: "Asia/Tehran"; today: Day; week: DayHours[] };
+  payment_options: { provider: string; channel: "in_person" | "unknown" }[];
+  fast_delivery: "yes" | "no" | "unknown";
+  website_url: string | null;
+  instagram_url: string | null;
+};
+
+export async function getShop(shopId: string): Promise<ShopDetails | null> {
+  const r = await fetch(`/api/shops/${encodeURIComponent(shopId)}`);
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`shop failed: ${r.status}`);
+  return r.json();
+}
