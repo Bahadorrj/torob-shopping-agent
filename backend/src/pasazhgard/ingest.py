@@ -87,6 +87,14 @@ def ingest(data_dir: Path, database_url: str) -> None:
     ALTER TABLE staging.products SET SCHEMA public;
     ALTER TABLE staging.offers SET SCHEMA public;
     DROP SCHEMA staging;
+    -- sessions outlive a re-ingest
+    CREATE TABLE IF NOT EXISTS sessions (
+        session_id text PRIMARY KEY,
+        brief jsonb NOT NULL,
+        step jsonb,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+    );
     """
     offers = [clean_offer(r) for r in _rows(data_dir / "offers.csv")]
     flag_far_from_median(offers)

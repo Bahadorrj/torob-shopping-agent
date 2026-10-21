@@ -18,6 +18,8 @@ class SellerQuery(BaseModel):
     area: str | None = None
     pasaj: str | None = None
     priority: Literal["cheapest", "closest", "most_reliable"] = "cheapest"
+    # budget: drops sellers listed above it; unpriced sellers stay
+    max_price_toman: int | None = Field(None, gt=0)
 
     @model_validator(mode="after")
     def _one_area(self) -> Self:
@@ -190,6 +192,12 @@ def _nearest_covered(conn, q: SellerQuery, sellers: list[dict]) -> NearestCovere
     return NearestCovered(area=s["location_label"], pasaj=s["pasaj"], distance_m=d)
 
 
+def area_options(conn) -> dict[str, list[str]]:
+    """Every covered area and pasaj, so the picker can also land on one without sellers."""
+    row = conn.execute("SELECT array_agg(DISTINCT location_label) AS areas, array_agg(DISTINCT pasaj) AS pasajs FROM shops").fetchone()
+    return {k: sorted(v for v in row[k] or [] if v) for k in ("areas", "pasajs")}
+
+
 def find_sellers(conn, product_id: str, q: SellerQuery, now: datetime) -> SellerList | None:
     product = conn.execute("SELECT product_id, title, category FROM products WHERE product_id = %s", [product_id]).fetchone()
     if product is None:
@@ -209,8 +217,9 @@ def find_sellers(conn, product_id: str, q: SellerQuery, now: datetime) -> Seller
     rows = []
     for o in best.values():
         d = _distance(q, o)
-        if _in_area(q, o, d):
-            rows.append(_row(o, d, now))
+        row = _row(o, d, now)
+        if _in_area(q, o, d) and not (q.max_price_toman and row.price_toman and row.price_toman > q.max_price_toman):
+            rows.append(row)
     _rank(rows, q.priority)
     category_only = []
     for s in conn.execute(
@@ -227,10 +236,6 @@ def find_sellers(conn, product_id: str, q: SellerQuery, now: datetime) -> Seller
             )
     category_only.sort(key=lambda c: (c.distance_m is None, c.distance_m or 0, c.shop_name))
     _add_reasons(rows)
-    # every covered area, so the picker can also land on one without sellers
-    areas = conn.execute(
-        "SELECT array_agg(DISTINCT location_label) AS areas, array_agg(DISTINCT pasaj) AS pasajs FROM shops"
-    ).fetchone()
     return SellerList(
         product_id=product_id,
         title=product["title"],
@@ -238,6 +243,5 @@ def find_sellers(conn, product_id: str, q: SellerQuery, now: datetime) -> Seller
         sellers=rows,
         category_only=category_only,
         nearest_covered=None if rows else _nearest_covered(conn, q, list(best.values())),
-        areas=sorted(a for a in areas["areas"] if a),
-        pasajs=sorted(p for p in areas["pasajs"] if p),
+        **area_options(conn),
     )

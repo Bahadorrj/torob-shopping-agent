@@ -4,8 +4,11 @@ from typing import Annotated
 
 import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
+from fastapi.exceptions import RequestValidationError
 from psycopg.rows import dict_row
+from pydantic import ValidationError
 
+from pasazhgard.brief import Session, SessionPatch, create_session, get_session, patch_session
 from pasazhgard.search import SearchResult, search_products
 from pasazhgard.sellers import SellerList, SellerQuery, find_sellers
 from pasazhgard.shops import ShopDetails, shop_details
@@ -69,3 +72,31 @@ def shops_detail(shop_id: str, conn=Depends(get_conn), now: datetime = Depends(g
     if shop is None:
         raise HTTPException(404, "shop not found")
     return shop
+
+
+@app.post("/sessions", status_code=201)
+def sessions_create(conn=Depends(get_conn)) -> Session:
+    return get_session(conn, create_session(conn))
+
+
+@app.get("/sessions/{session_id}")
+def sessions_read(session_id: str, conn=Depends(get_conn)) -> Session:
+    session = get_session(conn, session_id)
+    if session is None:
+        raise HTTPException(404, "session not found")
+    return session
+
+
+@app.patch("/sessions/{session_id}")
+def sessions_patch(
+    session_id: str, change: SessionPatch, conn=Depends(get_conn), now: datetime = Depends(get_now)
+) -> Session:
+    try:
+        session = patch_session(conn, session_id, change, now)
+    except ValidationError as e:
+        raise RequestValidationError(e.errors(include_url=False, include_context=False)) from None
+    except LookupError:
+        raise HTTPException(404, "product not found") from None
+    if session is None:
+        raise HTTPException(404, "session not found")
+    return session
