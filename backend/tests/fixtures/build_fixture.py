@@ -33,7 +33,7 @@ OFFERS = {
     # per-meter cable
     "product_5533cda8594ee03ac993685a": ["5e227a21", "133f6193"],
     "product_91fc2714e7673b537827ec61": ["d7ddc2c7"],
-    # "1 meter" length, placeholder price 1
+    # "1 meter" per-meter price, placeholder price 1
     "product_bd777713ec013d56cf083c9a": ["46e53cc6", "8ee129e2"],
     # "1.8 meter" cable length, invalid price
     "product_a112c972266b57d0f7eddeab": ["1807dc59", "10618e41", "79a3f3e4", "54f9a615"],

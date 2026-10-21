@@ -84,8 +84,9 @@ def test_per_meter_price(client):
 
 def test_placeholder_price_is_flagged_and_left_out_of_range(client):
     c = card(client, "سیم برق افشان 16*1 زرتافته", "product_bd777713ec013d56cf083c9a")
-    assert (c["price"]["min_toman"], c["price"]["max_toman"]) == (385000, 385000)
-    assert c["price_flags"] == ["placeholder"]
+    # "1 متری" in the seller title prices one meter
+    assert (c["price"]["per_meter"], c["price"]["min_toman"], c["price"]["max_toman"]) == (True, 385000, 385000)
+    assert c["price_flags"] == ["placeholder", "per_meter"]
 
 
 def test_invalid_price_is_flagged_and_left_out_of_range(client):

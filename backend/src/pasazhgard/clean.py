@@ -14,12 +14,6 @@ BAD_PRICE_FLAGS = {"missing", "placeholder", "invalid"}
 
 _METRI = re.compile(r"(?<!\w)متری(?!\w)")
 _PER_METER = re.compile(r"هر متر(?!\w)|^یک متر ")
-# a word before "متری" that makes it a length ("100 متری", "سانتی متری") rather than a unit price
-_LENGTH_WORDS = set(
-    "یک دو سه چهار پنج شش هفت هشت نه ده بیست سی چهل پنجاه شصت هفتاد هشتاد نود صد دویست سیصد پانصد هزار"
-    " نیم ونیم سانت سانتی میلی کیلو".split()
-)
-_LAST_TOKEN = re.compile(r"(\d|[^\W\d_]+)\W*$")
 
 
 def _null(value: str) -> str | None:
@@ -31,12 +25,21 @@ def _json_list(value: str) -> list:
 
 
 def is_per_meter(seller_title: str) -> bool:
+    # a word before "متری" that makes it a length ("100 متری", "سانتی متری") rather than a unit price
+    length_words = set(
+        "دو سه چهار پنج شش هفت هشت نه ده بیست سی چهل پنجاه شصت هفتاد هشتاد نود صد دویست سیصد پانصد هزار"
+        " نیم ونیم سانت سانتی میلی کیلو".split()
+    )
     text = normalize(seller_title)
     if _PER_METER.search(text):
         return True
     for m in _METRI.finditer(text):
-        before = _LAST_TOKEN.search(text[: m.start()])
-        if not before or not (before[1].isdigit() or before[1] in _LENGTH_WORDS):
+        before = text[: m.start()]
+        # "1 متری" and a cable size such as "4*10 متری" or "2 در 1.5 متری" price one meter
+        if re.search(r"(?<![\w.])(1|یک)\W*$|\d\s*([*×x]|در)\s*\d+([./]\d+)?\W*$", before):
+            return True
+        last = re.search(r"(\d|[^\W\d_]+)\W*$", before)
+        if not last or not (last[1].isdigit() or last[1] in length_words):
             return True
     return False
 
