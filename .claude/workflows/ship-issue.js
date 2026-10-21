@@ -3,7 +3,7 @@ export const meta = {
   description: 'Implement a ready-for-agent issue, review it until clean, then merge',
   whenToUse: 'One run per issue. args {issue} implements from scratch; {issue?, pr, branch, worktree} reviews and merges an open PR.',
   phases: [
-    { title: 'Implement', model: 'sonnet' },
+    { title: 'Implement', model: 'opus' },
     { title: 'Review', model: 'sonnet' },
     { title: 'Fix', model: 'sonnet' },
     { title: 'Merge', model: 'sonnet' },
@@ -60,7 +60,7 @@ const target = args.pr
       `Implement issue #${args.issue}, following the "Working an issue" steps 1-7 in CLAUDE.md. ` +
         `Stop after opening the PR; do not review or merge it. ` +
         `If you hit a case from "Escalate to the user", stop and return status escalate with the reason instead of notifying.`,
-      { label: `implement:#${args.issue}`, phase: 'Implement', model: 'sonnet', schema: TARGET },
+      { label: `implement:#${args.issue}`, phase: 'Implement', model: 'opus', schema: TARGET },
     )
 if (!target || target.status !== 'ok') return { status: 'escalate', issue: args.issue, reason: target?.reason ?? 'implementer failed' }
 

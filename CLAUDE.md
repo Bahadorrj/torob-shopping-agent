@@ -40,7 +40,7 @@ Docs-only changes (CLAUDE.md, `docs/`, ADR text) skip the branch, PR and review 
 
 ## Review loop: `.claude/workflows/ship-issue.js`
 
-Each step runs in a fresh context, all on Sonnet 5.5 (implementer included).
+Each step runs in a fresh context. The implementer is Opus 5.5; reviewer, fixers and merge run on Sonnet 5.5.
 
 1. One reviewer: `/code-review` on the changes since the merge-base with `main`, plus a check of
    every acceptance criterion of the issue. Level `high` when the diff exceeds 400 changed lines
