@@ -11,7 +11,7 @@ app = FastAPI(title="Pasazhgard")
 
 
 def _connect(**kwargs) -> psycopg.Connection:
-    return psycopg.connect(os.environ["DATABASE_URL"], **kwargs)
+    return psycopg.connect(os.environ["DATABASE_URL"], connect_timeout=3, **kwargs)
 
 
 def get_conn():
@@ -29,7 +29,7 @@ def health(response: Response) -> dict:
     # LLM and map keys are optional: without them the app runs in degraded mode
     body = {"llm": bool(os.environ.get("LLM_API_KEY")), "maps": bool(os.environ.get("NESHAN_API_KEY"))}
     try:
-        with _connect(connect_timeout=3) as conn:
+        with _connect() as conn:
             conn.execute("SELECT 1")
     except psycopg.Error:
         response.status_code = 503
