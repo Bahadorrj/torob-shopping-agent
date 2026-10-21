@@ -206,6 +206,7 @@ def clean_shop(row: dict) -> dict:
         "location_label": _null(row["location_label"]),
         "lat": float(row["lat"]) if _null(row["lat"]) else None,
         "lon": float(row["lon"]) if _null(row["lon"]) else None,
+        "categories": _json_list(row["category_names"]),
         **parse_address(_null(row["address"]) or ""),
         "hours": clean_hours(row["weekly_hours"]),
         "payment_options": clean_payment_options(row["payment_options"]),

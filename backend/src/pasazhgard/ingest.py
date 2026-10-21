@@ -43,6 +43,7 @@ def ingest(data_dir: Path, database_url: str) -> None:
         location_label text,
         lat double precision,
         lon double precision,
+        categories text[] NOT NULL,
         pasaj text,
         floor text,
         unit text,
@@ -93,14 +94,14 @@ def ingest(data_dir: Path, database_url: str) -> None:
     with psycopg.connect(database_url) as conn, conn.cursor() as cur:
         cur.execute(schema)
         shop_cols = [
-            "shop_id", "name", "address", "location_label", "lat", "lon", "pasaj", "floor", "unit", "landmark",
+            "shop_id", "name", "address", "location_label", "lat", "lon", "categories", "pasaj", "floor", "unit", "landmark",
             "hours", "payment_options", "fast_delivery", "website_url", "instagram_url",
         ]
         _copy(
             cur,
             "shops",
             shop_cols,
-            ["text", "text", "text", "text", "float8", "float8", "text", "text", "text", "text", "jsonb", "jsonb", "text", "text", "text"],
+            ["text", "text", "text", "text", "float8", "float8", "text[]", "text", "text", "text", "text", "jsonb", "jsonb", "text", "text", "text"],
             (
                 tuple(Jsonb(c[k]) if k in ("hours", "payment_options") else c[k] for k in shop_cols)
                 for c in map(clean_shop, _rows(data_dir / "shops.csv"))
