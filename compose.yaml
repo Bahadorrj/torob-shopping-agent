@@ -1,4 +1,6 @@
-# Local development only; production runs on Liara (docs/adr/0001-tech-stack.md).
+# Local development only; production runs on Liara (docs/adr/0001-tech-stack.md, docs/runbook.md).
+name: pasazhgard
+
 services:
   db:
     build:
@@ -18,6 +20,46 @@ services:
       test: ["CMD", "pg_isready", "-U", "postgres"]
       interval: 2s
       retries: 30
+    restart: unless-stopped
+
+  app:
+    build: ./backend
+    # optional LLM_API_KEY, NESHAN_API_KEY, ...; the app runs degraded without them
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/pasazhgard
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      args:
+        API_URL: http://app:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      timeout: 6s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
 
 volumes:
   db-data:
