@@ -2,7 +2,8 @@ other/
 /dataset/
 .env
 .claude/
-CLAUDE.md.venv/
+CLAUDE.md
+.venv/
 __pycache__/
 .pytest_cache/
 node_modules/
