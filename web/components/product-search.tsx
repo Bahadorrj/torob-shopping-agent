@@ -1,30 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+import { useBrief } from "@/components/brief-provider";
 import { ProductCard } from "@/components/product-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { searchProducts, type ProductCard as Product } from "@/lib/api";
 
 const EXAMPLES = ["هندزفری انکر R50i", "شارژر اپل ۲۰ وات", "کلید مینیاتوری ۱۶ آمپر"];
 
-type State = { status: "idle" } | { status: "loading" } | { status: "error" } | { status: "done"; items: Product[] };
-
 export function ProductSearch() {
+  const { session, pending, error, patch } = useBrief();
   const [query, setQuery] = useState("");
-  const [state, setState] = useState<State>({ status: "idle" });
+  const sid = session?.session_id;
+  const need = session?.brief.need;
 
-  async function run(q: string) {
+  const [shownSid, setShownSid] = useState<string>();
+
+  // coming back (or resuming a session) restores the last search; the brief keeps it as the need
+  if (sid !== shownSid) {
+    setShownSid(sid);
+    if (need) setQuery(need);
+  }
+  useEffect(() => {
+    if (sid && need) patch({ step: { kind: "search" } });
+  }, [sid]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function run(q: string) {
     if (!q.trim()) return;
     setQuery(q);
-    setState({ status: "loading" });
-    try {
-      setState({ status: "done", items: await searchProducts(q) });
-    } catch {
-      setState({ status: "error" });
-    }
+    patch({ brief: { need: q }, step: { kind: "search" } });
   }
+
+  const results = session?.step?.kind === "search" && session.results && "items" in session.results ? session.results.items : null;
+  const status = pending ? "loading" : error && query ? "error" : results ? "done" : "idle";
 
   return (
     <div className="flex flex-col gap-4">
@@ -43,12 +52,12 @@ export function ProductSearch() {
           aria-label="جستجوی کالا"
           className="h-11"
         />
-        <Button type="submit" className="h-11 px-5" disabled={state.status === "loading"}>
+        <Button type="submit" className="h-11 px-5" disabled={status === "loading"}>
           جستجو
         </Button>
       </form>
 
-      {state.status === "idle" && (
+      {status === "idle" && (
         <div className="flex flex-wrap gap-2">
           {EXAMPLES.map((q) => (
             <Button key={q} variant="outline" size="sm" onClick={() => run(q)}>
@@ -57,16 +66,16 @@ export function ProductSearch() {
           ))}
         </div>
       )}
-      {state.status === "loading" && <p className="text-sm text-muted-foreground">در حال جستجو...</p>}
-      {state.status === "error" && <p className="text-sm text-destructive">جستجو انجام نشد. دوباره تلاش کنید.</p>}
-      {state.status === "done" && state.items.length === 0 && (
+      {status === "loading" && <p className="text-sm text-muted-foreground">در حال جستجو...</p>}
+      {status === "error" && <p className="text-sm text-destructive">جستجو انجام نشد. دوباره تلاش کنید.</p>}
+      {status === "done" && results!.length === 0 && (
         <p className="text-sm text-muted-foreground">
           کالایی پیدا نشد. داده‌ها بخشی از فروشگاه‌های تهران، بیشتر مرکز شهر، را پوشش می‌دهند.
         </p>
       )}
-      {state.status === "done" && (
+      {status === "done" && (
         <ul className="flex flex-col gap-3">
-          {state.items.map((p) => (
+          {results!.map((p) => (
             <li key={p.product_id}>
               <ProductCard product={p} />
             </li>

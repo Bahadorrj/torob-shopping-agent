@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { fakeSessions } from "./fake-session";
+
 test.use({ geolocation: { latitude: 35.6948, longitude: 51.4115 }, permissions: ["geolocation"] });
 
 const row = {
@@ -60,17 +62,17 @@ const empty = {
   nearest_covered: { area: "بهارستان", pasaj: "صدقی نژاد", distance_m: 390 },
 };
 
-async function open(page: Page, respond: (params: URLSearchParams) => object) {
-  const requests: URLSearchParams[] = [];
-  await page.route("**/api/products/p1/sellers*", (route) => {
-    const params = new URL(route.request().url()).searchParams;
-    requests.push(params);
-    return route.fulfill({ json: respond(params) });
-  });
+type Area = { radius_m: number | null; name: string | null; pasaj: string | null } | null;
+
+async function open(page: Page, respond: (brief: Record<string, unknown>) => object) {
+  const { patches } = await fakeSessions(page, { sellers: respond });
   await page.goto("/products/p1/sellers");
   await expect(page.getByRole("heading", { name: list.title })).toBeVisible();
-  return requests;
+  return patches;
 }
+
+const area = (brief: Record<string, unknown>) => brief.area as Area;
+const bar = (page: Page) => page.getByRole("region", { name: "خلاصه خرید" });
 
 const noOverflow = (page: Page) =>
   page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -92,22 +94,24 @@ test("seller rows show reason chips, trust badge and link to the shop at 360 px"
   expect(await noOverflow(page)).toBe(0);
 });
 
-test("area and ranking changes refetch the list and update the count", async ({ page }) => {
-  const requests = await open(page, (p) => (p.get("area") ? { ...list, count: 1, sellers: [unpriced] } : list));
-  await page.getByLabel("محدوده").selectOption({ label: "فردوسی" });
+test("area and ranking changes in the brief bar refetch the list and update the count", async ({ page }) => {
+  const patches = await open(page, (b) => (area(b)?.name ? { ...list, count: 1, sellers: [unpriced] } : list));
+  await bar(page).getByRole("button", { name: /^محدوده/ }).click();
+  await page.getByLabel("انتخاب محدوده").selectOption({ label: "فردوسی" });
   await expect(page.getByText("۱ فروشنده")).toBeVisible();
-  expect(requests.at(-1)?.get("area")).toBe("فردوسی");
+  expect(patches.at(-1)?.brief?.area).toEqual({ name: "فردوسی" });
 
-  await page.getByLabel("محدوده").selectOption({ label: "پاساژ علاالدین" });
-  await expect.poll(() => requests.at(-1)?.get("pasaj")).toBe("علاالدین");
+  await page.getByLabel("انتخاب محدوده").selectOption({ label: "پاساژ علاالدین" });
+  await expect.poll(() => patches.at(-1)?.brief?.area).toEqual({ pasaj: "علاالدین" });
 
-  await page.getByLabel("محدوده").selectOption({ label: "نزدیک من، ۱ کیلومتر" });
-  await expect.poll(() => requests.at(-1)?.get("radius_m")).toBe("1000");
-  expect(requests.at(-1)?.get("lat")).toBe("35.6948");
+  await page.getByLabel("انتخاب محدوده").selectOption({ label: "نزدیک من، ۱ کیلومتر" });
+  await expect.poll(() => patches.at(-1)?.brief?.area).toEqual({ radius_m: 1000 });
+  expect(patches.at(-1)?.brief?.origin).toEqual({ lat: 35.6948, lon: 51.4115 });
 
+  await bar(page).getByRole("button", { name: /^اولویت/ }).click();
   await page.getByRole("button", { name: "معتبرترین" }).click();
-  await expect.poll(() => requests.at(-1)?.get("priority")).toBe("most_reliable");
-  await expect(page.getByRole("button", { name: "معتبرترین" })).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => patches.at(-1)?.brief?.priority).toBe("most_reliable");
+  await expect(page.getByRole("button", { name: "معتبرترین", exact: true })).toHaveAttribute("aria-pressed", "true");
 });
 
 test("one seller looks fine", async ({ page }) => {
@@ -118,11 +122,11 @@ test("one seller looks fine", async ({ page }) => {
 });
 
 test("an empty area explains coverage and suggests the nearest covered area", async ({ page }) => {
-  const requests = await open(page, (p) => (p.get("area") === "بهارستان" ? list : empty));
+  const patches = await open(page, (b) => (area(b)?.name === "بهارستان" ? list : empty));
   await expect(page.getByText("داده‌ها بخشی از فروشگاه‌های تهران، بیشتر مرکز شهر، را پوشش می‌دهند")).toBeVisible();
   await page.getByRole("button", { name: /بهارستان/ }).click();
   await expect(page.getByText("۲ فروشنده")).toBeVisible();
-  expect(requests.at(-1)?.get("area")).toBe("بهارستان");
+  expect(patches.at(-1)?.brief?.area).toEqual({ name: "بهارستان" });
   expect(await noOverflow(page)).toBe(0);
 });
 
@@ -131,14 +135,12 @@ test("product card links to its sellers", async ({ page }) => {
     trust_level: "listed", min_toman: 1000000, max_toman: 1000000, per_meter: false,
     last_price_changed_at: null, price_age_days: null, price_age_bucket: null,
   };
-  await page.route("**/api/products/search?*", (route) =>
-    route.fulfill({
-      json: {
-        query: "x",
-        items: [{ product_id: "p1", title: "کالای الف", brand: null, category: null, image_url: null, key_specs: [], offer_count: 2, price, price_flags: [] }],
-      },
+  await fakeSessions(page, {
+    search: () => ({
+      query: "x",
+      items: [{ product_id: "p1", title: "کالای الف", brand: null, category: null, image_url: null, key_specs: [], offer_count: 2, price, price_flags: [] }],
     }),
-  );
+  });
   await page.goto("/");
   await page.getByLabel("جستجوی کالا").fill("x");
   await page.getByRole("button", { name: "جستجو" }).click();

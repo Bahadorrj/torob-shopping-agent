@@ -1,21 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+
+import { useBrief } from "@/components/brief-provider";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { findSellers, type Priority, type Reason, type SellerList as List, type SellerQuery, type SellerRow } from "@/lib/api";
+import type { Reason, SellerRow } from "@/lib/api";
 import { distance, faDigits, faText, priceAge } from "@/lib/format";
-
-const PRIORITIES: { value: Priority; label: string }[] = [
-  { value: "cheapest", label: "ارزان‌ترین" },
-  { value: "closest", label: "نزدیک‌ترین" },
-  { value: "most_reliable", label: "معتبرترین" },
-];
-
-const RADII = [500, 1000, 2000, 5000];
 
 const COVERAGE = "داده‌ها بخشی از فروشگاه‌های تهران، بیشتر مرکز شهر، را پوشش می‌دهند.";
 
@@ -85,118 +79,31 @@ function Seller({ s }: { s: SellerRow }) {
   );
 }
 
-type Origin = { lat: number; lon: number };
-type Result = { key: string; list: List | null } | { key: string; error: true };
-
 export function SellerList({ productId }: { productId: string }) {
-  // "all", "near:<m>", "area:<name>" or "pasaj:<name>"
-  const [where, setWhere] = useState("all");
-  const [priority, setPriority] = useState<Priority>("cheapest");
-  const [origin, setOrigin] = useState<Origin | null>(null);
-  const [geoError, setGeoError] = useState(false);
-  const [result, setResult] = useState<Result | null>(null);
-  const [areas, setAreas] = useState<{ areas: string[]; pasajs: string[] }>({ areas: [], pasajs: [] });
+  const { session, pending, error, patch } = useBrief();
 
-  const kind = where.split(":")[0];
-  const value = where.slice(kind.length + 1);
-  const query: SellerQuery = { priority, ...(origin && { lat: origin.lat, lon: origin.lon }) };
-  if (kind === "near" && origin) query.radius_m = Number(value);
-  if (kind === "area") query.area = value;
-  if (kind === "pasaj") query.pasaj = value;
-  // a radius waits for the location
-  const ready = kind !== "near" || origin !== null;
-  const key = JSON.stringify(query);
-
+  // entering this step keeps the brief; the response carries this product's sellers filtered by it
   useEffect(() => {
-    if (!ready) return;
-    findSellers(productId, JSON.parse(key)).then(
-      (list) => {
-        setResult({ key, list });
-        if (list) setAreas({ areas: list.areas, pasajs: list.pasajs });
-      },
-      () => setResult({ key, error: true }),
-    );
-  }, [productId, key, ready]);
+    patch({ step: { kind: "sellers", product_id: productId } });
+  }, [productId, patch]);
 
-  function locate() {
-    if (origin) return;
-    navigator.geolocation.getCurrentPosition(
-      (p) => {
-        setGeoError(false);
-        setOrigin({ lat: p.coords.latitude, lon: p.coords.longitude });
-      },
-      () => setGeoError(true),
-    );
+  const step = session?.step;
+  const results = session?.results;
+  const list = step?.kind === "sellers" && step.product_id === productId && results && "sellers" in results ? results : null;
+
+  if (list === null) {
+    if (error && !pending) return <p className="text-sm text-destructive">فهرست فروشنده‌ها دریافت نشد. دوباره تلاش کنید.</p>;
+    return <p className="text-sm text-muted-foreground">در حال بارگذاری...</p>;
   }
 
-  if (result === null) return <p className="text-sm text-muted-foreground">در حال بارگذاری...</p>;
-  if ("error" in result) return <p className="text-sm text-destructive">فهرست فروشنده‌ها دریافت نشد. دوباره تلاش کنید.</p>;
-  if (result.list === null) return <p className="text-sm text-muted-foreground">کالا پیدا نشد.</p>;
-
-  const list = result.list;
-  const loading = result.key !== key || !ready;
   const nearest = list.nearest_covered;
 
   return (
     <article className="flex flex-col gap-4">
       <h1 className="text-lg font-bold leading-7">{list.title}</h1>
 
-      <div className="flex flex-col gap-2">
-        <label className="flex items-center gap-2 text-sm">
-          <span className="shrink-0 text-muted-foreground">محدوده</span>
-          <select
-            value={where}
-            onChange={(e) => {
-              setWhere(e.target.value);
-              if (e.target.value.startsWith("near:")) locate();
-            }}
-            className="h-9 min-w-0 flex-1 rounded-lg border bg-background px-2"
-          >
-            <option value="all">همه مناطق پوشش‌داده‌شده</option>
-            <optgroup label="نزدیک من">
-              {RADII.map((r) => (
-                <option key={r} value={`near:${r}`}>
-                  نزدیک من، {distance(r)}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="محله">
-              {areas.areas.map((a) => (
-                <option key={a} value={`area:${a}`}>
-                  {a}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="پاساژ">
-              {areas.pasajs.map((p) => (
-                <option key={p} value={`pasaj:${p}`}>
-                  پاساژ {faText(p)}
-                </option>
-              ))}
-            </optgroup>
-          </select>
-        </label>
-        {geoError && <p className="text-xs text-destructive">موقعیت شما در دسترس نیست. محله یا پاساژ را انتخاب کنید.</p>}
-        <div className="flex flex-wrap gap-2" role="group" aria-label="مرتب‌سازی">
-          {PRIORITIES.map((p) => (
-            <Button
-              key={p.value}
-              size="sm"
-              variant={priority === p.value ? "default" : "outline"}
-              aria-pressed={priority === p.value}
-              onClick={() => {
-                setPriority(p.value);
-                if (p.value === "closest") locate();
-              }}
-            >
-              {p.label}
-            </Button>
-          ))}
-        </div>
-      </div>
-
       <p className="text-sm" aria-live="polite">
-        {loading ? "در حال به‌روزرسانی..." : `${faDigits(list.count)} فروشنده`}
+        {pending ? "در حال به‌روزرسانی..." : `${faDigits(list.count)} فروشنده`}
       </p>
 
       {list.count === 0 ? (
@@ -207,7 +114,7 @@ export function SellerList({ productId }: { productId: string }) {
             <Button
               variant="outline"
               className="h-auto self-start whitespace-normal py-1.5 text-start"
-              onClick={() => setWhere(nearest.area ? `area:${nearest.area}` : `pasaj:${nearest.pasaj}`)}
+              onClick={() => patch({ brief: { area: nearest.area ? { name: nearest.area } : { pasaj: nearest.pasaj } } })}
             >
               نزدیک‌ترین محدوده با فروشنده: {nearest.area ?? `پاساژ ${faText(nearest.pasaj!)}`}
               {nearest.distance_m !== null && ` (${distance(nearest.distance_m)})`}

@@ -122,3 +122,60 @@ export async function findSellers(productId: string, query: SellerQuery): Promis
   if (!r.ok) throw new Error(`sellers failed: ${r.status}`);
   return r.json();
 }
+
+// Mirrors Brief, Session and SessionPatch in backend/src/pasazhgard/brief.py.
+export type Area = { radius_m: number | null; name: string | null; pasaj: string | null };
+export type TravelMode = "walk" | "transit" | "car";
+export type PaymentKind = "any" | "cash" | "torob_pay" | "installment";
+
+export type Brief = {
+  need: string | null;
+  items: { product_id: string | null; category: string | null; quantity: number; unit: "piece" | "meter" }[];
+  budget: { max_total_toman: number | null; max_per_item_toman: number | null };
+  origin: { lat: number; lon: number } | null;
+  area: Area | null;
+  visit_window: { date: string | null; earliest_arrival: string | null; latest_departure: string | null };
+  travel_mode: TravelMode | null;
+  payment: { kind: PaymentKind; provider: string | null };
+  must_have: { warranty: boolean; test_in_presence: boolean; fast_delivery: boolean };
+  priority: Priority;
+  plan: unknown[];
+  inquiries: unknown[];
+};
+
+export type Step = { kind: "search" } | { kind: "sellers"; product_id: string; title?: string | null };
+
+export type Session = {
+  session_id: string;
+  brief: Brief;
+  step: Step | null;
+  areas: string[];
+  pasajs: string[];
+  results: SellerList | { query: string; items: ProductCard[] } | null;
+};
+
+// `brief` replaces the top-level fields it names
+export type SessionPatch = { brief?: { [K in keyof Brief]?: unknown }; step?: Step | null };
+
+export async function createSession(): Promise<Session> {
+  const r = await fetch("/api/sessions", { method: "POST" });
+  if (!r.ok) throw new Error(`session failed: ${r.status}`);
+  return r.json();
+}
+
+export async function getSession(id: string): Promise<Session | null> {
+  const r = await fetch(`/api/sessions/${encodeURIComponent(id)}`);
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`session failed: ${r.status}`);
+  return r.json();
+}
+
+export async function patchSession(id: string, change: SessionPatch): Promise<Session> {
+  const r = await fetch(`/api/sessions/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(change),
+  });
+  if (!r.ok) throw new Error(`patch failed: ${r.status}`);
+  return r.json();
+}
