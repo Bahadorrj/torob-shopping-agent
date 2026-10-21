@@ -49,11 +49,11 @@ Each step runs in a fresh context.
    writes a failing test, fixes, commits once.
 4. Repeat until no correctness, security or spec-mismatch finding remains. Style nits go in the PR body
    and do not block. After 3 rounds, escalate.
-5. Merge: rebase on `main`, rerun the gate, `gh pr checks --watch` green, `gh pr merge --merge --delete-branch`.
+5. Merge: merge `origin/main` into the branch (no rebase, so no force-push), rerun the gate, `gh pr checks --watch` green, `gh pr merge --merge --delete-branch`.
 
 ## Escalate to the user
 
-Pause only that issue and send a push notification when:
+Pause only that issue and send a push notification when (inside `ship-issue`, return `escalate` with the reason and the orchestrator notifies):
 
 - you need a secret, account or paid resource (Liara, BoxAPI, Neshan)
 - a change touches deployed infra, or a schema change would break loaded data
