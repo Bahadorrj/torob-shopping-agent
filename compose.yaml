@@ -1,0 +1,65 @@
+# Local development only; production runs on Liara (docs/adr/0001-tech-stack.md, docs/runbook.md).
+name: pasazhgard
+
+services:
+  db:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM pgvector/pgvector:pg17
+        RUN apt-get update && apt-get install -y --no-install-recommends postgresql-17-postgis-3 && rm -rf /var/lib/apt/lists/*
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: pasazhgard
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 2s
+      retries: 30
+    restart: unless-stopped
+
+  app:
+    build: ./backend
+    # optional LLM_API_KEY, NESHAN_API_KEY, ...; the app runs degraded without them
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/pasazhgard
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      args:
+        API_URL: http://app:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      timeout: 6s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  db-data:

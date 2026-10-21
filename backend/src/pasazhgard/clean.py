@@ -1,0 +1,117 @@
+"""Cleaning rules: one raw CSV row in, one cleaned record out."""
+
+import json
+import re
+from collections import defaultdict
+from datetime import datetime
+from enum import StrEnum
+from statistics import median
+
+from pasazhgard.normalize import normalize
+
+
+class PriceFlag(StrEnum):
+    """Offer price flags, in display order. Mirrored in web/lib/api.ts."""
+
+    MISSING = "missing"
+    PLACEHOLDER = "placeholder"
+    INVALID = "invalid"
+    PER_METER = "per_meter"
+    FAR_FROM_MEDIAN = "far_from_median"
+
+
+BAD_PRICE_FLAGS = {PriceFlag.MISSING, PriceFlag.PLACEHOLDER, PriceFlag.INVALID}
+
+
+def _null(value: str) -> str | None:
+    return None if value in ("", "null") else value
+
+
+def _json_list(value: str) -> list:
+    return json.loads(value) if _null(value) else []
+
+
+def is_per_meter(seller_title: str) -> bool:
+    # a word before "متری" that makes it a length ("100 متری", "سانتی متری") rather than a unit price
+    length_words = set(
+        "یک دو سه چهار پنج شش هفت هشت نه ده بیست سی چهل پنجاه شصت هفتاد هشتاد نود صد دویست سیصد پانصد هزار"
+        " نیم ونیم سانت سانتی میلی کیلو".split()
+    )
+    metri = re.compile(r"(?<!\w)متری(?!\w)")
+    per_meter = re.compile(r"هر متر(?!\w)|^یک متر(?!\w)")
+    # a "1 متری" cable, rail or hose is usually one piece; only wire-like goods sold by length price one meter
+    by_length = re.compile(r"سیم|افشان|ریسه|نیون")  # normalize turns the hamza in نئون into ی
+    one_meter = re.compile(r"(?<![\w.])(1|یک)\W*$")
+    # a cable size such as "4*10" or "2 در 1.5" before "متری"
+    cable_size = re.compile(r"\d\s*([*×x]|در)\s*\d+([./]\d+)?\W*$")
+    text = normalize(seller_title)
+    if per_meter.search(text):
+        return True
+    wire = by_length.search(text)
+    if wire and re.search(r"(?<!\w)یک متر(?!\w)", text):
+        return True
+    for m in metri.finditer(text):
+        before = text[: m.start()]
+        if wire and one_meter.search(before):
+            return True
+        if (wire or "کابل" in text) and cable_size.search(before):
+            return True
+        last = re.search(r"(\d|[^\W\d_]+)\W*$", before)
+        if not last or not (last[1].isdigit() or last[1] in length_words):
+            return True
+    return False
+
+
+def clean_offer(row: dict) -> dict:
+    placeholder_below, invalid_above = 1_000, 10**10
+    price = _null(row["price_toman"])
+    price = int(price) if price else None
+    flags = []
+    if price is None:
+        flags.append(PriceFlag.MISSING)
+    elif price < placeholder_below:
+        flags.append(PriceFlag.PLACEHOLDER)
+    elif price > invalid_above:
+        flags.append(PriceFlag.INVALID)
+    if is_per_meter(row["seller_title"]):
+        flags.append(PriceFlag.PER_METER)
+    changed = _null(row["last_price_changed_at"])
+    return {
+        "offer_id": row["offer_id"],
+        "product_id": row["product_id"],
+        "shop_id": row["shop_id"],
+        "seller_title": row["seller_title"],
+        "price_toman": price,
+        "last_price_changed_at": datetime.fromisoformat(changed) if changed else None,
+        "price_flags": flags,
+    }
+
+
+def flag_far_from_median(offers: list[dict]) -> None:
+    """Flag valid prices far from the median of their product's valid prices in the same unit."""
+    groups = defaultdict(list)
+    for o in offers:
+        if not BAD_PRICE_FLAGS & set(o["price_flags"]):
+            groups[o["product_id"], PriceFlag.PER_METER in o["price_flags"]].append(o)
+    for group in groups.values():
+        # far means under 0.5x or over 2x the median; with two prices the median is their mean, so skip
+        if len(group) < 3:
+            continue
+        mid = median(o["price_toman"] for o in group)
+        for o in group:
+            if not mid / 2 <= o["price_toman"] <= mid * 2:
+                o["price_flags"].append(PriceFlag.FAR_FROM_MEDIAN)
+
+
+def clean_product(row: dict) -> dict:
+    title, brand, model = row["persian_title"], _null(row["brand_name"]), _null(row["model"])
+    return {
+        "product_id": row["product_id"],
+        "title": title,
+        "brand": brand,
+        "category": _null(row["category_name"]),
+        "model": model,
+        "image_urls": _json_list(row["image_urls"]),
+        "specs": [{"key": s["key"], "value": s["value"]} for s in _json_list(row["specs"])],
+        "search_text": normalize(" ".join(filter(None, [title, brand, model]))),
+    }
