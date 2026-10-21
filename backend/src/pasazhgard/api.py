@@ -10,9 +10,13 @@ from pasazhgard.search import SearchResult, search_products
 app = FastAPI(title="Pasazhgard")
 
 
+def _connect(**kwargs) -> psycopg.Connection:
+    return psycopg.connect(os.environ["DATABASE_URL"], **kwargs)
+
+
 def get_conn():
     # shortcut: one connection per request, move to a pool when load needs it
-    with psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row) as conn:
+    with _connect(row_factory=dict_row) as conn:
         yield conn
 
 
@@ -25,7 +29,7 @@ def health(response: Response) -> dict:
     # LLM and map keys are optional: without them the app runs in degraded mode
     body = {"llm": bool(os.environ.get("LLM_API_KEY")), "maps": bool(os.environ.get("NESHAN_API_KEY"))}
     try:
-        with psycopg.connect(os.environ["DATABASE_URL"], connect_timeout=3) as conn:
+        with _connect(connect_timeout=3) as conn:
             conn.execute("SELECT 1")
     except psycopg.Error:
         response.status_code = 503
