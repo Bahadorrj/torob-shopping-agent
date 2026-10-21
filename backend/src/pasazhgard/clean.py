@@ -22,9 +22,6 @@ class PriceFlag(StrEnum):
 
 BAD_PRICE_FLAGS = {PriceFlag.MISSING, PriceFlag.PLACEHOLDER, PriceFlag.INVALID}
 
-_METRI = re.compile(r"(?<!\w)متری(?!\w)")
-_PER_METER = re.compile(r"هر متر(?!\w)|^یک متر ")
-
 
 def _null(value: str) -> str | None:
     return None if value in ("", "null") else value
@@ -40,10 +37,12 @@ def is_per_meter(seller_title: str) -> bool:
         "دو سه چهار پنج شش هفت هشت نه ده بیست سی چهل پنجاه شصت هفتاد هشتاد نود صد دویست سیصد پانصد هزار"
         " نیم ونیم سانت سانتی میلی کیلو".split()
     )
+    metri = re.compile(r"(?<!\w)متری(?!\w)")
+    per_meter = re.compile(r"هر متر(?!\w)|^یک متر ")
     text = normalize(seller_title)
-    if _PER_METER.search(text):
+    if per_meter.search(text):
         return True
-    for m in _METRI.finditer(text):
+    for m in metri.finditer(text):
         before = text[: m.start()]
         # "1 متری" and a cable size such as "4*10 متری" or "2 در 1.5 متری" price one meter
         if re.search(r"(?<![\w.])(1|یک)\W*$|\d\s*([*×x]|در)\s*\d+([./]\d+)?\W*$", before):
