@@ -1,0 +1,23 @@
+# Local development only; production runs on Liara (docs/adr/0001-tech-stack.md).
+services:
+  db:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM pgvector/pgvector:pg17
+        RUN apt-get update && apt-get install -y --no-install-recommends postgresql-17-postgis-3 && rm -rf /var/lib/apt/lists/*
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: pasazhgard
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 2s
+      retries: 30
+
+volumes:
+  db-data:
