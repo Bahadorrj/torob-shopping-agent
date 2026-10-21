@@ -2,7 +2,7 @@ import os
 from datetime import UTC, datetime
 
 import psycopg
-from fastapi import Depends, FastAPI, Query
+from fastapi import Depends, FastAPI, Query, Response
 from psycopg.rows import dict_row
 
 from pasazhgard.search import SearchResult, search_products
@@ -21,8 +21,16 @@ def get_now() -> datetime:
 
 
 @app.get("/health")
-def health() -> dict:
-    return {"status": "ok"}
+def health(response: Response) -> dict:
+    # LLM and map keys are optional: without them the app runs in degraded mode
+    body = {"llm": bool(os.environ.get("LLM_API_KEY")), "maps": bool(os.environ.get("NESHAN_API_KEY"))}
+    try:
+        with psycopg.connect(os.environ["DATABASE_URL"], connect_timeout=3) as conn:
+            conn.execute("SELECT 1")
+    except psycopg.Error:
+        response.status_code = 503
+        return {"status": "error", "db": "unreachable", **body}
+    return {"status": "ok", "db": "ok", **body}
 
 
 @app.get("/products/search")
