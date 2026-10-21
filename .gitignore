@@ -1,8 +1,9 @@
 other/
 /dataset/
 .env
-.claude/
-CLAUDE.md
+.claude/*
+!.claude/settings.json
+!.claude/workflows/
 .venv/
 __pycache__/
 .pytest_cache/
