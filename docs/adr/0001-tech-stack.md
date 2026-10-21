@@ -25,7 +25,7 @@ there is no Caddy.
 |---|---|---|---|
 | `db` | Managed PostgreSQL | Saturn: 2 CPU, 4 GB RAM, 40 GB SSD | PostGIS and pgvector toggled on at creation; pick the newest version offered (it cannot be changed later) |
 | `app` | Docker app (FastAPI) | Jupiter: 1 CPU, 2 GB RAM | No local models; HTTP + DB only. Raise to Saturn for the demo if latency needs it |
-| `web` | Next.js app | Mars: 1 CPU, 1 GB RAM | Next.js server, CopilotKit runtime, `/api` proxy to `app` |
+| `web` | Docker app (Next.js), see Amendments | Mars: 1 CPU, 1 GB RAM | Next.js server, CopilotKit runtime, `/api` proxy to `app` |
 
 Sizing against the full dataset: CSVs are 285 MB (6,476 shops, 225,903 products, 331,506 offers).
 Loaded with trigram, GiST and B-tree indexes this is an estimated 1.5 GB. Embeddings at 512 dimensions are
@@ -174,3 +174,17 @@ Liara console per app and in a gitignored `.env` locally.
 - The `gpt-6` models stay unavailable for tool calling until a Responses adapter exists.
 - First Liara setup must confirm the pgvector version and HNSW support before #12 (hybrid search) relies
   on it.
+
+## Amendments
+
+### 2026-10-22: `web` deploys as a Liara Docker app
+
+`web` runs on Liara's Docker platform with `web/Dockerfile`, not on Liara's Next.js platform:
+
+- The Next.js platform runs `npm install` and ignores `pnpm-lock.yaml`, so builds would not be reproducible.
+- Liara documents rewrite injection only for `next.config.js`; this app uses `next.config.ts`.
+- The same image runs locally (Compose) and on Liara.
+
+`API_URL` is now a Docker build arg (`web/liara.json`), baked into the rewrites at build time. Changing it,
+for example after renaming the `app` resource, needs a rebuild of `web`. On Liara the private hostname is the
+app ID, so the value is `http://torob-api:8000`, not `http://app:8000` (`app` is the Compose service name).
