@@ -1,4 +1,4 @@
-// Mirrors the backend response models in backend/src/pasazhgard/search.py.
+// Mirrors the backend response models in backend/src/pasazhgard/search.py and PriceFlag in clean.py.
 export type PriceFlag = "missing" | "placeholder" | "invalid" | "per_meter" | "far_from_median";
 
 export type PriceRange = {

@@ -4,11 +4,23 @@ import json
 import re
 from collections import defaultdict
 from datetime import datetime
+from enum import StrEnum
 from statistics import median
 
 from pasazhgard.normalize import normalize
 
-BAD_PRICE_FLAGS = {"missing", "placeholder", "invalid"}
+
+class PriceFlag(StrEnum):
+    """Offer price flags, in display order. Mirrored in web/lib/api.ts."""
+
+    MISSING = "missing"
+    PLACEHOLDER = "placeholder"
+    INVALID = "invalid"
+    PER_METER = "per_meter"
+    FAR_FROM_MEDIAN = "far_from_median"
+
+
+BAD_PRICE_FLAGS = {PriceFlag.MISSING, PriceFlag.PLACEHOLDER, PriceFlag.INVALID}
 
 _METRI = re.compile(r"(?<!\w)متری(?!\w)")
 _PER_METER = re.compile(r"هر متر(?!\w)|^یک متر ")
@@ -48,13 +60,13 @@ def clean_offer(row: dict) -> dict:
     price = int(price) if price else None
     flags = []
     if price is None:
-        flags.append("missing")
+        flags.append(PriceFlag.MISSING)
     elif price < placeholder_below:
-        flags.append("placeholder")
+        flags.append(PriceFlag.PLACEHOLDER)
     elif price > invalid_above:
-        flags.append("invalid")
+        flags.append(PriceFlag.INVALID)
     if is_per_meter(row["seller_title"]):
-        flags.append("per_meter")
+        flags.append(PriceFlag.PER_METER)
     changed = _null(row["last_price_changed_at"])
     return {
         "offer_id": row["offer_id"],
@@ -72,7 +84,7 @@ def flag_far_from_median(offers: list[dict]) -> None:
     groups = defaultdict(list)
     for o in offers:
         if not BAD_PRICE_FLAGS & set(o["price_flags"]):
-            groups[o["product_id"], "per_meter" in o["price_flags"]].append(o)
+            groups[o["product_id"], PriceFlag.PER_METER in o["price_flags"]].append(o)
     for group in groups.values():
         # far means under 0.5x or over 2x the median; with two prices the median is their mean, so skip
         if len(group) < 3:
@@ -80,7 +92,7 @@ def flag_far_from_median(offers: list[dict]) -> None:
         mid = median(o["price_toman"] for o in group)
         for o in group:
             if not mid / 2 <= o["price_toman"] <= mid * 2:
-                o["price_flags"].append("far_from_median")
+                o["price_flags"].append(PriceFlag.FAR_FROM_MEDIAN)
 
 
 def clean_product(row: dict) -> dict:

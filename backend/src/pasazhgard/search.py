@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel
 
-from pasazhgard.clean import BAD_PRICE_FLAGS
+from pasazhgard.clean import BAD_PRICE_FLAGS, PriceFlag
 from pasazhgard.normalize import normalize
 
 PriceAgeBucket = Literal["<=7", "8-30", ">30"]
@@ -38,7 +38,7 @@ class ProductCard(BaseModel):
     key_specs: list[Spec]
     offer_count: int
     price: PriceRange
-    price_flags: list[str]
+    price_flags: list[PriceFlag]
 
 
 class SearchResult(BaseModel):
@@ -54,8 +54,8 @@ def price_age_bucket(days: int | None) -> PriceAgeBucket:
 
 
 def _price_range(offers: list[dict], now: datetime) -> PriceRange:
-    usable = [o for o in offers if not (BAD_PRICE_FLAGS | {"far_from_median"}) & set(o["price_flags"])]
-    per_piece = [o for o in usable if "per_meter" not in o["price_flags"]]
+    usable = [o for o in offers if not (BAD_PRICE_FLAGS | {PriceFlag.FAR_FROM_MEDIAN}) & set(o["price_flags"])]
+    per_piece = [o for o in usable if PriceFlag.PER_METER not in o["price_flags"]]
     # prefer per-piece prices, fall back to per-meter when a product has only those
     priced = per_piece or usable
     if not priced:
@@ -124,7 +124,7 @@ def search_products(conn, query: str, now: datetime, limit: int = 20) -> SearchR
                 key_specs=[s for s in p["specs"] if not any(w in s["key"] for w in title_spec_words)][:key_spec_count],
                 offer_count=len(own),
                 price=_price_range(own, now),
-                price_flags=[f for f in ["missing", "placeholder", "invalid", "per_meter", "far_from_median"] if f in flags],
+                price_flags=[f for f in PriceFlag if f in flags],
             )
         )
     return SearchResult(query=query, items=items)
