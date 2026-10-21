@@ -13,3 +13,7 @@ export function priceAge(days: number | null) {
 
 // ASCII digits inside free text, e.g. "علاالدین 2" or "09:30", in Persian digits
 export const faText = (s: string) => s.replace(/\d/g, (d) => faDigits(Number(d)));
+
+export function distance(m: number) {
+  return m < 1000 ? `${faDigits(m)} متر` : `${faDigits(Math.round(m / 100) / 10)} کیلومتر`;
+}

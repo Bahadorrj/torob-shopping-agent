@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { PriceFlag, ProductCard as Product } from "@/lib/api";
@@ -47,6 +49,11 @@ export function ProductCard({ product }: { product: Product }) {
         )}
         <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           <span>{faDigits(product.offer_count)} فروشنده</span>
+          {product.offer_count > 0 && (
+            <Link href={`/products/${product.product_id}/sellers`} className="font-medium text-primary underline-offset-4 hover:underline">
+              دیدن فروشنده‌ها
+            </Link>
+          )}
           {notes.map((n) => (
             <Badge key={n} variant="outline" className="text-muted-foreground">
               {n}
