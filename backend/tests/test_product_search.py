@@ -1,8 +1,6 @@
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 import pytest
-from conftest import FIXTURE_DIR
 
 from pasazhgard.api import app, get_now
 from pasazhgard.ingest import ingest
@@ -106,10 +104,10 @@ def test_price_without_change_date_counts_as_old(client):
     "today, days, bucket",
     [("2026-10-15", 7, "<=7"), ("2026-10-16", 8, "8-30"), ("2026-11-07", 30, "8-30"), ("2026-11-08", 31, ">30")],
 )
-def test_price_age_bucket_follows_the_clock(client, today, days, bucket):
+def test_price_age_bucket_follows_the_clock(client, now, today, days, bucket):
     # newest R50i price changed on 2026-10-08, Tehran time
     saved = app.dependency_overrides[get_now]
-    app.dependency_overrides[get_now] = lambda: datetime.fromisoformat(today).replace(hour=9, tzinfo=ZoneInfo("Asia/Tehran"))
+    app.dependency_overrides[get_now] = lambda: datetime.fromisoformat(today).replace(hour=9, tzinfo=now.tzinfo)
     try:
         price = card(client, "هدفون انکر R50i", R50I)["price"]
     finally:
@@ -117,7 +115,7 @@ def test_price_age_bucket_follows_the_clock(client, today, days, bucket):
     assert (price["price_age_days"], price["price_age_bucket"]) == (days, bucket)
 
 
-def test_ingest_is_idempotent(client, database_url):
+def test_ingest_is_idempotent(client, database_url, fixture_dir):
     before = search(client, "انکر")
-    ingest(FIXTURE_DIR, database_url)
+    ingest(fixture_dir, database_url)
     assert search(client, "انکر") == before
