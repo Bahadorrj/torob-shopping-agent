@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 ADMIN_URL = os.environ.get("TEST_ADMIN_DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/postgres")
-TEST_DB = "pasazhgard_test"
+TEST_DB = os.environ.get("TEST_DB_NAME", "pasazhgard_test")
 
 
 @pytest.fixture(scope="session")
