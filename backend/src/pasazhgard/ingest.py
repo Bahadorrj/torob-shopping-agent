@@ -11,45 +11,7 @@ from pathlib import Path
 import psycopg
 from psycopg.types.json import Jsonb
 
-from pasazhgard.clean import clean_offer, clean_product, flag_far_from_median
-
-SCHEMA = """
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-DROP TABLE IF EXISTS offers, products, shops;
-CREATE TABLE shops (
-    shop_id text PRIMARY KEY,
-    name text NOT NULL,
-    address text,
-    location_label text,
-    lat double precision,
-    lon double precision
-);
-CREATE TABLE products (
-    product_id text PRIMARY KEY,
-    title text NOT NULL,
-    brand text,
-    category text,
-    model text,
-    image_urls text[] NOT NULL,
-    specs jsonb NOT NULL,
-    search_text text NOT NULL
-);
-CREATE TABLE offers (
-    offer_id text PRIMARY KEY,
-    product_id text NOT NULL REFERENCES products,
-    shop_id text NOT NULL REFERENCES shops,
-    seller_title text NOT NULL,
-    price_toman bigint,
-    last_price_changed_at timestamptz,
-    price_flags text[] NOT NULL
-);
-"""
-
-INDEXES = """
-CREATE INDEX products_search_text_trgm ON products USING gin (search_text gin_trgm_ops);
-CREATE INDEX offers_product_id ON offers (product_id);
-CREATE INDEX offers_shop_id ON offers (shop_id);
-"""
+from pasazhgard.clean import _null, clean_offer, clean_product, flag_far_from_median
 
 
 def _rows(path: Path):
@@ -59,7 +21,8 @@ def _rows(path: Path):
 
 
 def _float(value: str) -> float | None:
-    return None if value in ("", "null") else float(value)
+    value = _null(value)
+    return float(value) if value else None
 
 
 def _copy(cur, table: str, columns: list[str], types: list[str], rows) -> None:
@@ -70,11 +33,47 @@ def _copy(cur, table: str, columns: list[str], types: list[str], rows) -> None:
 
 
 def ingest(data_dir: Path, database_url: str) -> None:
+    schema = """
+    CREATE EXTENSION IF NOT EXISTS pg_trgm;
+    DROP TABLE IF EXISTS offers, products, shops;
+    CREATE TABLE shops (
+        shop_id text PRIMARY KEY,
+        name text NOT NULL,
+        address text,
+        location_label text,
+        lat double precision,
+        lon double precision
+    );
+    CREATE TABLE products (
+        product_id text PRIMARY KEY,
+        title text NOT NULL,
+        brand text,
+        category text,
+        model text,
+        image_urls text[] NOT NULL,
+        specs jsonb NOT NULL,
+        search_text text NOT NULL
+    );
+    CREATE TABLE offers (
+        offer_id text PRIMARY KEY,
+        product_id text NOT NULL REFERENCES products,
+        shop_id text NOT NULL REFERENCES shops,
+        seller_title text NOT NULL,
+        price_toman bigint,
+        last_price_changed_at timestamptz,
+        price_flags text[] NOT NULL
+    );
+    """
+    indexes = """
+    CREATE INDEX products_search_text_trgm ON products USING gin (search_text gin_trgm_ops);
+    CREATE INDEX offers_product_id ON offers (product_id);
+    CREATE INDEX offers_shop_id ON offers (shop_id);
+    """
     offers = [clean_offer(r) for r in _rows(data_dir / "offers.csv")]
     flag_far_from_median(offers)
 
     with psycopg.connect(database_url) as conn, conn.cursor() as cur:
-        cur.execute(SCHEMA)
+        cur.execute(schema)
         _copy(
             cur,
             "shops",
@@ -104,7 +103,7 @@ def ingest(data_dir: Path, database_url: str) -> None:
             ["text", "text", "text", "text", "int8", "timestamptz", "text[]"],
             ([o[k] for k in offer_cols] for o in offers),
         )
-        cur.execute(INDEXES)
+        cur.execute(indexes)
 
 
 if __name__ == "__main__":

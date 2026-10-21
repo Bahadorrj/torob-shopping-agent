@@ -8,8 +8,6 @@ from statistics import median
 
 from pasazhgard.normalize import normalize
 
-PLACEHOLDER_BELOW = 1_000
-INVALID_ABOVE = 10**10
 BAD_PRICE_FLAGS = {"missing", "placeholder", "invalid"}
 
 _METRI = re.compile(r"(?<!\w)متری(?!\w)")
@@ -45,14 +43,15 @@ def is_per_meter(seller_title: str) -> bool:
 
 
 def clean_offer(row: dict) -> dict:
+    placeholder_below, invalid_above = 1_000, 10**10
     price = _null(row["price_toman"])
     price = int(price) if price else None
     flags = []
     if price is None:
         flags.append("missing")
-    elif price < PLACEHOLDER_BELOW:
+    elif price < placeholder_below:
         flags.append("placeholder")
-    elif price > INVALID_ABOVE:
+    elif price > invalid_above:
         flags.append("invalid")
     if is_per_meter(row["seller_title"]):
         flags.append("per_meter")
