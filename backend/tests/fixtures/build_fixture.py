@@ -58,6 +58,15 @@ OFFERS = {
 # shops with no offers (category only), in the Aladdin pasaj
 EXTRA_SHOPS = ["shop_6492b65ad8b242465783e74d", "shop_d4b7098382f4a0552c80e36b"]
 
+# shops with no offers, for the shop page: no hours (spelled علائدین), Instagram,
+# unsupported hours, and a landmark naming another pasaj
+SHOP_PAGE_SHOPS = [
+    "shop_cb9575d65ca60e60563e911f",
+    "shop_0190ae9d8cf49a7884b0db6e",
+    "shop_9900a46f54a879ce260839bb",
+    "shop_4490fa1498e6d5cc39eded8f",
+]
+
 
 def main(src: Path, dst: Path) -> None:
     csv.field_size_limit(sys.maxsize)
@@ -78,7 +87,7 @@ def main(src: Path, dst: Path) -> None:
     offers = copy("offers.csv", lambda r: (r["product_id"], r["offer_id"][-8:]) in wanted)
     assert len(offers) == len(wanted), f"found {len(offers)} of {len(wanted)} offers"
     copy("products.csv", lambda r: r["product_id"] in OFFERS)
-    shop_ids = {r["shop_id"] for r in offers} | set(EXTRA_SHOPS)
+    shop_ids = {r["shop_id"] for r in offers} | set(EXTRA_SHOPS) | set(SHOP_PAGE_SHOPS)
     copy("shops.csv", lambda r: r["shop_id"] in shop_ids)
 
 

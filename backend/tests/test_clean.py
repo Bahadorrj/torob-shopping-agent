@@ -28,6 +28,7 @@ def test_clean_offer_record():
         "price_toman": 610000,
         "last_price_changed_at": datetime(2026, 9, 14, 8, 57, 27, 401253, tzinfo=UTC),
         "price_flags": [],
+        "warranty": None,
     }
 
 
