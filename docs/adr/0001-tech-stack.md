@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted; provider adapter and agent stream amended by ADR-0002 |
 | Date | 2026-10-21 |
 | Issue | #2 (spec: #1, PRD section 11-12) |
 
