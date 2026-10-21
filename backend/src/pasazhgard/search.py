@@ -46,9 +46,10 @@ class SearchResult(BaseModel):
     items: list[ProductCard]
 
 
-def price_age_bucket(days: int | None) -> PriceAgeBucket:
-    # an unknown change date is treated as old
-    if days is None or days > 30:
+def price_age_bucket(days: int | None) -> PriceAgeBucket | None:
+    if days is None:
+        return None
+    if days > 30:
         return ">30"
     return "<=7" if days <= 7 else "8-30"
 

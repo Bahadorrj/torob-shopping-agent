@@ -95,10 +95,10 @@ def test_invalid_price_is_flagged_and_left_out_of_range(client):
     assert c["price_flags"] == ["invalid"]
 
 
-def test_price_without_change_date_counts_as_old(client):
+def test_price_without_change_date_has_no_age_bucket(client):
     c = card(client, "ریل چراغ مگنتی", "product_db75e39a25b2bc83eca25efe")
     assert c["price"]["trust_level"] == "listed"
-    assert (c["price"]["price_age_days"], c["price"]["price_age_bucket"]) == (None, ">30")
+    assert (c["price"]["price_age_days"], c["price"]["price_age_bucket"]) == (None, None)
 
 
 @pytest.mark.parametrize(

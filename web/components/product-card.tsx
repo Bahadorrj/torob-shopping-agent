@@ -39,7 +39,7 @@ export function ProductCard({ product }: { product: Product }) {
             <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
               <Badge variant="secondary">قیمت ثبت‌شده</Badge>
               <span>{priceAge(price.price_age_days)}</span>
-              {price.price_age_days !== null && price.price_age_bucket === ">30" && <span className="text-amber-700">قیمت قدیمی، استعلام بگیرید</span>}
+              {price.price_age_bucket === ">30" && <span className="text-amber-700">قیمت قدیمی، استعلام بگیرید</span>}
             </div>
           </>
         ) : (
