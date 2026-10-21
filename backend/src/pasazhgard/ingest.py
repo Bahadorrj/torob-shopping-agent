@@ -93,7 +93,7 @@ def ingest(data_dir: Path, database_url: str) -> None:
             ["shop_id", "name", "address", "location_label", "lat", "lon"],
             ["text", "text", "text", "text", "float8", "float8"],
             (
-                (r["shop_id"], r["name"], r["address"], r["location_label"], _float(r["lat"]), _float(r["lon"]))
+                (r["shop_id"], r["name"], _null(r["address"]), _null(r["location_label"]), _float(r["lat"]), _float(r["lon"]))
                 for r in _rows(data_dir / "shops.csv")
             ),
         )
