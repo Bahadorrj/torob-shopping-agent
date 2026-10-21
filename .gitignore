@@ -1,5 +1,5 @@
 other/
-dataset/
+/dataset/
 .env
 .claude/
 CLAUDE.md.venv/
