@@ -88,7 +88,8 @@ app's `liara.json` (slower image push, unrestricted downloads).
 ## Load or reload data
 
 The load is one idempotent job: it rebuilds the tables from the CSVs in one transaction, so a failed run
-leaves the old data in place. Searches wait while it runs. Take a backup first (next section) if the
+leaves the old data in place. The new tables are built in a staging schema, so searches keep serving the
+old data and wait only for the final swap (well under a second). Take a backup first (next section) if the
 current data matters.
 
 1. Turn on public access for `torob-db`.

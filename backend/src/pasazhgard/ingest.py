@@ -1,5 +1,8 @@
 """Load the dataset CSVs into the database. Idempotent: tables are rebuilt in one transaction.
 
+The new tables are built in a staging schema while searches keep reading the old ones; the
+swap at the end is the only step that locks them.
+
 Usage: python -m pasazhgard.ingest <data dir>   (reads DATABASE_URL)
 """
 
@@ -35,7 +38,9 @@ def _copy(cur, table: str, columns: list[str], types: list[str], rows) -> None:
 def ingest(data_dir: Path, database_url: str) -> None:
     schema = """
     CREATE EXTENSION IF NOT EXISTS pg_trgm;
-    DROP TABLE IF EXISTS offers, products, shops;
+    DROP SCHEMA IF EXISTS staging CASCADE;
+    CREATE SCHEMA staging;
+    SET LOCAL search_path = staging, public;
     CREATE TABLE shops (
         shop_id text PRIMARY KEY,
         name text NOT NULL,
@@ -68,6 +73,14 @@ def ingest(data_dir: Path, database_url: str) -> None:
     CREATE INDEX products_search_text_trgm ON products USING gin (search_text gin_trgm_ops);
     CREATE INDEX offers_product_id ON offers (product_id);
     CREATE INDEX offers_shop_id ON offers (shop_id);
+    """
+    swap = """
+    SET LOCAL search_path = public;
+    DROP TABLE IF EXISTS offers, products, shops;
+    ALTER TABLE staging.shops SET SCHEMA public;
+    ALTER TABLE staging.products SET SCHEMA public;
+    ALTER TABLE staging.offers SET SCHEMA public;
+    DROP SCHEMA staging;
     """
     offers = [clean_offer(r) for r in _rows(data_dir / "offers.csv")]
     flag_far_from_median(offers)
@@ -104,6 +117,7 @@ def ingest(data_dir: Path, database_url: str) -> None:
             ([o[k] for k in offer_cols] for o in offers),
         )
         cur.execute(indexes)
+        cur.execute(swap)
 
 
 if __name__ == "__main__":

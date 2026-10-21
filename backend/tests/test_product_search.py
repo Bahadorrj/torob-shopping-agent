@@ -1,5 +1,6 @@
 from datetime import datetime
 
+import psycopg
 import pytest
 
 from pasazhgard.api import app, get_now
@@ -119,3 +120,19 @@ def test_ingest_is_idempotent(client, database_url, fixture_dir):
     before = search(client, "انکر")
     ingest(fixture_dir, database_url)
     assert search(client, "انکر") == before
+
+
+def test_reload_does_not_block_reads_during_build(monkeypatch, database_url, fixture_dir):
+    from pasazhgard import ingest as ingest_module
+
+    real_copy = ingest_module._copy
+    reads = []
+
+    def copy_then_read(cur, table, *args):
+        real_copy(cur, table, *args)
+        with psycopg.connect(database_url, options="-c lock_timeout=2000") as other:
+            reads.append(other.execute("SELECT count(*) FROM public.products").fetchone()[0])
+
+    monkeypatch.setattr(ingest_module, "_copy", copy_then_read)
+    ingest(fixture_dir, database_url)
+    assert len(reads) == 3 and reads[0] > 0
