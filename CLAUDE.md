@@ -49,7 +49,7 @@ Each step runs in a fresh context.
    writes a failing test, fixes, commits once.
 4. Repeat until no correctness, security or spec-mismatch finding remains. Style nits go in the PR body
    and do not block. After 3 rounds, escalate.
-5. Merge: rebase on `main`, rerun the gate, `gh pr checks --watch` green, `gh pr merge --squash --delete-branch`.
+5. Merge: rebase on `main`, rerun the gate, `gh pr checks --watch` green, `gh pr merge --merge --delete-branch`.
 
 ## Escalate to the user
 
