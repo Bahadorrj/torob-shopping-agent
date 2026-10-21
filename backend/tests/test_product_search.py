@@ -136,3 +136,19 @@ def test_reload_does_not_block_reads_during_build(monkeypatch, database_url, fix
     monkeypatch.setattr(ingest_module, "_copy", copy_then_read)
     ingest(fixture_dir, database_url)
     assert len(reads) == 3 and reads[0] > 0
+
+
+def test_words_missing_from_the_title_do_not_drop_the_product(client):
+    ids = [c["product_id"] for c in search(client, "هدفون بی سیم انکر برای ورزش")]
+    assert R50I in ids
+
+
+def test_punctuation_tokens_do_not_change_results(client):
+    assert search(client, "هدفون انکر - R50i /") == search(client, "هدفون انکر R50i")
+
+
+def test_common_word_does_not_outrank_a_rare_product_word(client):
+    # "مناسب برای" is in many titles that are not Anker products
+    items = search(client, "مناسب برای انکر")
+    assert items
+    assert all("انکر" in c["title"] for c in items[:3])

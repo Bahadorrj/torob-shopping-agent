@@ -80,24 +80,39 @@ def _price_range(offers: list[dict], now: datetime) -> PriceRange:
 
 
 def search_products(conn, query: str, now: datetime, limit: int = 20) -> SearchResult:
-    tokens = normalize(query).split()
+    # punctuation-only tokens like "-" carry no signal
+    tokens = [t for t in normalize(query).split() if any(ch.isalnum() for ch in t)]
     # short words like "20" match most rows, so they only rank and do not select
     selective = [t for t in tokens if len(t) >= 3] or tokens
-    # each query word is matched on its own, so word order and words in between do not matter
-    # shortcut: common words still scan many rows (about 1 s on the full data), revisit with hybrid search
+    # each query word is matched on its own, so word order and words in between do not matter.
+    # A word weighs more the fewer candidates contain it, so common words like "برای" cannot
+    # outvote the product words; a word no candidate contains weighs nothing.
+    # shortcut: common words still scan many rows (1-2 s on the full data), revisit with hybrid search
     products = conn.execute(
         """
-        SELECT * FROM (
+        WITH cand AS (
             SELECT product_id, title, brand, category, image_urls, specs,
-                   (SELECT avg(word_similarity(t, search_text)) FROM unnest(%(tokens)s::text[]) t) AS score
+                   ARRAY(SELECT word_similarity(t, search_text)
+                         FROM unnest(%(tokens)s::text[]) WITH ORDINALITY u(t, i) ORDER BY i) AS sims
             FROM products
             WHERE search_text %%> ANY(%(selective)s::text[])
-        ) matched
+        ),
+        weight AS (
+            SELECT i, CASE WHEN count(*) FILTER (WHERE sims[i] >= %(word_match)s) = 0 THEN 0
+                           ELSE ln(1 + (SELECT count(*) FROM cand)::float8
+                                       / count(*) FILTER (WHERE sims[i] >= %(word_match)s)) END AS w
+            FROM cand, generate_series(1, %(n)s) i
+            GROUP BY i
+        ),
+        scored AS (
+            SELECT *, (SELECT sum(w * sims[i]) / nullif(sum(w), 0) FROM weight) AS score FROM cand
+        )
+        SELECT * FROM scored
         WHERE score >= %(min_score)s
         ORDER BY score DESC, product_id
         LIMIT %(limit)s
         """,
-        {"tokens": tokens, "selective": selective, "min_score": 0.5, "limit": limit},
+        {"tokens": tokens, "selective": selective, "n": len(tokens), "word_match": 0.6, "min_score": 0.5, "limit": limit},
     ).fetchall()
     offers = conn.execute(
         "SELECT product_id, price_toman, last_price_changed_at, price_flags FROM offers WHERE product_id = ANY(%s)",
