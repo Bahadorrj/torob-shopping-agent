@@ -72,7 +72,9 @@ const reviewRules =
   `Return every finding. blocking=true only for a correctness bug, a security hole, or a spec mismatch ` +
   `(an acceptance criterion of ${spec} missed or contradicted); style, naming and simplification are blocking=false.`
 const reviewPrompt =
-  `${where} Run the /code-review skill at level high on the branch's changes since its merge-base with origin/main. ` +
+  `${where} Count changed lines with git diff --shortstat origin/main...HEAD -- . ':!*.lock' ':!*-lock.yaml' ':!**/fixtures/**'. ` +
+  `Run the /code-review skill on the branch's changes since its merge-base with origin/main, ` +
+  `at level high if insertions + deletions exceed 400, otherwise medium. ` +
   `Also check every acceptance criterion of ${spec} against the code. ${reviewRules}`
 
 // shortcut: groups share no source file, but two groups can still edit the same test file; split tests per group if fixers start conflicting

@@ -42,8 +42,9 @@ Docs-only changes (CLAUDE.md, `docs/`, ADR text) skip the branch, PR and review 
 
 Each step runs in a fresh context, all on Sonnet 5.5 (implementer included).
 
-1. One reviewer: `/code-review high` on the changes since the merge-base with `main`, plus a check of
-   every acceptance criterion of the issue.
+1. One reviewer: `/code-review` on the changes since the merge-base with `main`, plus a check of
+   every acceptance criterion of the issue. Level `high` when the diff exceeds 400 changed lines
+   (lockfiles and fixtures excluded), otherwise `medium`.
 2. One fixer per group of findings that share files; groups run in parallel. Each fixer writes a
    failing test, fixes, commits once.
 3. Repeat until no correctness, security or spec-mismatch finding remains. Style nits go in the PR body
