@@ -40,16 +40,15 @@ Docs-only changes (CLAUDE.md, `docs/`, ADR text) skip the branch, PR and review 
 
 ## Review loop: `.claude/workflows/ship-issue.js`
 
-Each step runs in a fresh context.
+Each step runs in a fresh context, all on Sonnet 5.5 (implementer included).
 
-1. Two Sonnet 5.5 reviewers in parallel, both against the issue and the merge-base with `main`:
-   `/code-review high` and `/mattpocock-skills:code-review`.
-2. Merge the findings into one deduplicated list.
-3. One Sonnet 5.5 fixer per group of findings that share files; groups run in parallel. Each fixer
-   writes a failing test, fixes, commits once.
-4. Repeat until no correctness, security or spec-mismatch finding remains. Style nits go in the PR body
-   and do not block. After 3 rounds, escalate.
-5. Merge: merge `origin/main` into the branch (no rebase, so no force-push), rerun the gate, `gh pr checks --watch` green, `gh pr merge --merge --delete-branch`.
+1. One reviewer: `/code-review high` on the changes since the merge-base with `main`, plus a check of
+   every acceptance criterion of the issue.
+2. One fixer per group of findings that share files; groups run in parallel. Each fixer writes a
+   failing test, fixes, commits once.
+3. Repeat until no correctness, security or spec-mismatch finding remains. Style nits go in the PR body
+   and do not block. Blocking findings left after the second review: escalate.
+4. Merge: merge `origin/main` into the branch (no rebase, so no force-push), rerun the gate, `gh pr checks --watch` green, `gh pr merge --merge --delete-branch`.
 
 ## Escalate to the user
 
@@ -59,7 +58,7 @@ Pause only that issue and send a push notification when (inside `ship-issue`, re
 - a change touches deployed infra, or a schema change would break loaded data
 - an acceptance criterion contradicts an ADR or the PRD with no clear winner
 - you want to drop an acceptance criterion
-- the review loop reaches 3 rounds
+- blocking findings remain after the second review
 
 Anything else, decide yourself. Otherwise the user gets one summary per wave: what merged, what was cut,
 open risks. Deploy happens once, before the demo (#27).

@@ -1,16 +1,16 @@
 export const meta = {
   name: 'ship-issue',
-  description: 'Implement a ready-for-agent issue, review it with two reviewers until clean, then merge',
+  description: 'Implement a ready-for-agent issue, review it until clean, then merge',
   whenToUse: 'One run per issue. args {issue} implements from scratch; {issue?, pr, branch, worktree} reviews and merges an open PR.',
   phases: [
-    { title: 'Implement', model: 'opus' },
+    { title: 'Implement', model: 'sonnet' },
     { title: 'Review', model: 'sonnet' },
     { title: 'Fix', model: 'sonnet' },
     { title: 'Merge', model: 'sonnet' },
   ],
 }
 
-const MAX_ROUNDS = 3
+const MAX_ROUNDS = 2
 
 const TARGET = {
   type: 'object',
@@ -60,7 +60,7 @@ const target = args.pr
       `Implement issue #${args.issue}, following the "Working an issue" steps 1-7 in CLAUDE.md. ` +
         `Stop after opening the PR; do not review or merge it. ` +
         `If you hit a case from "Escalate to the user", stop and return status escalate with the reason instead of notifying.`,
-      { label: `implement:#${args.issue}`, phase: 'Implement', model: 'opus', schema: TARGET },
+      { label: `implement:#${args.issue}`, phase: 'Implement', model: 'sonnet', schema: TARGET },
     )
 if (!target || target.status !== 'ok') return { status: 'escalate', issue: args.issue, reason: target?.reason ?? 'implementer failed' }
 
@@ -71,10 +71,9 @@ const reviewRules =
   `Review only; do not edit files, commit or comment on the PR. ` +
   `Return every finding. blocking=true only for a correctness bug, a security hole, or a spec mismatch ` +
   `(an acceptance criterion of ${spec} missed or contradicted); style, naming and simplification are blocking=false.`
-const REVIEWERS = [
-  { key: 'code-review', prompt: `${where} Run the /code-review skill at level high on the branch's changes since its merge-base with origin/main. ${reviewRules}` },
-  { key: 'mattpocock', prompt: `${where} Run the /mattpocock-skills:code-review skill on the changes since the merge-base with origin/main, with ${spec} as the spec. ${reviewRules}` },
-]
+const reviewPrompt =
+  `${where} Run the /code-review skill at level high on the branch's changes since its merge-base with origin/main. ` +
+  `Also check every acceptance criterion of ${spec} against the code. ${reviewRules}`
 
 // shortcut: groups share no source file, but two groups can still edit the same test file; split tests per group if fixers start conflicting
 function groupByFiles(findings) {
@@ -97,22 +96,12 @@ let round = 0
 let clean = false
 while (round < MAX_ROUNDS) {
   round++
-  const reviews = (await parallel(REVIEWERS.map(r => () =>
-    agent(r.prompt, { label: `review:${r.key}:r${round}`, phase: 'Review', model: 'sonnet', schema: FINDINGS }),
-  ))).filter(Boolean)
-  if (reviews.length < REVIEWERS.length) return { status: 'escalate', pr, reason: `a reviewer failed in round ${round}` }
+  const review = await agent(reviewPrompt, { label: `review:r${round}`, phase: 'Review', model: 'sonnet', schema: FINDINGS })
+  if (!review) return { status: 'escalate', pr, reason: `the reviewer failed in round ${round}` }
 
-  const merged = await agent(
-    `Merge these code review findings into one deduplicated list. The same defect reported twice becomes one entry ` +
-      `with the union of its files; it stays blocking if either reviewer marked it blocking.\n\n` +
-      JSON.stringify(reviews.flatMap(r => r.findings)),
-    { label: `merge-findings:r${round}`, phase: 'Review', model: 'sonnet', effort: 'low', schema: FINDINGS },
-  )
-  if (!merged) return { status: 'escalate', pr, reason: `merging findings failed in round ${round}` }
-
-  merged.findings.filter(f => !f.blocking).forEach(f => nits.set(f.summary, f))
-  const blocking = merged.findings.filter(f => f.blocking)
-  log(`round ${round}: ${blocking.length} blocking, ${merged.findings.length - blocking.length} non-blocking`)
+  review.findings.filter(f => !f.blocking).forEach(f => nits.set(f.summary, f))
+  const blocking = review.findings.filter(f => f.blocking)
+  log(`round ${round}: ${blocking.length} blocking, ${review.findings.length - blocking.length} non-blocking`)
   if (!blocking.length) { clean = true; break }
   if (round === MAX_ROUNDS) break
 
