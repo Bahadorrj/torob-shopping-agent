@@ -34,18 +34,27 @@ def _json_list(value: str) -> list:
 def is_per_meter(seller_title: str) -> bool:
     # a word before "متری" that makes it a length ("100 متری", "سانتی متری") rather than a unit price
     length_words = set(
-        "دو سه چهار پنج شش هفت هشت نه ده بیست سی چهل پنجاه شصت هفتاد هشتاد نود صد دویست سیصد پانصد هزار"
+        "یک دو سه چهار پنج شش هفت هشت نه ده بیست سی چهل پنجاه شصت هفتاد هشتاد نود صد دویست سیصد پانصد هزار"
         " نیم ونیم سانت سانتی میلی کیلو".split()
     )
     metri = re.compile(r"(?<!\w)متری(?!\w)")
-    per_meter = re.compile(r"هر متر(?!\w)|^یک متر ")
+    per_meter = re.compile(r"هر متر(?!\w)|^یک متر(?!\w)")
+    # a "1 متری" cable, rail or hose is usually one piece; only wire-like goods sold by length price one meter
+    by_length = re.compile(r"سیم|افشان|ریسه|نیون")  # normalize turns the hamza in نئون into ی
+    one_meter = re.compile(r"(?<![\w.])(1|یک)\W*$")
+    # a cable size such as "4*10" or "2 در 1.5" before "متری"
+    cable_size = re.compile(r"\d\s*([*×x]|در)\s*\d+([./]\d+)?\W*$")
     text = normalize(seller_title)
     if per_meter.search(text):
         return True
+    wire = by_length.search(text)
+    if wire and re.search(r"(?<!\w)یک متر(?!\w)", text):
+        return True
     for m in metri.finditer(text):
         before = text[: m.start()]
-        # "1 متری" and a cable size such as "4*10 متری" or "2 در 1.5 متری" price one meter
-        if re.search(r"(?<![\w.])(1|یک)\W*$|\d\s*([*×x]|در)\s*\d+([./]\d+)?\W*$", before):
+        if wire and one_meter.search(before):
+            return True
+        if (wire or "کابل" in text) and cable_size.search(before):
             return True
         last = re.search(r"(\d|[^\W\d_]+)\W*$", before)
         if not last or not (last[1].isdigit() or last[1] in length_words):
