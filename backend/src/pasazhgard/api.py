@@ -2,10 +2,11 @@ import os
 from datetime import UTC, datetime
 
 import psycopg
-from fastapi import Depends, FastAPI, Query, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from psycopg.rows import dict_row
 
 from pasazhgard.search import SearchResult, search_products
+from pasazhgard.shops import ShopDetails, shop_details
 
 app = FastAPI(title="Pasazhgard")
 
@@ -45,3 +46,11 @@ def products_search(
     now: datetime = Depends(get_now),
 ) -> SearchResult:
     return search_products(conn, q, now, limit)
+
+
+@app.get("/shops/{shop_id}")
+def shops_detail(shop_id: str, conn=Depends(get_conn), now: datetime = Depends(get_now)) -> ShopDetails:
+    shop = shop_details(conn, shop_id, now)
+    if shop is None:
+        raise HTTPException(404, "shop not found")
+    return shop

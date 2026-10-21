@@ -14,18 +14,13 @@ from pathlib import Path
 import psycopg
 from psycopg.types.json import Jsonb
 
-from pasazhgard.clean import _null, clean_offer, clean_product, flag_far_from_median
+from pasazhgard.clean import clean_offer, clean_product, clean_shop, flag_far_from_median
 
 
 def _rows(path: Path):
     csv.field_size_limit(sys.maxsize)
     with open(path, encoding="utf-8", newline="") as f:
         yield from csv.DictReader(f)
-
-
-def _float(value: str) -> float | None:
-    value = _null(value)
-    return float(value) if value else None
 
 
 def _copy(cur, table: str, columns: list[str], types: list[str], rows) -> None:
@@ -47,7 +42,16 @@ def ingest(data_dir: Path, database_url: str) -> None:
         address text,
         location_label text,
         lat double precision,
-        lon double precision
+        lon double precision,
+        pasaj text,
+        floor text,
+        unit text,
+        landmark text,
+        hours jsonb NOT NULL,
+        payment_options jsonb NOT NULL,
+        fast_delivery text NOT NULL,
+        website_url text,
+        instagram_url text
     );
     CREATE TABLE products (
         product_id text PRIMARY KEY,
@@ -66,7 +70,8 @@ def ingest(data_dir: Path, database_url: str) -> None:
         seller_title text NOT NULL,
         price_toman bigint,
         last_price_changed_at timestamptz,
-        price_flags text[] NOT NULL
+        price_flags text[] NOT NULL,
+        warranty jsonb
     );
     """
     indexes = """
@@ -87,14 +92,18 @@ def ingest(data_dir: Path, database_url: str) -> None:
 
     with psycopg.connect(database_url) as conn, conn.cursor() as cur:
         cur.execute(schema)
+        shop_cols = [
+            "shop_id", "name", "address", "location_label", "lat", "lon", "pasaj", "floor", "unit", "landmark",
+            "hours", "payment_options", "fast_delivery", "website_url", "instagram_url",
+        ]
         _copy(
             cur,
             "shops",
-            ["shop_id", "name", "address", "location_label", "lat", "lon"],
-            ["text", "text", "text", "text", "float8", "float8"],
+            shop_cols,
+            ["text", "text", "text", "text", "float8", "float8", "text", "text", "text", "text", "jsonb", "jsonb", "text", "text", "text"],
             (
-                (r["shop_id"], r["name"], _null(r["address"]), _null(r["location_label"]), _float(r["lat"]), _float(r["lon"]))
-                for r in _rows(data_dir / "shops.csv")
+                tuple(Jsonb(c[k]) if k in ("hours", "payment_options") else c[k] for k in shop_cols)
+                for c in map(clean_shop, _rows(data_dir / "shops.csv"))
             ),
         )
         product_cols = ["product_id", "title", "brand", "category", "model", "image_urls", "specs", "search_text"]
@@ -108,13 +117,15 @@ def ingest(data_dir: Path, database_url: str) -> None:
                 for p in map(clean_product, _rows(data_dir / "products.csv"))
             ),
         )
-        offer_cols = ["offer_id", "product_id", "shop_id", "seller_title", "price_toman", "last_price_changed_at", "price_flags"]
+        offer_cols = [
+            "offer_id", "product_id", "shop_id", "seller_title", "price_toman", "last_price_changed_at", "price_flags", "warranty",
+        ]
         _copy(
             cur,
             "offers",
             offer_cols,
-            ["text", "text", "text", "text", "int8", "timestamptz", "text[]"],
-            ([o[k] for k in offer_cols] for o in offers),
+            ["text", "text", "text", "text", "int8", "timestamptz", "text[]", "jsonb"],
+            ([*(o[k] for k in offer_cols[:-1]), Jsonb(o["warranty"]) if o["warranty"] else None] for o in offers),
         )
         cur.execute(indexes)
         cur.execute(swap)
