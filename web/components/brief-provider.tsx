@@ -6,7 +6,7 @@ import { createSession, getSession, patchSession, type Session, type SessionPatc
 
 const CURRENT = "pasazhgard.session";
 const RECENT = "pasazhgard.sessions";
-const RECENT_MAX = 6;
+const RECENT_MAX = 20;
 
 function read(key: string): string | null {
   try {
@@ -30,6 +30,11 @@ export function recentSessionIds(): string[] {
   }
 }
 
+// drops a chat from this device's history; the server session stays
+export function forgetSession(id: string) {
+  write(RECENT, JSON.stringify(recentSessionIds().filter((x) => x !== id)));
+}
+
 function remember(id: string) {
   write(CURRENT, id);
   write(RECENT, JSON.stringify([id, ...recentSessionIds().filter((x) => x !== id)].slice(0, RECENT_MAX)));
@@ -47,7 +52,8 @@ type Brief = {
   error: boolean;
   // patches the brief and/or step; the response carries the re-run results of the current step
   patch: (change: SessionPatch) => Promise<Session | null>;
-  resume: (id: string) => Promise<Session | null>;
+  // switches to a past chat; null starts a new one
+  resume: (id: string | null) => Promise<Session | null>;
   // reads the session again, after the agent patched its brief on the server
   refresh: () => Promise<Session | null>;
 };
@@ -110,7 +116,7 @@ export function BriefProvider({ children }: { children: React.ReactNode }) {
   );
 
   const resume = useCallback(
-    (id: string) => {
+    (id: string | null) => {
       current.current = load(id);
       return run(() => current.current!);
     },
