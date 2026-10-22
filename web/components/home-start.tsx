@@ -23,6 +23,7 @@ const toAgent = (text: string) => window.dispatchEvent(new CustomEvent(AGENT_SEN
 // the home screen's main input (PRD 9): one sentence to the agent, which answers in the sheet
 export function AgentStart() {
   const [text, setText] = useState("");
+  const router = useRouter();
   return (
     <div className="flex flex-col gap-2">
       <form
@@ -37,6 +38,13 @@ export function AgentStart() {
         <Input
           value={text}
           onChange={(e) => setText(e.target.value)}
+          // a one-line input drops newlines, so a pasted multi-line list goes to basket mode before it lands
+          onPaste={(e) => {
+            const pasted = e.clipboardData.getData("text");
+            if (!pasted.trim().includes("\n")) return;
+            e.preventDefault();
+            router.push(`/basket?${new URLSearchParams({ text: pasted })}`);
+          }}
           placeholder="چه می‌خواهید، کجا و کی؟"
           aria-label="خرید شما در یک جمله"
           className="h-11"
