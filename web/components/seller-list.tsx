@@ -53,7 +53,7 @@ function place(s: { area: string | null; pasaj: string | null; floor?: string | 
   return s.distance_m === null ? text : `${text} · ${distance(s.distance_m)}`;
 }
 
-function Seller({ s, children }: { s: SellerRow; children?: ReactNode }) {
+export function Seller({ s, children }: { s: SellerRow; children?: ReactNode }) {
   return (
     <Card className="gap-1.5 p-3">
       <div className="flex items-start justify-between gap-2">
