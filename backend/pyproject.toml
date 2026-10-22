@@ -7,9 +7,12 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "ag-ui-langgraph==0.0.47",
     "fastapi>=0.158.1",
     "httpx>=0.28.1",
-    "langchain-openai>=1.7.2",
+    "langchain-openai==1.7.2",
+    "langgraph==1.2.16",
+    "langgraph-checkpoint-postgres==3.2.0",
     "psycopg[binary]>=3.3.6",
     "uvicorn>=0.54.0",
 ]

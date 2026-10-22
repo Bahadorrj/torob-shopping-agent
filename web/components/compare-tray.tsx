@@ -60,7 +60,8 @@ export function CompareTrayBar() {
   return (
     <section
       aria-label="سبد مقایسه"
-      className="sticky bottom-0 -mx-4 flex flex-col gap-2 border-t bg-background px-4 py-3 shadow-[0_-2px_8px_rgb(0_0_0/0.06)]"
+      // bottom-14: stays above the collapsed agent sheet
+      className="sticky bottom-14 -mx-4 flex flex-col gap-2 border-t bg-background px-4 py-3 shadow-[0_-2px_8px_rgb(0_0_0/0.06)]"
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-semibold">

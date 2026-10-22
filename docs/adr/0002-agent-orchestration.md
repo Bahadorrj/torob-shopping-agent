@@ -40,6 +40,9 @@ The orchestrator and the Seller Liaison run on LangGraph, with LangChain chat mo
 - **Degraded mode.** Without `LLM_API_KEY` the graph is not run: free text goes to deterministic search plus
   template text, and free-text seller replies stay `replied` with `available: unknown`. There is no null
   chat model.
+  Amended (#13): `/agent` still answers without a key. The orchestrator graph's entry routes to a
+  deterministic `degraded` node (search + template text) that calls no model, so the AG-UI stream and the
+  bottom sheet stay the same in both modes.
 - **Versions.** Pin `langgraph`, `langchain-openai`, `langgraph-checkpoint-postgres` and `ag-ui-langgraph`
   to exact versions in `uv.lock`; upgrade them together on purpose.
 
