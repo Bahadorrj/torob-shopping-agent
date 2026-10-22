@@ -1,18 +1,31 @@
 "use client";
 
 import Link from "next/link";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { Choices } from "@/components/brief-bar";
 import { useBrief } from "@/components/brief-provider";
 import { CompareToggle } from "@/components/compare-tray";
+import { InquiryTracker } from "@/components/inquiry-tracker";
 import { pinKey, pins, SellerMap } from "@/components/seller-map";
+import { RouteDetails } from "@/components/visit-plan";
 
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import type { Condition, Reason, SellerRow } from "@/lib/api";
+import {
+  composeInquiries,
+  confirmInquiries,
+  getDirections,
+  inquiriesStreamUrl,
+  type Condition,
+  type Directions,
+  type InquiryStatus,
+  type Reason,
+  type SellerRow,
+} from "@/lib/api";
 import { distance, faDigits, faText, priceAge } from "@/lib/format";
+import { useEventStream } from "@/lib/use-event-stream";
 
 const UNKNOWN: Record<Condition, string> = {
   hours: "ساعت کاری",
@@ -21,6 +34,9 @@ const UNKNOWN: Record<Condition, string> = {
   test_in_presence: "تست در حضور مشتری",
   fast_delivery: "ارسال سریع",
 };
+
+// underlined without hover, so a touch screen shows the shop page is a tap away
+const SHOP_LINK = "font-semibold text-primary underline underline-offset-4";
 
 const COVERAGE = "داده‌ها بخشی از فروشگاه‌های تهران، بیشتر مرکز شهر، را پوشش می‌دهند.";
 
@@ -53,11 +69,49 @@ function place(s: { area: string | null; pasaj: string | null; floor?: string | 
   return s.distance_m === null ? text : `${text} · ${distance(s.distance_m)}`;
 }
 
+type RouteState = null | "loading" | "no_origin" | "error" | Directions;
+
+// a card's action row; the route to the shop opens under it and needs the brief's origin
+function Actions({ shopId, children }: { shopId: string; children?: ReactNode }) {
+  const { session } = useBrief();
+  const [route, setRoute] = useState<RouteState>(null);
+  function toggle() {
+    if (route !== null) return setRoute(null);
+    if (!session?.brief.origin) return setRoute("no_origin");
+    setRoute("loading");
+    getDirections(shopId, session.brief.origin, session.brief.travel_mode ?? "walk").then(
+      (d) => setRoute(d ?? "error"),
+      () => setRoute("error"),
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {children}
+      <Button variant="outline" size="sm" aria-expanded={route !== null} onClick={toggle}>
+        مسیر
+      </Button>
+      {route !== null && (
+        <div className="flex basis-full flex-col gap-1.5 text-sm">
+          {route === "loading" ? (
+            <p className="text-muted-foreground">در حال بارگذاری...</p>
+          ) : route === "no_origin" ? (
+            <p className="text-muted-foreground">برای مسیر، مبدأ را در خلاصه خرید انتخاب کنید.</p>
+          ) : route === "error" ? (
+            <p className="text-destructive">مسیر دریافت نشد. دوباره تلاش کنید.</p>
+          ) : (
+            <RouteDetails d={route} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Seller({ s, children }: { s: SellerRow; children?: ReactNode }) {
   return (
     <Card className="gap-1.5 p-3">
       <div className="flex items-start justify-between gap-2">
-        <Link href={`/shops/${s.shop_id}`} className="font-semibold text-primary underline-offset-4 hover:underline">
+        <Link href={`/shops/${s.shop_id}`} className={SHOP_LINK}>
           {s.shop_name}
         </Link>
         {s.price_toman !== null ? (
@@ -103,6 +157,21 @@ export function Seller({ s, children }: { s: SellerRow; children?: ReactNode }) 
 
 export function SellerList({ productId }: { productId: string }) {
   const { session, pending, error, patch } = useBrief();
+  const sid = session?.session_id ?? null;
+  const tracked = useEventStream<InquiryStatus>(sid && inquiriesStreamUrl(sid));
+  const inquiries = (tracked?.inquiries ?? []).filter((i) => i.product_id === productId);
+  const [askError, setAskError] = useState(false);
+  const trackerRef = useRef<HTMLDivElement>(null);
+  // a draft only: the tracker below asks for consent before anything reaches the seller
+  async function ask(offerId: string) {
+    try {
+      await composeInquiries(sid!, [offerId]);
+      setAskError(false);
+    } catch {
+      setAskError(true);
+    }
+    trackerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
   // offers picked for the seller compare
   const compareMax = 3;
   const [compareIds, setCompareIds] = useState<string[]>([]);
@@ -113,6 +182,17 @@ export function SellerList({ productId }: { productId: string }) {
       onToggle={() => setCompareIds((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))}
     />
   );
+  const actions = (s: SellerRow) => {
+    const asked = !!s.inquiry || inquiries.some((i) => i.shop_id === s.shop_id);
+    return (
+      <Actions shopId={s.shop_id}>
+        <Button size="sm" disabled={!sid || asked} onClick={() => ask(s.offer_id)}>
+          {asked ? "استعلام شد" : "پرسیدن از فروشنده"}
+        </Button>
+        {compareToggle(s.offer_id)}
+      </Actions>
+    );
+  };
 
   // entering this step keeps the brief; the response carries this product's sellers filtered by it
   useEffect(() => {
@@ -146,7 +226,7 @@ export function SellerList({ productId }: { productId: string }) {
       <h1 className="text-lg font-bold leading-7">{list.title}</h1>
 
       <p className="text-sm" aria-live="polite">
-        {pending ? "در حال به‌روزرسانی..." : `${faDigits(list.count)} فروشنده`}
+        {pending ? "در حال به‌روزرسانی..." : `${faDigits(list.count + list.ask_them.length)} فروشنده`}
       </p>
 
       {rows.length > 0 && <Choices label="نمایش فروشنده‌ها" options={{ list: "فهرست", map: "نقشه" }} value={view} onPick={setView} />}
@@ -167,11 +247,7 @@ export function SellerList({ productId }: { productId: string }) {
               <ul className="flex flex-col gap-3">
                 {picked.rows.map((s) => (
                   <li key={s.offer_id}>
-                    <Seller s={s}>
-                      <Link href={`/shops/${s.shop_id}`} className={buttonVariants({ size: "sm", variant: "outline", className: "self-start" })}>
-                        صفحه فروشگاه
-                      </Link>
-                    </Seller>
+                    <Seller s={s}>{actions(s)}</Seller>
                   </li>
                 ))}
               </ul>
@@ -203,9 +279,7 @@ export function SellerList({ productId }: { productId: string }) {
         <ul className="flex flex-col gap-3">
           {list.sellers.map((s) => (
             <li key={s.offer_id} aria-current={pinKey(s) === selected || undefined} className={pickedClass}>
-              <Seller s={s}>
-                {compareToggle(s.offer_id)}
-              </Seller>
+              <Seller s={s}>{actions(s)}</Seller>
             </li>
           ))}
         </ul>
@@ -220,9 +294,7 @@ export function SellerList({ productId }: { productId: string }) {
           <ul className="flex flex-col gap-3">
             {list.ask_them.map((s) => (
               <li key={s.offer_id} aria-current={pinKey(s) === selected || undefined} className={pickedClass}>
-                <Seller s={s}>
-                  {compareToggle(s.offer_id)}
-                </Seller>
+                <Seller s={s}>{actions(s)}</Seller>
               </li>
             ))}
           </ul>
@@ -238,18 +310,24 @@ export function SellerList({ productId }: { productId: string }) {
           <ul className="flex flex-col gap-2">
             {list.category_only.map((s) => (
               <li key={s.shop_id} className="flex flex-col gap-1 rounded-lg border p-3 text-sm">
-                <Link href={`/shops/${s.shop_id}`} className="font-semibold text-primary underline-offset-4 hover:underline">
+                <Link href={`/shops/${s.shop_id}`} className={SHOP_LINK}>
                   {s.shop_name}
                 </Link>
                 <span className="text-xs text-muted-foreground">{place(s)}</span>
-                <Badge variant="outline" className="text-muted-foreground">
+                <Badge variant="outline" className="self-start text-muted-foreground">
                   فقط دسته فعالیت - موجودی نامشخص
                 </Badge>
+                <Actions shopId={s.shop_id} />
               </li>
             ))}
           </ul>
         </section>
       )}
+
+      <div ref={trackerRef} className="scroll-mt-32">
+        {askError && <p className="text-sm text-destructive">پیش‌نویس ساخته نشد. برای هر کالا حداکثر ۳ استعلام باز می‌ماند.</p>}
+        {sid && <InquiryTracker sessionId={sid} inquiries={inquiries} onConfirm={(ids) => confirmInquiries(sid, ids)} />}
+      </div>
 
       {/* bottom-18: above the collapsed agent sheet */}
       {compareIds.length >= 2 && (
