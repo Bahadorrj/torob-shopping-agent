@@ -1,12 +1,16 @@
 "use client";
 
 import { CopilotKitProvider, useAgent, useCopilotKit } from "@copilotkit/react-core/v2";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Block } from "@/components/agent-blocks";
 import { useBrief } from "@/components/brief-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
+export const HELP_CHOOSE = "کمکم کن انتخاب کنم";
+// the home screen's guided discovery entry posts HELP_CHOOSE to the sheet through this window event
+export const AGENT_SEND = "agent-send";
 
 // The agent bottom sheet (PRD 9): one sentence in, blocks out. The agent's thread is the brief's session.
 export function AgentSheet() {
@@ -34,6 +38,12 @@ function Sheet({ threadId }: { threadId: string }) {
     await copilotkit.runAgent({ agent });
   }
 
+  useEffect(() => {
+    const onSend = (e: Event) => send((e as CustomEvent<string>).detail);
+    window.addEventListener(AGENT_SEND, onSend);
+    return () => window.removeEventListener(AGENT_SEND, onSend);
+  });
+
   return (
     <section aria-label="دستیار" className="fixed inset-x-0 bottom-0 z-20 border-t bg-background shadow-[0_-2px_8px_rgb(0_0_0/0.08)]">
       <div className="mx-auto flex w-full max-w-xl flex-col gap-2 px-4 py-2">
@@ -54,6 +64,11 @@ function Sheet({ threadId }: { threadId: string }) {
             )}
             {agent.isRunning && <p className="text-xs text-muted-foreground">در حال فکر کردن...</p>}
           </div>
+        )}
+        {agent.messages.length === 0 && (
+          <Button variant="outline" size="sm" className="self-start" onClick={() => send(HELP_CHOOSE)}>
+            {HELP_CHOOSE}
+          </Button>
         )}
         <form
           className="flex gap-2"

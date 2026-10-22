@@ -30,6 +30,8 @@ def test_new_session_holds_an_empty_brief(client):
     assert session["step"] is None
     assert session["brief"] == {
         "need": None,
+        "use": None,
+        "features": [],
         "items": [],
         "budget": {"max_total_toman": None, "max_per_item_toman": None},
         "origin": None,

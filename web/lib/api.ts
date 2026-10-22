@@ -142,6 +142,22 @@ export type ProductCompare = {
   specs: { key: string; values: (string | null)[]; differs: boolean }[];
 };
 
+// Mirrors Shortlist in backend/src/pasazhgard/discovery.py. Nearby means in the brief's area and budget.
+export type ModelPick = {
+  product_id: string;
+  title: string;
+  brand: string | null;
+  category: string | null;
+  image_url: string | null;
+  key_specs: { key: string; value: string }[];
+  price: PriceRange;
+  seller_count: number;
+  // plain lines from the data: price and seller standing among the picks, spec values that differ
+  tradeoffs: string[];
+};
+
+export type Shortlist = { need: string; models: ModelPick[] };
+
 // Mirrors Brief, Session and SessionPatch in backend/src/pasazhgard/brief.py.
 export type Area = { radius_m: number | null; name: string | null; pasaj: string | null };
 export type TravelMode = "walk" | "transit" | "car";
@@ -151,6 +167,8 @@ export type MustHave = { warranty: boolean; test_in_presence: boolean; fast_deli
 
 export type Brief = {
   need: string | null;
+  use: string | null;
+  features: string[];
   items: { product_id: string | null; category: string | null; quantity: number; unit: "piece" | "meter" }[];
   budget: { max_total_toman: number | null; max_per_item_toman: number | null };
   origin: { lat: number; lon: number } | null;

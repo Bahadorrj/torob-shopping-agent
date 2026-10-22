@@ -28,6 +28,8 @@ from pydantic import BaseModel, Field
 from pasazhgard.alternatives import find_alternatives as _find_alternatives
 from pasazhgard.brief import Area, Brief, Budget, Item, Payment, VisitWindow, seller_query
 from pasazhgard.compare import compare_products as _compare_products
+from pasazhgard.discovery import SuggestQuery
+from pasazhgard.discovery import suggest_models as _suggest_models
 from pasazhgard.embeddings import Embedder
 from pasazhgard.routing import Router
 from pasazhgard.search import search_products as _search_products
@@ -70,6 +72,8 @@ class BriefPatch(BaseModel):
     """Brief fields the user's latest message states or changes. Leave every other field null."""
 
     need: str | None = Field(None, description="what the user wants to buy, in their words, with must-have features")
+    use: str | None = Field(None, description="what the product is for, e.g. باشگاه, when the user says it")
+    features: list[str] | None = Field(None, description="product features the user requires, e.g. ضد آب")
     area: Area | None = None
     budget: Budget | None = None
     visit_window: VisitWindow | None = None
@@ -119,10 +123,14 @@ Now: {now} (Asia/Tehran). Shopping Brief: {brief}
   the UI shows tool results as cards, so refer to them instead of repeating numbers.
 - If a missing brief field would change the answer, call ask_user for that one field and stop.
   Ask one question per turn, and none when the answer would not change the result.
+- Guided discovery: when the user names a need or category rather than a model, or asks for help choosing
+  ("کمکم کن انتخاب کنم"), shortlist models with suggest_models before any find_sellers. First ask about use,
+  features and budget, at most these three and only what the brief lacks; give use and features 3-5 short options.
+  In the reply, explain the trade-offs from the shortlist; do not repeat its prices.
 - Never say an item is in stock unless a seller confirmed it.
 - When an inquiry turns unavailable, no_reply or closed, call find_alternatives for it."""
 
-CHIP_FIELDS = Literal["area", "budget", "visit_window", "payment", "quantity", "need"]
+CHIP_FIELDS = Literal["area", "budget", "visit_window", "payment", "quantity", "need", "use", "features"]
 
 
 def build_graph(ports: Ports) -> StateGraph:
@@ -176,6 +184,19 @@ def build_graph(ports: Ports) -> StateGraph:
         return block("seller_compare", result) if result else error("product or offer not found")
 
     @tool
+    def suggest_models(need: str, config: RunnableConfig) -> str:
+        """Shortlist 2-3 models for a need, from models with sellers in the brief's area and budget. Shows the model
+        shortlist with trade-offs, nearby price range and seller count. `need`: search words for the product, its use
+        and must-have features."""
+        brief, now = brief_of(config), ports.now()
+        q = SuggestQuery(need=need, **seller_query(brief, "", now).model_dump())
+        with ports.connect() as conn:
+            result = _suggest_models(conn, q, now, ports.embedder())
+        if not result.models:
+            return error("no model has a seller in this area and budget; offer to widen the area or the budget")
+        return block("model_shortlist", result)
+
+    @tool
     def plan_visit(shop_ids: list[str], config: RunnableConfig) -> str:
         """Order 1-6 shops into a visit from the user's location: ETAs, open at arrival, floor and unit. Shows the plan."""
         brief, now = brief_of(config), ports.now()
@@ -224,8 +245,10 @@ def build_graph(ports: Ports) -> StateGraph:
         state: Annotated[dict, InjectedState],
         call_id: Annotated[str, InjectedToolCallId],
         config: RunnableConfig,
+        options: list[str] | None = None,
     ) -> str:
-        """Ask the user one short Persian question about a missing brief field, answered with chips."""
+        """Ask the user one short Persian question about a missing brief field, answered with chips.
+        `options`: the chips for use and features; other fields get theirs from the data."""
         asks = [c for c in state["messages"][-1].tool_calls if c["name"] == "ask_user"]
         if asks[0]["id"] != call_id:
             return error("one question per turn")
@@ -237,10 +260,20 @@ def build_graph(ports: Ports) -> StateGraph:
             "payment": brief.payment != Payment(),
             "quantity": bool(brief.items),
             "need": bool(brief.need),
+            "use": bool(brief.use),
+            "features": bool(brief.features),
         }
         if answered[field]:
             return error(f"the brief already has {field}")
-        options: list[str] = []
+        asked = {
+            json.loads(m.content).get("field")
+            for m in state["messages"]
+            if isinstance(m, ToolMessage) and json.loads(m.content).get("block") == "chips"
+        }
+        if field in asked:
+            return error(f"already asked about {field}")
+        # the model writes the chips only for use and features
+        options = (options or []) if field in ("use", "features") else []
         if field == "area":
             with ports.connect() as conn:
                 found = area_options(conn)
@@ -251,7 +284,10 @@ def build_graph(ports: Ports) -> StateGraph:
             options = ["همین الان", "امروز عصر", "فردا"]
         return block("chips", {"field": field, "question": question, "options": options})
 
-    tools = [search_products, compare_products, find_sellers, compare_sellers, plan_visit, get_directions, find_alternatives, ask_user]
+    tools = [
+        search_products, suggest_models, compare_products, find_sellers, compare_sellers, plan_visit, get_directions,
+        find_alternatives, ask_user,
+    ]
 
     def patch_brief(state: MessagesState, config: RunnableConfig) -> dict:
         sid, brief = _session(config), brief_of(config)
