@@ -21,7 +21,7 @@ function whySentence(p: Product) {
   const words = p.score_parts.filter((s) => s.matched).map((s) => `«${faText(s.word)}»`);
   const found =
     words.length > 0
-      ? `${joinFa(words)} در عنوان این کالا آمده و `
+      ? `${joinFa(words)} در نام، برند یا مدل این کالا آمده و `
       : p.meaning_match
         ? "این کالا از نظر معنا به جستجوی شما نزدیک است و "
         : "";

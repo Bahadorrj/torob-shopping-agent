@@ -52,11 +52,11 @@ test("why this shows score parts as chips and one sentence from the card data", 
   await first.getByText("چرا این؟").click();
   await expect(first.getByText("مطابق: هدفون")).toBeVisible();
   await expect(first.getByText("نیامده: ورزش")).toBeVisible();
-  await expect(first.getByText("«هدفون» و «انکر» در عنوان این کالا آمده و ۸ فروشنده آن را با قیمت ۱٬۰۰۰٬۰۰۰ تا ۲٬۰۰۰٬۰۰۰ تومان ثبت کرده‌اند.")).toBeVisible();
+  await expect(first.getByText("«هدفون» و «انکر» در نام، برند یا مدل این کالا آمده و ۸ فروشنده آن را با قیمت ۱٬۰۰۰٬۰۰۰ تا ۲٬۰۰۰٬۰۰۰ تومان ثبت کرده‌اند.")).toBeVisible();
   expect(await noOverflow(page)).toBe(0);
 });
 
-test("why this says when a product matched by meaning, not by title words", async ({ page }) => {
+test("why this says when a product matched by meaning, not by query words", async ({ page }) => {
   const byMeaning = { ...card("p5", "کالای ه"), score_parts: parts.map((p) => ({ ...p, matched: false })), meaning_match: true };
   await fakeSessions(page, { search: () => ({ query: "هدفون", items: [byMeaning] }) });
   await searchAll(page);

@@ -40,7 +40,7 @@ class PriceRange(BaseModel):
 
 
 class ScorePart(BaseModel):
-    """One query word of the match score, and whether the title contains it."""
+    """One query word of the match score, and whether the product's title, brand, model or brand alias contains it."""
 
     word: str
     matched: bool
@@ -58,7 +58,7 @@ class ProductCard(BaseModel):
     price_flags: list[PriceFlag]
     # why this product was found: shown behind "why this?"
     score_parts: list[ScorePart]
-    # found by meaning (embedding similarity), whether or not any query word is in the title
+    # found by meaning (embedding similarity), whether or not any query word matched
     meaning_match: bool
 
 

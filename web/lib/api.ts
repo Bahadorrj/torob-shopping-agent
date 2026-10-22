@@ -21,9 +21,9 @@ export type ProductCard = {
   offer_count: number;
   price: PriceRange;
   price_flags: PriceFlag[];
-  // query words of the match score, and whether the title has each
+  // query words of the match score, and whether the product's title, brand, model or brand alias has each
   score_parts: { word: string; matched: boolean }[];
-  // found by meaning (semantic search), whether or not a query word is in the title
+  // found by meaning (semantic search), whether or not a query word matched
   meaning_match: boolean;
 };
 
