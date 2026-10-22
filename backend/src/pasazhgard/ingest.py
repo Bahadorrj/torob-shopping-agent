@@ -14,7 +14,7 @@ from pathlib import Path
 import psycopg
 from psycopg.types.json import Jsonb
 
-from pasazhgard.clean import clean_offer, clean_product, clean_shop, flag_far_from_median
+from pasazhgard.clean import add_brand_aliases, clean_offer, clean_product, clean_shop, flag_far_from_median
 from pasazhgard.embeddings import Embedder, embedder_from_env
 
 
@@ -135,6 +135,8 @@ def ingest(data_dir: Path, database_url: str, embedder: Embedder | None = None) 
     """
     offers = [clean_offer(r) for r in _rows(data_dir / "offers.csv")]
     flag_far_from_median(offers)
+    products = [clean_product(r) for r in _rows(data_dir / "products.csv")]
+    add_brand_aliases(products)
 
     with psycopg.connect(database_url, autocommit=True) as conn:
         conn.execute(cache)
@@ -162,7 +164,7 @@ def ingest(data_dir: Path, database_url: str, embedder: Embedder | None = None) 
             ["text", "text", "text", "text", "text", "text[]", "jsonb", "text"],
             (
                 tuple(Jsonb(p[k]) if k == "specs" else p[k] for k in product_cols)
-                for p in map(clean_product, _rows(data_dir / "products.csv"))
+                for p in products
             ),
         )
         offer_cols = [

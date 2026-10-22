@@ -2,7 +2,7 @@
 
 import json
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime
 from enum import StrEnum
 from statistics import median
@@ -116,6 +116,26 @@ def clean_product(row: dict) -> dict:
         "specs": [{"key": s["key"], "value": s["value"]} for s in _json_list(row["specs"])],
         "search_text": normalize(" ".join(filter(None, [title, brand, model]))),
     }
+
+
+def add_brand_aliases(products: list[dict]) -> None:
+    """Make every product of a brand findable by the Latin names its brand specs use, so "anker" finds "انکر"."""
+    votes = Counter()
+    for p in products:
+        for s in p["specs"]:
+            if p["brand"] and s["key"] == "برند":
+                votes.update((word, p["brand"]) for word in set(re.findall(r"[a-z]{3,}", s["value"].lower())))
+    # a word goes to the brand that uses it most.
+    # shortcut: generic spec words like "brand" become aliases too, add a stoplist if they pull wrong results
+    owner = {}
+    for (word, brand), _ in votes.most_common():
+        owner.setdefault(word, brand)
+    aliases = defaultdict(list)
+    for word, brand in sorted(owner.items()):
+        aliases[brand].append(word)
+    for p in products:
+        if p["brand"] in aliases:
+            p["search_text"] += " " + " ".join(aliases[p["brand"]])
 
 
 WEEK = ["sat", "sun", "mon", "tue", "wed", "thu", "fri"]
