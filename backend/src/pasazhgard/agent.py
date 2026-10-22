@@ -25,16 +25,21 @@ from langgraph.prebuilt import InjectedState, ToolNode
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field
 
+from pasazhgard.alternatives import find_alternatives as _find_alternatives
 from pasazhgard.brief import Area, Brief, Budget, Item, Payment, VisitWindow, seller_query
 from pasazhgard.compare import compare_products as _compare_products
 from pasazhgard.discovery import SuggestQuery
 from pasazhgard.discovery import suggest_models as _suggest_models
 from pasazhgard.embeddings import Embedder
+from pasazhgard.routing import Router
 from pasazhgard.search import search_products as _search_products
 from pasazhgard.seller_compare import CompareQuery
 from pasazhgard.seller_compare import compare_sellers as _compare_sellers
 from pasazhgard.sellers import area_options
 from pasazhgard.sellers import find_sellers as _find_sellers
+from pasazhgard.visit import DirectionsQuery, PlanQuery
+from pasazhgard.visit import get_directions as _get_directions
+from pasazhgard.visit import plan_visit as _plan_visit
 
 
 def chat_model_from_env() -> BaseChatModel | None:
@@ -58,6 +63,7 @@ class Ports:
     model: Callable[[], BaseChatModel | None]
     now: Callable[[], datetime]
     embedder: Callable[[], Embedder | None]
+    router: Callable[[], Router]
     # a connection that commits on exit
     connect: Callable[[], AbstractContextManager]
 
@@ -121,7 +127,8 @@ Now: {now} (Asia/Tehran). Shopping Brief: {brief}
   ("کمکم کن انتخاب کنم"), shortlist models with suggest_models before any find_sellers. First ask about use,
   features and budget, at most these three and only what the brief lacks; give use and features 3-5 short options.
   In the reply, explain the trade-offs from the shortlist; do not repeat its prices.
-- Never say an item is in stock unless a seller confirmed it."""
+- Never say an item is in stock unless a seller confirmed it.
+- When an inquiry turns unavailable, no_reply or closed, call find_alternatives for it."""
 
 CHIP_FIELDS = Literal["area", "budget", "visit_window", "payment", "quantity", "need", "use", "features"]
 
@@ -190,6 +197,48 @@ def build_graph(ports: Ports) -> StateGraph:
         return block("model_shortlist", result)
 
     @tool
+    def plan_visit(shop_ids: list[str], config: RunnableConfig) -> str:
+        """Order 1-6 shops into a visit from the user's location: ETAs, open at arrival, floor and unit. Shows the plan."""
+        brief, now = brief_of(config), ports.now()
+        if brief.origin is None:
+            return error("the brief has no origin: ask the user to share their location")
+        try:
+            q = PlanQuery(
+                shop_id=shop_ids,
+                lat=brief.origin.lat,
+                lon=brief.origin.lon,
+                mode=brief.travel_mode or "walk",
+                # the brief's visit time, else now, as the plan link in seller compare does; only .arrival is read
+                depart_at=seller_query(brief, "", now).arrival,
+            )
+        except ValueError:
+            return error("give 1-6 distinct shop ids")
+        with ports.connect() as conn:
+            result = _plan_visit(conn, q, now, ports.router())
+        return block("visit_plan", result) if result else error("shop not found")
+
+    @tool
+    def get_directions(shop_id: str, config: RunnableConfig) -> str:
+        """Route from the user's location to one shop, map app links, then pasaj, floor and unit. Shows directions."""
+        brief = brief_of(config)
+        if brief.origin is None:
+            return error("the brief has no origin: ask the user to share their location")
+        q = DirectionsQuery(lat=brief.origin.lat, lon=brief.origin.lon, mode=brief.travel_mode or "walk")
+        with ports.connect() as conn:
+            result = _get_directions(conn, shop_id, q, ports.router())
+        return block("directions", result) if result else error("shop not found")
+
+    @tool
+    def find_alternatives(inquiry_id: int, config: RunnableConfig) -> str:
+        """The top 2 places to ask instead when a seller inquiry is unavailable, no_reply or closed. Shows them with trade-offs."""
+        with ports.connect() as conn:
+            try:
+                result = _find_alternatives(conn, _session(config), inquiry_id, ports.now())
+            except ValueError:
+                return error("that inquiry has not fallen through")
+        return block("alternatives", result) if result else error("inquiry not found")
+
+    @tool
     def ask_user(
         field: CHIP_FIELDS,
         question: str,
@@ -235,7 +284,10 @@ def build_graph(ports: Ports) -> StateGraph:
             options = ["همین الان", "امروز عصر", "فردا"]
         return block("chips", {"field": field, "question": question, "options": options})
 
-    tools = [search_products, suggest_models, compare_products, find_sellers, compare_sellers, ask_user]
+    tools = [
+        search_products, suggest_models, compare_products, find_sellers, compare_sellers, plan_visit, get_directions,
+        find_alternatives, ask_user,
+    ]
 
     def patch_brief(state: MessagesState, config: RunnableConfig) -> dict:
         sid, brief = _session(config), brief_of(config)

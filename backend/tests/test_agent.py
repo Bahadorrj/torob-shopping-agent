@@ -193,3 +193,66 @@ def test_the_quantity_the_user_states_applies_to_the_total_budget(agent):
 
     # 2 x 1,690,000 is over budget
     assert CHEAPEST_SHOP not in [s["shop_id"] for s in turn.blocks[0]["sellers"]]
+
+
+ALADDIN = {"lat": 35.69483032610498, "lon": 51.41152782573596}
+VIVAN = "shop_c060bc5ea37b78e00ece4bdb"  # علاالدین, زیر همکف
+PAKYAR = "shop_4934392f0e4fefe1526308c6"  # علاالدین, floor 5
+DISIS = "shop_81c53acd00d779578fff4a40"  # آذرنوش دیسیس: علاالدین, floor ۲, unit ۲۱۶
+
+
+def test_plan_visit_shows_the_plan_from_the_briefs_origin(agent, client):
+    client.patch(f"/sessions/{agent.session_id}", json={"brief": {"origin": ALADDIN, "travel_mode": "car"}})
+    agent.script(agent.brief(), agent.call("plan_visit", shop_ids=[PAKYAR, VIVAN]), "برنامهٔ مراجعه آماده است.")
+
+    turn = agent.turn("برنامهٔ رفتن به این دو فروشگاه رو بچین")
+
+    plan = turn.blocks[0]
+    assert plan["block"] == "visit_plan"
+    assert (plan["origin"], plan["mode"]) == (ALADDIN, "car")
+    # one pasaj, bottom floor first
+    assert [s["shop_id"] for s in plan["stops"]] == [VIVAN, PAKYAR]
+
+
+def test_plan_visit_without_an_origin_is_no_block(agent):
+    agent.script(agent.brief(), agent.call("plan_visit", shop_ids=[VIVAN]), "موقعیت شما را ندارم.")
+
+    turn = agent.turn("برنامهٔ رفتن")
+
+    assert "block" not in turn.blocks[0]
+
+
+def test_get_directions_shows_the_route_and_last_leg(agent, client):
+    client.patch(f"/sessions/{agent.session_id}", json={"brief": {"origin": ALADDIN}})
+    agent.script(agent.brief(), agent.call("get_directions", shop_id=DISIS), "مسیر آذرنوش دیسیس.")
+
+    turn = agent.turn("چطور برم آذرنوش دیسیس؟")
+
+    d = turn.blocks[0]
+    assert (d["block"], d["shop_id"]) == ("directions", DISIS)
+    assert d["route"]["source"] == "straight_line"
+    assert d["last_leg"] == {"pasaj": "علاالدین", "landmark": "رو‌به‌روی پاساژ چهارسو", "floor": "۲", "unit": "۲۱۶"}
+
+
+def test_find_alternatives_shows_where_else_to_ask_for_an_inquiry_that_fell_through(agent, client):
+    sid = agent.session_id
+    [draft] = client.post(f"/sessions/{sid}/inquiries", json={"offer_ids": [MANSA]}).json()["inquiries"]
+    client.post(f"/sessions/{sid}/inquiries/confirm", json={"inquiry_ids": [draft["inquiry_id"]]})
+    client.post(f"/console/inquiries/{draft['inquiry_id']}/replies", json={"available": "no"})
+    other = client.post("/sessions").json()["session_id"]
+    agent.script(
+        agent.brief(),
+        agent.call("find_alternatives", inquiry_id=draft["inquiry_id"]),
+        "این دو فروشنده را هم می‌شود پرسید.",
+    )
+
+    turn = agent.turn("موجود نداشت، حالا چی؟")
+
+    alt = turn.blocks[0]
+    assert (alt["block"], alt["inquiry_id"], alt["reason"]) == ("alternatives", draft["inquiry_id"], "unavailable")
+    assert [a["shop_name"] for a in alt["alternatives"]] == ["آذرنوش دیسیس", "نیکورا ویوان"]
+    # another session's inquiry is not this thread's
+    agent.session_id = other
+    agent.history = []
+    agent.script(agent.brief(), agent.call("find_alternatives", inquiry_id=draft["inquiry_id"]), "پیدا نشد.")
+    assert "block" not in agent.turn("جایگزین؟").blocks[0]

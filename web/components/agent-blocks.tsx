@@ -3,18 +3,40 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { AgentAlternatives } from "@/components/alternatives";
 import { ListedPrice, ProductCard } from "@/components/product-card";
 import { Seller } from "@/components/seller-list";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import type { ModelPick, ProductCard as Product, ProductCompare, SellerCompare, SellerList, Shortlist } from "@/lib/api";
+import { clock, OpenBadge, RouteDetails } from "@/components/visit-plan";
+import type {
+  Alternatives,
+  Directions,
+  ModelPick,
+  ProductCard as Product,
+  ProductCompare,
+  SellerCompare,
+  SellerList,
+  Shortlist,
+  VisitPlan,
+} from "@/lib/api";
 import { faDigits, faText } from "@/lib/format";
 
 // One renderer per block type. A block is an agent tool result: `{ block: "<type>", ...tool output }`
 // (backend/src/pasazhgard/agent.py). Numbers on screen come from these fields only, never from agent text.
 type Chips = { field: string; question: string; options: string[] };
 
-const linkClass = "text-sm font-medium text-primary underline-offset-4 hover:underline";
+// the plan screen's query asks the backend for the same plan, so it is also the share link
+const planHref = (p: VisitPlan) =>
+  `/plan?${new URLSearchParams([
+    ...p.stops.map((s) => ["shop_id", s.shop_id]),
+    ["lat", String(p.origin.lat)],
+    ["lon", String(p.origin.lon)],
+    ["mode", p.mode],
+    ["depart_at", p.depart_at],
+  ])}`;
+
+const linkClass ="text-sm font-medium text-primary underline-offset-4 hover:underline";
 
 const compareHref = (ids: string[]) => `/compare?${new URLSearchParams({ ids: ids.join(",") })}`;
 
@@ -101,6 +123,30 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
       </Link>
     </div>
   ),
+  visit_plan: (d: VisitPlan) => (
+    <div className="flex flex-col gap-1.5 text-sm">
+      <ol className="flex flex-col gap-1">
+        {d.stops.map((s, i) => (
+          <li key={s.shop_id} className="flex flex-wrap items-center gap-1.5">
+            <span>
+              {faDigits(i + 1)}. {s.shop_name}، رسیدن {clock(s.eta)}
+            </span>
+            <OpenBadge open={s.open_at_eta} />
+          </li>
+        ))}
+      </ol>
+      <Link href={planHref(d)} className={linkClass}>
+        دیدن برنامه روی نقشه
+      </Link>
+    </div>
+  ),
+  directions: (d: Directions) => (
+    <div className="flex flex-col gap-1.5 text-sm">
+      <p className="font-semibold">{d.shop_name}</p>
+      <RouteDetails d={d} />
+    </div>
+  ),
+  alternatives: (d: Alternatives) => <AgentAlternatives block={d} />,
   chips: (d: Chips, send) => (
     <div className="flex flex-col gap-2">
       <p className="text-sm">{d.question}</p>

@@ -293,7 +293,7 @@ def find_sellers(conn, product_id: str, q: SellerQuery, now: datetime) -> Seller
     if product is None:
         return None
     offers = seller_offers(conn, product_id)
-    asked = outcomes(conn, q.session_id, product_id) if q.session_id else {}
+    asked = outcomes(conn, q.session_id, product_id, now) if q.session_id else {}
     # one row per shop: its cheapest usable offer, else any offer
     best = {}
     for o in sorted(offers, key=lambda o: (not _usable([o]), o["price_toman"] or 0, o["offer_id"])):
