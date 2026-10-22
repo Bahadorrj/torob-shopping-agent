@@ -69,7 +69,7 @@ test("shop page shows location, hours, payment, delivery and links at 360 px", a
   await expect(row(page, "جمعه")).toContainText("تعطیل");
 
   await expect(page.getByRole("listitem").filter({ hasText: "اسنپ‌پی" })).toContainText("پرداخت حضوری");
-  await expect(page.getByRole("listitem").filter({ hasText: "ترب‌پی" })).toContainText("نحوه پرداخت ثبت نشده");
+  await expect(page.getByRole("listitem").filter({ hasText: "ترب‌پی" })).toContainText("نحوه پرداخت: نامشخص");
   await expect(row(page, "ارسال سریع")).toContainText("دارد");
   await expect(page.getByRole("link", { name: "وب‌سایت" })).toHaveAttribute("href", known.website_url);
   await expect(page.getByRole("link", { name: "اینستاگرام" })).toHaveAttribute("href", known.instagram_url);
@@ -78,10 +78,10 @@ test("shop page shows location, hours, payment, delivery and links at 360 px", a
   expect(overflow).toBe(0);
 });
 
-test("unknown shop fields read 'not recorded', never blank", async ({ page }) => {
+test("unknown shop fields read 'unknown', never blank", async ({ page }) => {
   await open(page, unknown);
   for (const label of ["پاساژ", "طبقه", "واحد", "امروز", "شنبه", "پرداخت", "ارسال سریع"]) {
-    await expect(row(page, label)).toContainText("ثبت نشده");
+    await expect(row(page, label)).toContainText("نامشخص");
   }
   await expect(page.getByRole("link", { name: "وب‌سایت" })).toHaveCount(0);
 });

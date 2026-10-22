@@ -20,7 +20,7 @@ import {
   type SellerColumn,
   type SellerCompare as Compare,
 } from "@/lib/api";
-import { distance, faDigits, faText, localDate, priceAge } from "@/lib/format";
+import { distance, faDigits, faText, localDate, priceAge, UNKNOWN } from "@/lib/format";
 import { useEventStream } from "@/lib/use-event-stream";
 
 function params(b: Brief): CompareParams {
@@ -47,13 +47,13 @@ const ROWS: [string, (s: SellerColumn) => React.ReactNode][] = [
     "قیمت ثبت‌شده",
     (s) =>
       s.price_toman === null ? (
-        <NotRecorded text="قیمت ثبت نشده" />
+        <NotRecorded text={`قیمت: ${UNKNOWN}`} />
       ) : (
         <div className="flex flex-col gap-0.5">
           <span className="font-bold">
             {faDigits(s.price_toman)} تومان{s.per_meter && " (هر متر)"}
           </span>
-          <span className="text-muted-foreground">{priceAge(s.price_age_days)}</span>
+          <span className="text-muted-foreground">آخرین تغییر قیمت: {priceAge(s.price_age_days)}</span>
         </div>
       ),
   ],

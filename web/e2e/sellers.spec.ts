@@ -88,7 +88,7 @@ test("seller rows show reason chips, trust badge and link to the shop at 360 px"
   await expect(first).toContainText("ارزان‌ترین");
   await expect(first).toContainText("گارانتی ۱۸ ماهه");
   await expect(first).toContainText("قیمت ثبت‌شده");
-  await expect(first).toContainText("۳٬۵۰۰٬۰۰۰ تومان");
+  await expect(first).toContainText("۳٫۵۰۰٫۰۰۰ تومان");
   await expect(first.getByRole("link", { name: row.shop_name })).toHaveAttribute("href", "/shops/shop_a");
   await expect(page.getByRole("listitem").filter({ hasText: unpriced.shop_name })).toContainText("قیمت ثبت نشده");
 

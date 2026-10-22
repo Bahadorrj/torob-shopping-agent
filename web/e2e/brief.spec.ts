@@ -44,7 +44,7 @@ test("brief bar chips edit every field in place and re-run results at 360 px", a
   await chip(page, "بودجه").click();
   await page.getByLabel("سقف بودجه به تومان").fill("2000000");
   await page.getByRole("button", { name: "اعمال بودجه" }).click();
-  await expect(chip(page, "بودجه")).toContainText("تا ۲٬۰۰۰٬۰۰۰ تومان");
+  await expect(chip(page, "بودجه")).toContainText("تا ۲٫۰۰۰٫۰۰۰ تومان");
   expect(patches.at(-1)?.brief?.budget).toEqual({ max_total_toman: 2000000, max_per_item_toman: null });
 
   await chip(page, "زمان مراجعه").click();

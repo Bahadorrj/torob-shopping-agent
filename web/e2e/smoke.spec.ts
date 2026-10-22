@@ -28,7 +28,7 @@ test("a price without a change date is not also called old", async ({ page }) =>
   await page.goto("/");
   await askHome(page, "x");
   const undated = page.getByRole("listitem").filter({ hasText: "کالای الف" });
-  await expect(undated.getByText("تاریخ تغییر قیمت ثبت نشده")).toBeVisible();
+  await expect(undated.getByText("آخرین تغییر قیمت: نامشخص")).toBeVisible();
   await expect(undated.getByText("قیمت قدیمی")).toHaveCount(0);
   await expect(page.getByRole("listitem").filter({ hasText: "کالای ب" }).getByText("قیمت قدیمی")).toBeVisible();
 });

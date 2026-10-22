@@ -116,19 +116,19 @@ test("compare table shows every row, unknown values and next actions at 360 px",
   const table = page.getByRole("table");
   await expect(table.getByRole("columnheader", { name: known.shop_name })).toBeVisible();
   const row = (name: string) => table.getByRole("row").filter({ has: page.getByRole("rowheader", { name }) });
-  await expect(row("قیمت ثبت‌شده")).toContainText("۳٬۵۰۰٬۰۰۰ تومان");
+  await expect(row("قیمت ثبت‌شده")).toContainText("۳٫۵۰۰٫۰۰۰ تومان");
   await expect(row("قیمت ثبت‌شده")).toContainText("۲۲ روز پیش");
-  await expect(row("قیمت ثبت‌شده")).toContainText("قیمت ثبت نشده");
+  await expect(row("قیمت ثبت‌شده")).toContainText("قیمت: نامشخص");
   await expect(row("آخرین قیمت")).toContainText("هنوز استعلام نشده");
   await expect(row("فاصله و زمان")).toContainText("۴۰ متر، ۱ دقیقه");
-  await expect(row("فاصله و زمان")).toContainText("ثبت نشده");
+  await expect(row("فاصله و زمان")).toContainText("نامشخص");
   await expect(row("باز در زمان رسیدن")).toContainText("باز در ۱۷:۰۱");
   await expect(row("گارانتی")).toContainText("۱۸ ماه");
   await expect(row("پرداخت و اقساط")).toContainText("اسنپ‌پی (حضوری)");
   await expect(row("ارسال سریع")).toContainText("دارد");
   await expect(row("اعتبار قیمت")).toContainText("ثبت‌شده");
   for (const name of ["گارانتی", "پرداخت و اقساط", "ارسال سریع", "باز در زمان رسیدن"]) {
-    await expect(row(name)).toContainText("ثبت نشده");
+    await expect(row(name)).toContainText("نامشخص");
   }
   await expect(page.getByText("زمان رسیدن با فرض خط مستقیم و خودرو تخمین زده شده است.")).toBeVisible();
 

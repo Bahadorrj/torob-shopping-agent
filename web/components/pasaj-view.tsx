@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import { useBrief } from "@/components/brief-provider";
 import { getPasaj, type PasajView as View } from "@/lib/api";
-import { faDigits, faText } from "@/lib/format";
+import { faDigits, faText, toman, UNKNOWN } from "@/lib/format";
 
 type State = { status: "loading" } | { status: "error" } | { status: "missing" } | { status: "done"; view: View };
 
@@ -40,7 +40,7 @@ export function PasajView({ pasaj, productIds }: { pasaj: string; productIds: st
       </header>
       {view.count === 0 && <p className="rounded-lg border p-3 text-sm">در این پاساژ فروشگاهی کالاهای شما را ثبت نکرده است.</p>}
       {view.floors.map((f, i) => {
-        const title = f.floor === null ? "طبقه ثبت نشده" : faText(`طبقه ${f.floor}`);
+        const title = f.floor === null ? `طبقه: ${UNKNOWN}` : faText(`طبقه ${f.floor}`);
         const id = `floor-${i}`;
         return (
           <section key={id} aria-labelledby={id} className="flex flex-col gap-2">
@@ -54,15 +54,15 @@ export function PasajView({ pasaj, productIds }: { pasaj: string; productIds: st
                     <Link href={`/shops/${s.shop_id}`} className="font-semibold text-primary underline underline-offset-4">
                       {s.shop_name}
                     </Link>
-                    <span className="shrink-0 text-xs text-muted-foreground">{s.unit ? faText(`واحد ${s.unit}`) : "واحد ثبت نشده"}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">{s.unit ? faText(`واحد ${s.unit}`) : `واحد: ${UNKNOWN}`}</span>
                   </div>
                   {s.products.map((p) => (
                     <p key={p.product_id} className="flex justify-between gap-2 text-xs">
                       <span className="min-w-0">{p.title}</span>
                       {p.price_toman !== null ? (
-                        <span className="shrink-0 font-bold">{faDigits(p.price_toman)} تومان</span>
+                        <span className="shrink-0 font-bold">{toman(p.price_toman)}</span>
                       ) : (
-                        <span className="shrink-0 text-muted-foreground">قیمت ثبت نشده</span>
+                        <span className="shrink-0 text-muted-foreground">قیمت: {UNKNOWN}</span>
                       )}
                     </p>
                   ))}

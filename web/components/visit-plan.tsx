@@ -9,8 +9,9 @@ import { SellerMap, type Pin } from "@/components/seller-map";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { getVisitPlan, visitPlanStreamUrl, type ClosingNudge, type Directions, type PriceNudge, type Stop, type StopInquiry, type VisitPlan as Plan } from "@/lib/api";
-import { distance, faDigits, faText } from "@/lib/format";
+import { distance, faDigits, faText, openLabel, UNKNOWN } from "@/lib/format";
 import { useEventStream } from "@/lib/use-event-stream";
+import { cn } from "@/lib/utils";
 
 // times come in Tehran's fixed +03:30 offset, so the clock time is read off the string
 export const clock = (iso: string) => faText(iso.slice(11, 16));
@@ -19,14 +20,14 @@ const day = (iso: string) =>
   new Date(iso).toLocaleDateString("fa-IR-u-ca-persian", { timeZone: "Asia/Tehran", weekday: "long", day: "numeric", month: "long" });
 
 export function OpenBadge({ open }: { open: boolean | null }) {
-  if (open === null) return <Badge variant="outline" className="text-muted-foreground">ساعت کاری ثبت نشده</Badge>;
+  if (open === null) return <Badge variant="outline" className="text-muted-foreground">{openLabel(null)}</Badge>;
   return open ? <Badge variant="secondary">باز در زمان رسیدن</Badge> : <Badge variant="destructive">بسته در زمان رسیدن</Badge>;
 }
 
 // the last leg, inside the pasaj: "پاساژ علاالدین، نبش ...، طبقه ۲، واحد ۲۱۶"
 function lastLeg({ pasaj, landmark, floor, unit }: Stop["last_leg"]) {
   const inside = [floor && `طبقه ${floor}`, unit && `واحد ${unit}`].filter(Boolean);
-  const parts = [pasaj && `پاساژ ${pasaj}`, landmark, ...(inside.length ? inside : ["طبقه و واحد ثبت نشده"])];
+  const parts = [pasaj && `پاساژ ${pasaj}`, landmark, ...(inside.length ? inside : [`طبقه و واحد: ${UNKNOWN}`])];
   return faText(parts.filter(Boolean).join("، "));
 }
 
@@ -87,7 +88,8 @@ export function RouteDetails({ d }: { d: Directions }) {
             target="_blank"
             rel="noopener noreferrer"
             aria-label={`باز کردن در ${name}`}
-            className={buttonVariants({ size: "xs", variant: "outline" })}
+            // cn drops the base border-transparent so the contact border shows
+            className={cn(buttonVariants({ size: "xs", variant: "contact-outline" }))}
           >
             {name}
           </a>
@@ -219,7 +221,7 @@ export function VisitPlan({ query }: { query: string }) {
         ))}
       </ol>
 
-      <Button onClick={share} className="self-center">
+      <Button variant="buy" onClick={share} className="self-center">
         اشتراک‌گذاری برنامه
       </Button>
       {shared && (

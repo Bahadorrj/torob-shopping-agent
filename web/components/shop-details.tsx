@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { pasajHref } from "@/components/pasaj-view";
 import { Badge } from "@/components/ui/badge";
 import { getShop, type Day, type DayHours, type ShopDetails as Shop } from "@/lib/api";
-import { faText } from "@/lib/format";
+import { faText, UNKNOWN } from "@/lib/format";
 
 const DAY_NAMES: Record<Day, string> = {
   sat: "شنبه",
@@ -20,7 +20,7 @@ const DAY_NAMES: Record<Day, string> = {
 
 export const DELIVERY = { yes: "دارد", no: "ندارد", unknown: null };
 
-export function NotRecorded({ text = "ثبت نشده" }: { text?: string }) {
+export function NotRecorded({ text = UNKNOWN }: { text?: string }) {
   return <span className="text-muted-foreground">{text}</span>;
 }
 
@@ -64,7 +64,7 @@ export function ShopDetails({ shopId }: { shopId: string }) {
     <article className="flex flex-col gap-4">
       <header className="flex flex-col gap-1">
         <h1 className="text-xl font-bold">{shop.name}</h1>
-        <p className="text-sm text-muted-foreground">{shop.address ?? "نشانی ثبت نشده"}</p>
+        <p className="text-sm text-muted-foreground">{shop.address ?? `نشانی: ${UNKNOWN}`}</p>
       </header>
 
       <section className="flex flex-col gap-1">
@@ -121,7 +121,7 @@ export function ShopDetails({ shopId }: { shopId: string }) {
                         <Badge variant="secondary">پرداخت حضوری</Badge>
                       ) : (
                         <Badge variant="outline" className="text-muted-foreground">
-                          نحوه پرداخت ثبت نشده
+                          نحوه پرداخت: {UNKNOWN}
                         </Badge>
                       )}
                     </li>

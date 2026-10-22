@@ -81,9 +81,9 @@ test("visit plan shows a map and a timeline of stops with open status, routes an
   await expect(a).toContainText("پاساژ علاالدین، رو‌به‌روی پاساژ چهارسو، طبقه ۲، واحد ۲۱۶");
   await expect(b).toContainText("بسته در زمان رسیدن");
   await expect(b).toContainText("پاساژ علاالدین، طبقه ۵، واحد ۵۰۶");
-  await expect(c).toContainText("ساعت کاری ثبت نشده");
+  await expect(c).toContainText("ساعت کاری: نامشخص");
   await expect(c).toContainText("۱٫۲ کیلومتر، ۱۶ دقیقه (تخمین خط مستقیم)");
-  await expect(c).toContainText("طبقه و واحد ثبت نشده");
+  await expect(c).toContainText("طبقه و واحد: نامشخص");
 
   for (const [name, key] of [["نشان", "neshan"], ["بلد", "balad"], ["گوگل مپ", "google"]] as const) {
     await expect(c.getByRole("link", { name: `باز کردن در ${name}` })).toHaveAttribute("href", plan.stops[2].links[key]);
@@ -174,12 +174,12 @@ test("a session's plan follows its inquiries over SSE: confirmed badge and time,
   expect(fetched).toEqual([]);
   const [a, b, c] = [stops.nth(0), stops.nth(1), stops.nth(2)];
   await expect(a).toContainText("تأیید شد ساعت ۱۵:۰۰");
-  await expect(a).toContainText("قیمت تأییدشده ۵٬۲۰۰٬۰۰۰ تومان، ۷۰۱٬۰۰۰ تومان گران‌تر از قیمت ثبت‌شده");
+  await expect(a).toContainText("قیمت تأییدشده ۵٫۲۰۰٫۰۰۰ تومان، ۷۰۱٫۰۰۰ تومان گران‌تر از قیمت ثبت‌شده");
   await expect(a).toContainText("بیشتر از بودجه");
   await expect(b).toContainText("فروشگاه الان بسته است");
-  await expect(b).toContainText("قیمت ثبت‌شده ۴٬۴۹۹٬۰۰۰ تومان");
+  await expect(b).toContainText("قیمت ثبت‌شده ۴٫۴۹۹٫۰۰۰ تومان");
   await expect(b).not.toContainText("بیشتر از بودجه");
-  await expect(c).toContainText("قیمت فروشنده ۴٬۰۰۰٬۰۰۰ تومان، ۴۹۹٬۰۰۰ تومان ارزان‌تر از قیمت ثبت‌شده");
+  await expect(c).toContainText("قیمت فروشنده ۴٫۰۰۰٫۰۰۰ تومان، ۴۹۹٫۰۰۰ تومان ارزان‌تر از قیمت ثبت‌شده");
   await expect(c).not.toContainText("تأییدشده");
   expect(await noOverflow(page)).toBe(0);
 });
@@ -224,9 +224,9 @@ test("nudges warn of a shop closing before the ETA with a swap, and of a changed
     `/plan?${query.replace("shop_b", "shop_d")}&session_id=s9`,
   );
   await expect(alerts.nth(1).getByRole("link")).toHaveCount(0);
-  await expect(alerts.nth(2)).toContainText("آذرنوش دیسیس: قیمت تأییدشده ۳٬۷۰۰٬۰۰۰ تومان، ۲۰۰٬۰۰۰ تومان گران‌تر از قیمت ثبت‌شده");
+  await expect(alerts.nth(2)).toContainText("آذرنوش دیسیس: قیمت تأییدشده ۳٫۷۰۰٫۰۰۰ تومان، ۲۰۰٫۰۰۰ تومان گران‌تر از قیمت ثبت‌شده");
   await expect(alerts.nth(2)).toContainText("بیشتر از بودجه");
-  await expect(alerts.nth(3)).toContainText("روین فریسا: قیمت سایت فروشگاه ۵۰۰٬۰۰۰ تومان، ۲۴٬۰۰۰ تومان ارزان‌تر از قیمت ثبت‌شده");
+  await expect(alerts.nth(3)).toContainText("روین فریسا: قیمت سایت فروشگاه ۵۰۰٫۰۰۰ تومان، ۲۴٫۰۰۰ تومان ارزان‌تر از قیمت ثبت‌شده");
   await expect(alerts.nth(3)).toContainText("در بودجه");
   expect(await noOverflow(page)).toBe(0);
 });
