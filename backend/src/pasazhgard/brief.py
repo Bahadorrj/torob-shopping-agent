@@ -166,7 +166,8 @@ class SessionPatch(BaseModel):
 
 def seller_query(brief: Brief, product_id: str, now: dt.datetime) -> SellerQuery:
     area, origin, visit = brief.area, brief.origin, brief.visit_window
-    quantity = next((i.quantity for i in brief.items if i.product_id == product_id), 1)
+    # an item not yet bound to a product (the agent heard "two of these") counts too
+    quantity = next((i.quantity for i in brief.items if i.product_id in (product_id, None)), 1)
     arrival = None
     if visit.earliest_arrival:
         arrival = dt.datetime.combine(visit.date or now.astimezone(TEHRAN).date(), visit.earliest_arrival, TEHRAN)

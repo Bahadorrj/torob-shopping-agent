@@ -178,3 +178,16 @@ def test_an_ungrounded_price_shop_or_stock_claim_fails_the_turn(agent, claim, fo
 
     with pytest.raises(AssertionError, match=found):
         agent.turn("ارزان‌ترین فروشنده؟")
+
+
+def test_the_quantity_the_user_states_applies_to_the_total_budget(agent):
+    agent.script(
+        agent.brief(quantity=2, budget={"max_total_toman": 3_000_000}),
+        agent.call("find_sellers", product_id=ANKER),
+        "فروشنده‌ها.",
+    )
+
+    turn = agent.turn("دو تا از این هدفون، روی هم تا ۳ میلیون")
+
+    # 2 x 1,690,000 is over budget
+    assert CHEAPEST_SHOP not in [s["shop_id"] for s in turn.blocks[0]["sellers"]]
