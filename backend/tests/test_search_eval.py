@@ -86,3 +86,40 @@ def test_a_failed_run_is_a_miss_and_the_eval_goes_on(agent, client):
     report = load_eval("agent").run(client, [{"query": "هدفون", "expected": [R50I]}, {"query": "هدفون", "expected": [R50I]}])
 
     assert (report["hits"], report["queries"]) == (0, 2)
+
+
+def test_agent_eval_scores_only_the_first_five_products_shown(agent, client):
+    # five cards without the expected product come first
+    agent.script(agent.brief(), agent.call("search_products", query="کابل افشان"), agent.call("search_products", query="انکر R50i"), "نتیجه‌ها.")
+
+    report = load_eval("agent").run(client, [{"query": "هدفون", "expected": [R50I]}])
+
+    assert (report["hits"], report["queries"]) == (0, 1)
+
+
+# Anker R50i sellers in Aladdin: آذرنوش دیسیس, دیسورا پاکیار (no hours), نیکورا ویوان (Tuesdays from 16:00), دیسیلا مانسا
+AZAR, PAKYAR, VIVAN, MANSA = "shop_81c53acd00d779578fff4a40", "shop_4934392f0e4fefe1526308c6", "shop_c060bc5ea37b78e00ece4bdb", "shop_e31a5b73908ea869f50af78e"
+
+
+def test_agent_eval_checks_that_every_seller_shown_is_an_expected_shop(agent, client):
+    agent.script(*[agent.brief(), agent.call("find_sellers", product_id=R50I), "فروشنده‌ها."] * 2)
+    aladdin = [AZAR, PAKYAR, VIVAN, MANSA]
+    cases = [
+        {"query": "انکر R50i توی علاالدین", "pasaj": "علاالدین", "expected": [R50I], "expected_shops": aladdin},
+        # the condition is ignored: sellers outside Aladdin show up
+        {"query": "انکر R50i توی علاالدین", "expected": [R50I], "expected_shops": aladdin},
+    ]
+
+    report = load_eval("agent").run(client, cases)
+
+    assert (report["shop_hits"], report["shop_cases"]) == (1, 2)
+
+
+def test_agent_eval_runs_a_case_at_its_own_time(agent, client):
+    # "open now" on a Tuesday at 15:00, when نیکورا ویوان is still closed
+    agent.script(agent.brief(visit_window={"earliest_arrival": "15:00"}), agent.call("find_sellers", product_id=R50I), "فروشنده‌ها.")
+    case = {"query": "انکر R50i که الان باز باشه", "pasaj": "علاالدین", "now": "2026-10-20T15:00:00+03:30", "expected": [R50I], "expected_shops": [AZAR, MANSA]}
+
+    report = load_eval("agent").run(client, [case])
+
+    assert report["shop_hits"] == 1
