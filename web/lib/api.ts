@@ -60,17 +60,8 @@ export async function getShop(shopId: string): Promise<ShopDetails | null> {
   return r.json();
 }
 
-// Mirrors SellerQuery and SellerList in backend/src/pasazhgard/sellers.py.
+// Mirrors SellerList in backend/src/pasazhgard/sellers.py.
 export type Priority = "cheapest" | "closest" | "most_reliable";
-
-export type SellerQuery = {
-  lat?: number;
-  lon?: number;
-  radius_m?: number;
-  area?: string;
-  pasaj?: string;
-  priority: Priority;
-};
 
 export type Reason = {
   kind: "closest" | "cheapest" | "open_now" | "warranty" | "fresh_price" | "declared_hours" | "installments";
@@ -123,16 +114,6 @@ export type SellerList = {
   areas: string[];
   pasajs: string[];
 };
-
-export async function findSellers(productId: string, query: SellerQuery): Promise<SellerList | null> {
-  const params = new URLSearchParams(
-    Object.entries(query).flatMap(([k, v]) => (v === undefined ? [] : [[k, String(v)]])),
-  );
-  const r = await fetch(`/api/products/${encodeURIComponent(productId)}/sellers?${params}`);
-  if (r.status === 404) return null;
-  if (!r.ok) throw new Error(`sellers failed: ${r.status}`);
-  return r.json();
-}
 
 // Mirrors Brief, Session and SessionPatch in backend/src/pasazhgard/brief.py.
 export type Area = { radius_m: number | null; name: string | null; pasaj: string | null };

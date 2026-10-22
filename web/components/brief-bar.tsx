@@ -19,7 +19,7 @@ const MUST_HAVE: Record<keyof MustHave, string> = { warranty: "گارانتی", 
 
 type Field = "area" | "budget" | "visit" | "travel" | "payment" | "must_have" | "priority";
 
-export function areaLabel(area: Brief["area"]) {
+function areaLabel(area: Brief["area"]) {
   if (!area) return "همه مناطق";
   if (area.radius_m !== null) return `نزدیک من، ${distance(area.radius_m)}`;
   return area.name ?? `پاساژ ${faText(area.pasaj ?? "")}`;
