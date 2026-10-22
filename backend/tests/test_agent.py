@@ -303,3 +303,18 @@ def test_find_alternatives_shows_where_else_to_ask_for_an_inquiry_that_fell_thro
     agent.history = []
     agent.script(agent.brief(), agent.call("find_alternatives", inquiry_id=draft["inquiry_id"]), "پیدا نشد.")
     assert "block" not in agent.turn("جایگزین؟").blocks[0]
+
+
+def test_seller_tools_show_the_price_a_seller_confirmed_in_this_session(agent, client):
+    sid = agent.session_id
+    [mahis] = [i["inquiry_id"] for i in client.post(f"/sessions/{sid}/inquiries", json={"offer_ids": [MAHIS]}).json()["inquiries"]]
+    client.post(f"/sessions/{sid}/inquiries/confirm", json={"inquiry_ids": [mahis]})
+    client.post(f"/console/inquiries/{mahis}/replies", json={"latest_price_toman": 3_100_000})
+    agent.script(agent.brief(), agent.call("find_sellers", product_id=ANKER), agent.call("compare_sellers", product_id=ANKER, offer_ids=[MAHIS]), "این‌ها.")
+
+    turn = agent.turn("فروشنده‌ها")
+
+    sellers, [compared] = turn.blocks[0]["sellers"] + turn.blocks[0]["ask_them"], turn.blocks[1]["sellers"]
+    [listed] = [s for s in sellers if s["offer_id"] == MAHIS]
+    for row in (listed, compared):
+        assert (row["latest_price"]["status"], row["latest_price"]["price_toman"]) == ("confirmed", 3_100_000)

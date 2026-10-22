@@ -174,7 +174,8 @@ def build_graph(ports: Ports) -> StateGraph:
         """Shops selling a product, filtered and ranked by the brief. Shows the seller list."""
         brief, now = brief_of(config), ports.now()
         with ports.connect() as conn:
-            result = _find_sellers(conn, product_id, seller_query(brief, product_id, now), now)
+            q = seller_query(brief, product_id, now).model_copy(update={"session_id": _session(config)})
+            result = _find_sellers(conn, product_id, q, now)
         return block("seller_list", result) if result else error("product not found")
 
     @tool
@@ -189,6 +190,7 @@ def build_graph(ports: Ports) -> StateGraph:
                 lon=origin and origin.lon,
                 mode=brief.travel_mode or "walk",
                 arrival=seller_query(brief, product_id, now).arrival,
+                session_id=_session(config),
             )
         except ValueError:
             return error("give 1-3 distinct offer ids")
