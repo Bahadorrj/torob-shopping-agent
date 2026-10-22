@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from langchain_core.messages import AIMessage
 
 ANKER = "product_92ac53fa75e18e8e73f20b56"
 ANKER_NC = "product_13f930f4c1400c7ab7bfa61f"
@@ -372,6 +373,38 @@ def test_a_prose_question_after_a_rejected_ask_is_replaced_by_a_statement(agent)
 
     assert turn.text
     assert "؟" not in turn.text and "?" not in turn.text
+
+
+def test_a_question_mark_before_the_last_sentence_is_no_question(agent):
+    text = "مدل Buds? Pro را در https://torob.com/?q=buds ببینید."
+    agent.script(agent.brief(), text)
+
+    turn = agent.turn("هندزفری")
+
+    assert kinds(turn) == []
+    assert turn.text == text
+
+
+def test_a_final_question_in_content_blocks_is_asked_again_as_chips(agent):
+    agent.script(
+        agent.brief(need="هندزفری"),
+        AIMessage([{"type": "text", "text": "بودجه‌تان چقدر است؟ "}], id="q"),
+        agent.call("ask_user", field="budget", question="بودجه‌تان چقدر است؟"),
+    )
+
+    turn = agent.turn("هندزفری")
+
+    assert kinds(turn) == ["chips"]
+    assert turn.text == ""
+
+
+def test_a_refused_ask_keeps_the_reply_before_its_question(agent):
+    reply = "این سه مدل برای باشگاه مناسب‌اند. «کجا می‌روید؟»"
+    agent.script(agent.brief(area={"name": "فردوسی"}), reply, agent.call("ask_user", field="area", question="کجا؟"), reply)
+
+    turn = agent.turn("هندزفری توی فردوسی")
+
+    assert turn.text == "این سه مدل برای باشگاه مناسب‌اند."
 
 
 def test_the_thread_reads_back_after_a_reload(agent, client):

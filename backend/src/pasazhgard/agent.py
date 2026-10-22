@@ -7,6 +7,7 @@ The LangGraph thread id is the session id, so the brief bar and the agent share 
 
 import json
 import os
+import re
 import uuid
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -350,7 +351,8 @@ def build_graph(ports: Ports) -> StateGraph:
             - Use tools for every product, shop, price and hour. Never state a price, shop or stock that no tool returned;
               the UI shows tool results as cards, so refer to them instead of repeating numbers.
             - If a missing brief field would change the answer, call ask_user for that one field and stop.
-              Ask one question per turn, and none when the answer would not change the result. Never ask in the reply text.
+              Ask one question per turn, and none when the answer would not change the result.
+              Ask every clarifying question only through ask_user, never in the reply text.
             - Guided discovery: when the user names a need or category rather than a model, or asks for help choosing
               ("کمکم کن انتخاب کنم"), shortlist models with suggest_models before any find_sellers. First ask about use,
               features and budget, at most these three and only what the brief lacks; give use and features 3-5 short options.
@@ -368,15 +370,19 @@ def build_graph(ports: Ports) -> StateGraph:
         reply = ports.model().bind_tools(tools).invoke(messages, config=held)
         turn = list(takewhile(lambda m: not isinstance(m, HumanMessage), reversed(state["messages"])))
         asked = any(isinstance(m, ToolMessage) and m.name == "ask_user" for m in turn)
-        in_prose = ("؟" in reply.content or "?" in reply.content) and not any(c["name"] == "ask_user" for c in reply.tool_calls)
+        # only a reply whose last sentence ends in a question mark counts; a "?" in a URL or a name does not
+        text = reply.text.strip().rstrip(" \"'»«)]”’!.")
+        in_prose = text.endswith(("?", "؟")) and not any(c["name"] == "ask_user" for c in reply.tool_calls)
         # a question in prose is asked again as chips, once per turn so a refused ask cannot loop
         if in_prose and not asked:
             reply = ports.model().bind_tools(tools, tool_choice="ask_user").invoke(messages, config=held)
         elif in_prose:
-            # the forced ask was refused: a prose question must not reach the user without chips
-            reply = AIMessage("برای ادامه، بگویید دقیقاً دنبال چه چیزی هستید.", id=reply.id)
-        if reply.content:
-            dispatch_custom_event("manually_emit_message", {"message_id": reply.id, "message": reply.content}, config=config)
+            # the forced ask was refused: keep the reply before its question, never the chip-less question
+            head = re.sub(r"[^.!?؟\n]*[?؟]$", "", text).strip()
+            keep = head and not head.endswith(("?", "؟"))
+            reply = AIMessage(head if keep else "برای ادامه، بگویید دقیقاً دنبال چه چیزی هستید.", id=reply.id)
+        if reply.text:
+            dispatch_custom_event("manually_emit_message", {"message_id": reply.id, "message": reply.text}, config=config)
         return {"messages": [reply]}
 
     def degraded(state: MessagesState, config: RunnableConfig) -> dict:
