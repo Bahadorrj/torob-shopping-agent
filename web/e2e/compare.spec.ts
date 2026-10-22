@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { fakeSessions } from "./fake-session";
+import { askHome, fakeAgent, fakeSessions } from "./fake-session";
 
 const price = {
   trust_level: "listed", min_toman: 1000000, max_toman: 2000000, per_meter: false,
@@ -37,16 +37,16 @@ const compareResult = (brief: Record<string, unknown>, ids: string[]) => ({
 const noOverflow = (page: Page) =>
   page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
-async function searchAll(page: Page) {
+async function searchAll(page: Page, found = items) {
+  await fakeAgent(page, [{ block: "product_cards", query: "هدفون", items: found }]);
   await page.goto("/");
-  await page.getByLabel("جستجوی کالا").fill("هدفون");
-  await page.getByRole("button", { name: "جستجو" }).click();
+  await askHome(page, "هدفون");
 }
 
 const result = (page: Page, title: string) => page.getByRole("listitem").filter({ hasText: title });
 
 test("why this shows score parts as chips and one sentence from the card data", async ({ page }) => {
-  await fakeSessions(page, { search: () => ({ query: "هدفون", items }) });
+  await fakeSessions(page, {});
   await searchAll(page);
   const first = result(page, "کالای الف");
   await first.getByText("چرا این؟").click();
@@ -58,8 +58,8 @@ test("why this shows score parts as chips and one sentence from the card data", 
 
 test("why this says when a product matched by meaning, not by query words", async ({ page }) => {
   const byMeaning = { ...card("p5", "کالای ه"), score_parts: parts.map((p) => ({ ...p, matched: false })), meaning_match: true };
-  await fakeSessions(page, { search: () => ({ query: "هدفون", items: [byMeaning] }) });
-  await searchAll(page);
+  await fakeSessions(page, {});
+  await searchAll(page, [byMeaning]);
   const first = result(page, "کالای ه");
   await first.getByText("چرا این؟").click();
   await expect(first.getByText("هم‌معنا با جستجو")).toBeVisible();
@@ -68,7 +68,7 @@ test("why this says when a product matched by meaning, not by query words", asyn
 });
 
 test("compare tray holds up to three products and opens the compare table at 360 px", async ({ page }) => {
-  const { patches } = await fakeSessions(page, { search: () => ({ query: "هدفون", items }), compare: compareResult });
+  const { patches } = await fakeSessions(page, { compare: compareResult });
   await searchAll(page);
   for (const t of ["کالای الف", "کالای ب", "کالای ج"]) await result(page, t).getByRole("button", { name: "افزودن به مقایسه" }).click();
   // the fourth cannot join a full tray

@@ -48,6 +48,8 @@ type Brief = {
   // patches the brief and/or step; the response carries the re-run results of the current step
   patch: (change: SessionPatch) => Promise<Session | null>;
   resume: (id: string) => Promise<Session | null>;
+  // reads the session again, after the agent patched its brief on the server
+  refresh: () => Promise<Session | null>;
 };
 
 const BriefContext = createContext<Brief | null>(null);
@@ -115,6 +117,18 @@ export function BriefProvider({ children }: { children: React.ReactNode }) {
     [run],
   );
 
-  const value = useMemo(() => ({ session, pending: pending > 0, error, patch, resume }), [session, pending, error, patch, resume]);
+  const refresh = useCallback(
+    () =>
+      run(async () => {
+        const s = await ready();
+        return (await getSession(s.session_id)) ?? s;
+      }),
+    [run, ready],
+  );
+
+  const value = useMemo(
+    () => ({ session, pending: pending > 0, error, patch, resume, refresh }),
+    [session, pending, error, patch, resume, refresh],
+  );
   return <BriefContext.Provider value={value}>{children}</BriefContext.Provider>;
 }

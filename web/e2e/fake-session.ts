@@ -1,5 +1,7 @@
 import type { Page } from "@playwright/test";
 
+import { runEvents } from "./agent-events.mjs";
+
 type Brief = Record<string, unknown>;
 type Step =
   | { kind: "search" }
@@ -33,7 +35,8 @@ export const centers = [
 ];
 
 // In-page stand-in for the /sessions API: keeps briefs, merges patches and re-runs the step through `results`.
-export async function fakeSessions(page: Page, results: Results, seed: Record<string, { brief?: Brief; step?: Step }> = {}) {
+// `messages`: the session's checkpointed agent thread, as GET /sessions/{id}/messages returns it
+export async function fakeSessions(page: Page, results: Results, seed: Record<string, { brief?: Brief; step?: Step; messages?: object[] }> = {}) {
   const sessions = new Map(Object.entries(seed).map(([id, s]) => [id, { brief: { ...emptyBrief(), ...s.brief }, step: s.step ?? null }]));
   const patches: { brief?: Brief; step?: Step }[] = [];
   let next = 1;
@@ -57,6 +60,7 @@ export async function fakeSessions(page: Page, results: Results, seed: Record<st
       return route.fulfill({ status: 201, json: body(sid, false) });
     }
     if (!sessions.has(id)) return route.fulfill({ status: 404, json: { detail: "session not found" } });
+    if (new URL(req.url()).pathname.endsWith("/messages")) return route.fulfill({ json: seed[id]?.messages ?? [] });
     if (req.method() === "PATCH") {
       const change = req.postDataJSON();
       patches.push(change);
@@ -70,4 +74,20 @@ export async function fakeSessions(page: Page, results: Results, seed: Record<st
     return route.fulfill({ json: body(id, false) });
   });
   return { patches, sessions };
+}
+
+// Answers this page's agent runs with `blocks` and `text` in place of the fake agent server; `onRun` sees each run's input.
+export async function fakeAgent(page: Page, blocks: object[], text = "", onRun?: (input: { messages: { role: string; content?: string }[] }) => void) {
+  await page.route("**/api/copilotkit", async (route) => {
+    const call = route.request().postDataJSON();
+    if (call?.method !== "agent/run") return route.fallback();
+    onRun?.(call.body);
+    return route.fulfill({ contentType: "text/event-stream", body: runEvents(call.body, blocks, text) });
+  });
+}
+
+// sends `text` from the home screen's main input
+export async function askHome(page: Page, text: string) {
+  await page.getByLabel("خرید شما در یک جمله").fill(text);
+  await page.getByRole("button", { name: "بپرس" }).click();
 }
