@@ -86,8 +86,8 @@ export async function fakeAgent(page: Page, blocks: object[], text = "", onRun?:
   });
 }
 
-// sends `text` from the home screen's main input
+// sends `text` from the assistant's input, inline on the home screen
 export async function askHome(page: Page, text: string) {
-  await page.getByLabel("خرید شما در یک جمله").fill(text);
-  await page.getByRole("button", { name: "بپرس" }).click();
+  await page.getByLabel("پیام به دستیار").fill(text);
+  await page.getByRole("button", { name: "بفرست" }).click();
 }

@@ -52,7 +52,7 @@ test("a pasted list opens basket mode: stops, per-meter totals, category-only fl
   await page.route("**/api/visit-plan**", (route) => route.abort());
   await page.goto("/");
 
-  await page.getByLabel("خرید شما در یک جمله").evaluate((el, text) => {
+  await page.getByLabel("پیام به دستیار").evaluate((el, text) => {
     const data = new DataTransfer();
     data.setData("text/plain", text);
     el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
