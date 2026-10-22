@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from pasazhgard.clean import clean_offer, clean_product, flag_far_from_median
+from pasazhgard.clean import add_brand_aliases, clean_offer, clean_product, flag_far_from_median
 
 
 def offer_row(**kw):
@@ -156,3 +156,48 @@ def test_clean_product_without_specs_or_images(empty):
     p = clean_product(product_row(specs=empty, image_urls=empty, brand_name="null"))
     assert (p["specs"], p["image_urls"], p["brand"]) == ([], [], None)
     assert p["search_text"] == "هدفون بی سیم انکر مدل soundcore r50i"
+
+
+def aliases(rows: list[tuple[str, str]]) -> dict[str, set[str]]:
+    """Brand aliases from (brand, brand spec value) rows, one product per row."""
+    products = [
+        {"brand": brand, "specs": [{"key": "برند", "value": value}], "search_text": "", "brand_terms": []}
+        for brand, value in rows
+    ]
+    add_brand_aliases(products)
+    return {p["brand"]: set(p["brand_terms"]) for p in products}
+
+
+@pytest.mark.parametrize(
+    "rows, expected",
+    [
+        # the brand's own Latin name, also when some products add a generic word
+        (
+            [("انکر", "Anker")] * 3 + [("انکر", "Anker Brand"), ("ای دیتا", "ADATA Brand"), ("رپو", "Rapoo brand")],
+            {"انکر": {"anker"}, "ای دیتا": {"adata"}, "رپو": {"rapoo"}},
+        ),
+        (
+            [("شیائومی", "Xiaomi")] * 3 + [("شیائومی", "Mi"), ("کیو سی وای", "QCY Xiaomi")],
+            {"شیائومی": {"xiaomi"}, "کیو سی وای": {"qcy"}},
+        ),
+        # lens makers listed under the camera brand they fit
+        ([("سونی", "Sony")] * 3 + [("سونی", "Sigma"), ("سونی", "Tamron"), ("سیگما", "Sigma")], {"سونی": {"sony"}, "سیگما": set()}),
+        # case and accessory makers listed under phone brands
+        (
+            [("سامسونگ", "Samsung")] * 3
+            + [("سامسونگ", "Nillkin"), ("سامسونگ", "Dux Ducis"), ("سامسونگ", "Mitsubishi")]
+            + [("اپل", "Apple")] * 2
+            + [("اپل", "Dux Ducis"), ("اپل", "Apple Design")],
+            {"سامسونگ": {"samsung"}, "اپل": {"apple"}},
+        ),
+        # Kia parts listed under Hyundai
+        (
+            [("هیوندای", "Hyundai")] * 2 + [("هیوندای", "Hyundai Parts"), ("هیوندای", "Kia Parts"), ("کیا", "Kia"), ("کیا", "Kia Parts")],
+            {"هیوندای": {"hyundai"}, "کیا": {"kia"}},
+        ),
+        # a generic word several brands use names none of them
+        ([("ژیون", "Geeon Tech"), ("ای فورتک", "A4 Tech"), ("اپل", "Tech")], {"ژیون": {"geeon"}, "ای فورتک": set(), "اپل": set()}),
+    ],
+)
+def test_brand_aliases_name_only_the_brand_itself(rows, expected):
+    assert aliases(rows) == expected

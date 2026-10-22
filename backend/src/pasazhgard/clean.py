@@ -121,24 +121,32 @@ def clean_product(row: dict) -> dict:
 
 
 def add_brand_aliases(products: list[dict]) -> None:
-    """Make every product of a brand findable by the Latin names its brand specs use, so "anker" finds "انکر"."""
-    votes = Counter()
+    """Make every product of a brand findable by the Latin name its brand specs use, so "anker" finds "انکر".
+
+    A brand's alias is its most used Latin word, when that word leads the brand's other Latin words (in most of
+    its products, or twice the runner-up) and the brand writes most uses of it. So "sigma" on a few Sony lenses
+    or "brand" in "Anker Brand" is no brand's alias.
+    """
+    votes = defaultdict(Counter)  # brand -> Latin word -> products
+    latin = Counter()  # brand -> products whose brand spec has a Latin word
+    uses = Counter()  # Latin word -> products of any brand
     for p in products:
-        for s in p["specs"]:
-            if p["brand"] and s["key"] == "برند":
-                votes.update((word, p["brand"]) for word in set(re.findall(r"[a-z]{3,}", s["value"].lower())))
-    # a word goes to the brand that uses it most.
-    # shortcut: generic spec words like "brand" become aliases too, add a stoplist if they pull wrong results
-    owner = {}
-    for (word, brand), _ in votes.most_common():
-        owner.setdefault(word, brand)
-    aliases = defaultdict(list)
-    for word, brand in sorted(owner.items()):
-        aliases[brand].append(word)
+        words = {w for s in p["specs"] if s["key"] == "برند" for w in re.findall(r"[a-z]{3,}", s["value"].lower())}
+        if p["brand"] and words:
+            votes[p["brand"]].update(words)
+            latin[p["brand"]] += 1
+            uses.update(words)
+    alias = {}
+    for brand, words in votes.items():
+        # ties go to the word the brand owns more of: "geeon" over "tech" in "Geeon Tech"
+        (word, n), *rest = sorted(words.items(), key=lambda x: (-x[1], -x[1] / uses[x[0]], x[0]))
+        runner_up = rest[0][1] if rest else 0
+        if n > uses[word] / 2 and (n > latin[brand] / 2 or n >= 2 * runner_up):
+            alias[brand] = word
     for p in products:
-        if p["brand"] in aliases:
-            p["search_text"] += " " + " ".join(aliases[p["brand"]])
-            p["brand_terms"] += aliases[p["brand"]]
+        if p["brand"] in alias:
+            p["search_text"] += " " + alias[p["brand"]]
+            p["brand_terms"].append(alias[p["brand"]])
 
 
 WEEK = ["sat", "sun", "mon", "tue", "wed", "thu", "fri"]
