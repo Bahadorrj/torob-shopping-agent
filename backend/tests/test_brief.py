@@ -114,8 +114,13 @@ def test_bad_patch_is_422_and_leaves_the_brief(client):
     patch(client, sid, {"brief": {"area": {"radius_m": 300}}}, status=422)
     patch(client, sid, {"brief": {"priority": "nearest"}}, status=422)
     patch(client, sid, {"step": {"kind": "sellers", "product_id": "product_missing"}}, status=404)
+    # the planner and the Seller Liaison own plan and inquiries; unknown fields are refused, not dropped
+    patch(client, sid, {"brief": {"plan": [{"shop_id": "x"}]}}, status=422)
+    patch(client, sid, {"brief": {"inquiries": [{"q": "x"}]}}, status=422)
+    patch(client, sid, {"brief": {"colour": "red"}}, status=422)
     session = client.get(f"/sessions/{sid}").json()
     assert (session["brief"]["area"], session["brief"]["priority"], session["step"]) == (None, "cheapest", None)
+    assert (session["brief"]["plan"], session["brief"]["inquiries"]) == ([], [])
 
 
 def test_search_step_searches_the_need(client):

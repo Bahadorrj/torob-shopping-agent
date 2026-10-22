@@ -5,7 +5,7 @@ import uuid
 from typing import Annotated, Literal, Self
 
 from psycopg.types.json import Jsonb
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from pasazhgard.search import SearchResult, search_products
 from pasazhgard.sellers import SellerList, SellerQuery, area_options, find_sellers
@@ -127,6 +127,14 @@ class SessionPatch(BaseModel):
 
     brief: dict = {}
     step: Step | None = None
+
+    @field_validator("brief")
+    @classmethod
+    def _patchable(cls, brief: dict) -> dict:
+        # plan and inquiries are written by the planner and the Seller Liaison, not by the client
+        if bad := set(brief) - (set(Brief.model_fields) - {"plan", "inquiries"}):
+            raise ValueError(f"not patchable: {', '.join(sorted(bad))}")
+        return brief
 
 
 def seller_query(brief: Brief, now: dt.datetime) -> SellerQuery:
