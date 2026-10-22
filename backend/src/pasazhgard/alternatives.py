@@ -132,15 +132,17 @@ def find_alternatives(conn, sid: str, inquiry_id: int, now: dt.datetime) -> Alte
         product = get_product(conn, inquiry.product_id)
         if product.category is None:
             return []
-        mine = {(s.key, normalize(s.value)) for s in product.specs}
-        found = []
-        for p in conn.execute(
+        # colour says nothing about fit
+        mine = {(s.key, normalize(s.value)) for s in product.specs if "رنگ" not in s.key}
+        rows = conn.execute(
             "SELECT product_id, specs FROM products WHERE category = %s AND product_id <> %s", [product.category, product.product_id]
-        ).fetchall():
-            # shortcut: one spec in common counts as close; weigh specs if suggestions look far off
-            if shared := len(mine & {(s["key"], normalize(s["value"])) for s in p["specs"]}):
-                result = find_sellers(conn, p["product_id"], q, now)
-                found += [(shared, a) for a in offers("similar_product", result, result.sellers + result.ask_them) if a.open_now is not False]
+        ).fetchall()
+        ranked = sorted(((len(mine & {(s["key"], normalize(s["value"])) for s in p["specs"]}), p["product_id"]) for p in rows), key=lambda r: -r[0])
+        found = []
+        # shortcut: sellers of only the 5 products sharing the most specs are looked up; weigh specs if suggestions look far off
+        for shared, product_id in [r for r in ranked if r[0]][:5]:
+            result = find_sellers(conn, product_id, q, now)
+            found += [(shared, a) for a in offers("similar_product", result, result.sellers + result.ask_them) if a.open_now is not False]
         return [a for _, a in sorted(found, key=lambda x: (-x[0], near(x[1])))]
 
     def category_only():
