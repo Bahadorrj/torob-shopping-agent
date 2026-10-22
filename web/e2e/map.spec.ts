@@ -71,7 +71,8 @@ test("map pins cluster one pasaj, tapping one shows its shops, the toggle keeps 
   const first = picked.getByRole("listitem").filter({ hasText: a.shop_name });
   await expect(first).toContainText("۳٬۵۰۰٬۰۰۰ تومان");
   await expect(first).toContainText("قیمت ثبت‌شده");
-  await expect(first.getByRole("link", { name: "صفحه فروشگاه" })).toHaveAttribute("href", "/shops/shop_a");
+  await expect(first.getByRole("link", { name: a.shop_name })).toHaveAttribute("href", "/shops/shop_a");
+  await expect(first.getByRole("button", { name: "پرسیدن از فروشنده" })).toBeVisible();
   expect(await noOverflow(page)).toBe(0);
 
   const sent = patches.length;

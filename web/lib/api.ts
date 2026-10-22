@@ -390,6 +390,14 @@ export type Directions = {
   last_leg: { pasaj: string | null; landmark: string | null; floor: string | null; unit: string | null };
 };
 
+export async function getDirections(shopId: string, from: { lat: number; lon: number }, mode: TravelMode): Promise<Directions | null> {
+  const q = new URLSearchParams({ lat: String(from.lat), lon: String(from.lon), mode });
+  const r = await fetch(`/api/shops/${encodeURIComponent(shopId)}/directions?${q}`);
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`directions failed: ${r.status}`);
+  return r.json();
+}
+
 // the shop's latest sent inquiry in the plan's session
 export type StopInquiry = Outcome & {
   product_id: string;
