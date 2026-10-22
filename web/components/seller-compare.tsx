@@ -5,11 +5,23 @@ import { useEffect, useState } from "react";
 
 import { MODES } from "@/components/brief-bar";
 import { useBrief } from "@/components/brief-provider";
+import { clock, InquiryTracker } from "@/components/inquiry-tracker";
 import { DELIVERY, NotRecorded } from "@/components/shop-details";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { compareSellers, type Brief, type CompareParams, type SellerColumn, type SellerCompare as Compare } from "@/lib/api";
+import {
+  compareSellers,
+  composeInquiries,
+  confirmInquiries,
+  inquiriesStreamUrl,
+  type Brief,
+  type CompareParams,
+  type InquiryStatus,
+  type SellerColumn,
+  type SellerCompare as Compare,
+} from "@/lib/api";
 import { distance, faDigits, faText, localDate, priceAge } from "@/lib/format";
+import { useEventStream } from "@/lib/use-event-stream";
 
 function params(b: Brief): CompareParams {
   const v = b.visit_window;
@@ -45,7 +57,28 @@ const ROWS: [string, (s: SellerColumn) => React.ReactNode][] = [
         </div>
       ),
   ],
-  ["آخرین قیمت", () => <NotRecorded text="هنوز استعلام نشده" />],
+  [
+    "آخرین قیمت",
+    ({ latest_price: p }) =>
+      p.status === "confirmed" && p.price_toman !== null && p.at ? (
+        <div className="flex flex-col gap-0.5">
+          <span className="font-bold">{faDigits(p.price_toman)} تومان</span>
+          <span className="text-muted-foreground">تأیید فروشنده - ساعت {clock(p.at)}</span>
+        </div>
+      ) : (
+        <NotRecorded text={p.status === "asked" ? "منتظر پاسخ فروشنده" : "هنوز استعلام نشده"} />
+      ),
+  ],
+  [
+    "موجودی",
+    // "available" only with the time the seller confirmed it
+    ({ inquiry: i }) =>
+      i?.replied_at && i.available !== "unknown" ? (
+        `${i.available === "yes" ? "موجود است" : "موجود نیست"} - ساعت ${clock(i.replied_at)}`
+      ) : (
+        <NotRecorded text="تأیید نشده" />
+      ),
+  ],
   ["فاصله و زمان", (s) => s.distance_m !== null && s.travel_min !== null && `${distance(s.distance_m)}، ${faDigits(s.travel_min)} دقیقه`],
   [
     "باز در زمان رسیدن",
@@ -55,11 +88,22 @@ const ROWS: [string, (s: SellerColumn) => React.ReactNode][] = [
   [
     "پرداخت و اقساط",
     (s) =>
-      s.payment_options.length > 0 &&
-      s.payment_options.map((p) => `${p.provider} (${p.channel === "in_person" ? "حضوری" : "نحوه پرداخت نامشخص"})`).join("، "),
+      [
+        ...s.payment_options.map((p) => `${p.provider} (${p.channel === "in_person" ? "حضوری" : "نحوه پرداخت نامشخص"})`),
+        ...(s.inquiry?.installments === true ? ["اقساط یا ترب‌پی (تأیید فروشنده)"] : []),
+        ...(s.inquiry?.installments === false ? ["اقساط ندارد (تأیید فروشنده)"] : []),
+      ].join("، "),
   ],
   ["ارسال سریع", (s) => DELIVERY[s.fast_delivery]],
-  ["اعتبار قیمت", (s) => s.trust_level === "listed" && <Badge variant="secondary">ثبت‌شده</Badge>],
+  [
+    "اعتبار قیمت",
+    (s) =>
+      s.latest_price.status === "confirmed" ? (
+        <Badge>تأییدشده</Badge>
+      ) : (
+        s.trust_level === "listed" && <Badge variant="secondary">ثبت‌شده</Badge>
+      ),
+  ],
 ];
 
 // the visit plan for the compared shops; the brief's visit time, else now, is when the trip starts
@@ -82,8 +126,13 @@ type State = { status: "loading" } | { status: "error" } | { status: "missing" }
 export function SellerCompare({ productId, offerIds }: { productId: string; offerIds: string[] }) {
   const { session } = useBrief();
   const [state, setState] = useState<State>({ status: "loading" });
-  // refetch only when a brief field the compare reads changes
-  const key = session && JSON.stringify(params(session.brief));
+  const [composeError, setComposeError] = useState(false);
+  const sid = session?.session_id ?? null;
+  const tracked = useEventStream<InquiryStatus>(sid && inquiriesStreamUrl(sid));
+  const inquiries = (tracked?.inquiries ?? []).filter((i) => i.product_id === productId);
+  // refetch only when a brief field the compare reads changes, or a seller replies
+  const replies = inquiries.map((i) => i.events.length).join();
+  const key = session && JSON.stringify({ ...params(session.brief), session_id: session.session_id });
   const ids = offerIds.join();
 
   useEffect(() => {
@@ -92,7 +141,16 @@ export function SellerCompare({ productId, offerIds }: { productId: string; offe
       (compare) => setState(compare ? { status: "done", compare } : { status: "missing" }),
       () => setState({ status: "error" }),
     );
-  }, [productId, ids, key]);
+  }, [productId, ids, key, replies]);
+
+  async function ask() {
+    try {
+      await composeInquiries(sid!, ids.split(","));
+      setComposeError(false);
+    } catch {
+      setComposeError(true);
+    }
+  }
 
   if (state.status === "loading") return <p className="text-sm text-muted-foreground">در حال بارگذاری...</p>;
   if (state.status === "error") return <p className="text-sm text-destructive">مقایسه دریافت نشد. دوباره تلاش کنید.</p>;
@@ -138,10 +196,6 @@ export function SellerCompare({ productId, offerIds }: { productId: string; offe
               {compare.sellers.map((s) => (
                 <td key={s.offer_id} className="p-1.5 align-top">
                   <div className="flex flex-col gap-1.5">
-                    {/* shortcut: disabled until the Seller Liaison sends inquiries */}
-                    <Button size="xs" disabled title="استعلام به‌زودی" className={WRAP}>
-                      پرسیدن از فروشنده
-                    </Button>
                     <Link href={`/shops/${s.shop_id}`} className={buttonVariants({ variant: "outline", size: "xs", className: WRAP })}>
                       دیدن فروشگاه
                     </Link>
@@ -155,6 +209,12 @@ export function SellerCompare({ productId, offerIds }: { productId: string; offe
       <p className="text-xs text-muted-foreground">
         زمان رسیدن با فرض خط مستقیم و {MODES[compare.travel_mode]} تخمین زده شده است.
       </p>
+      <Button onClick={ask} disabled={!sid} className="h-auto py-2 whitespace-normal">
+        استعلام از {faDigits(compare.sellers.length)} فروشنده
+      </Button>
+      <p className="text-xs text-muted-foreground">موجودی، قیمت امروز، نگه‌داشتن کالا و اقساط را می‌پرسیم. اول پیش‌نویس را می‌بینید.</p>
+      {composeError && <p className="text-sm text-destructive">پیش‌نویس ساخته نشد. برای هر کالا حداکثر ۳ استعلام باز می‌ماند.</p>}
+      <InquiryTracker inquiries={inquiries} onConfirm={(inquiryIds) => confirmInquiries(sid!, inquiryIds)} />
       {plan ? (
         <Link href={plan} className={buttonVariants({ size: "lg", className: "self-center" })}>
           برنامه مراجعه

@@ -7,8 +7,10 @@ from typing import Annotated, Literal, Self
 from pydantic import AfterValidator, AwareDatetime, BaseModel, Field, model_validator
 
 from pasazhgard.compare import get_product
+from pasazhgard.inquiries import outcomes
+from pasazhgard.normalize import distinct
 from pasazhgard.routing import SPEED_KMH, TravelMode
-from pasazhgard.sellers import SellerRow, _distance, _row, distinct, seller_offers
+from pasazhgard.sellers import SellerRow, _distance, _row, seller_offers
 from pasazhgard.shops import TEHRAN, open_at
 
 
@@ -19,6 +21,8 @@ class CompareQuery(BaseModel):
     mode: TravelMode = "walk"
     # the visit time; without it each seller is reached at now + its travel time
     arrival: AwareDatetime | None = None
+    # the session whose inquiries fill `latest_price` and `inquiry`
+    session_id: str | None = None
 
     @model_validator(mode="after")
     def _origin(self) -> Self:
@@ -27,18 +31,7 @@ class CompareQuery(BaseModel):
         return self
 
 
-class LatestPrice(BaseModel):
-    """A price newer than the listing: one a seller confirmed or a website showed."""
-
-    # shortcut: always not_asked; the Seller Liaison and fetch_site_price fill it once they exist
-    status: Literal["not_asked"] = "not_asked"
-    price_toman: int | None = None
-    trust_level: Literal["unknown"] = "unknown"
-    at: datetime | None = None
-
-
 class SellerColumn(SellerRow):
-    latest_price: LatestPrice = LatestPrice()
     travel_min: int | None
     arrival_at: datetime
     # None when the shop's hours for that day are not recorded
@@ -64,6 +57,7 @@ def compare_sellers(conn, product_id: str, q: CompareQuery, now: datetime) -> Se
     by_id = {o["offer_id"]: o for o in seller_offers(conn, product_id) if o["offer_id"] in q.offer_id}
     if len(by_id) != len(q.offer_id):
         return None
+    asked = outcomes(conn, q.session_id, product_id) if q.session_id else {}
     cols = []
     for oid in q.offer_id:
         o = by_id[oid]
@@ -72,7 +66,7 @@ def compare_sellers(conn, product_id: str, q: CompareQuery, now: datetime) -> Se
         at = (q.arrival or now + timedelta(minutes=travel or 0)).astimezone(TEHRAN)
         cols.append(
             SellerColumn(
-                **_row(o, d, now).model_dump(),
+                **_row(o, d, now, asked.get(o["shop_id"])).model_dump(),
                 travel_min=travel,
                 arrival_at=at,
                 open_at_arrival=open_at(o["hours"], at),

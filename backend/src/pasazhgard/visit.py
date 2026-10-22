@@ -8,9 +8,9 @@ from typing import Annotated
 from pydantic import AfterValidator, AwareDatetime, BaseModel, Field
 
 from pasazhgard.brief import Point
-from pasazhgard.normalize import normalize
+from pasazhgard.normalize import distinct, normalize
 from pasazhgard.routing import LatLon, Route, Router, TravelMode, straight_line
-from pasazhgard.sellers import distance_m, distinct
+from pasazhgard.sellers import distance_m
 from pasazhgard.shops import TEHRAN, open_at
 
 
