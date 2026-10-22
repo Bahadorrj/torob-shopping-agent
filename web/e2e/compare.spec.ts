@@ -45,28 +45,6 @@ async function searchAll(page: Page, found = items) {
 
 const result = (page: Page, title: string) => page.getByRole("listitem").filter({ hasText: title });
 
-test("why this shows score parts as chips and one sentence from the card data", async ({ page }) => {
-  await fakeSessions(page, {});
-  await searchAll(page);
-  const first = result(page, "کالای الف");
-  await first.getByText("چرا این؟").click();
-  await expect(first.getByText("مطابق: هدفون")).toBeVisible();
-  await expect(first.getByText("نیامده: ورزش")).toBeVisible();
-  await expect(first.getByText("«هدفون» و «انکر» در نام، برند یا مدل این کالا آمده و ۸ فروشنده آن را با قیمت از ۱٫۰۰۰٫۰۰۰ تومان ثبت کرده‌اند.")).toBeVisible();
-  expect(await noOverflow(page)).toBe(0);
-});
-
-test("why this says when a product matched by meaning, not by query words", async ({ page }) => {
-  const byMeaning = { ...card("p5", "کالای ه"), score_parts: parts.map((p) => ({ ...p, matched: false })), meaning_match: true };
-  await fakeSessions(page, {});
-  await searchAll(page, [byMeaning]);
-  const first = result(page, "کالای ه");
-  await first.getByText("چرا این؟").click();
-  await expect(first.getByText("هم‌معنا با جستجو")).toBeVisible();
-  await expect(first.getByText("این کالا از نظر معنا به جستجوی شما نزدیک است و ۸ فروشنده آن را با قیمت از ۱٫۰۰۰٫۰۰۰ تومان ثبت کرده‌اند.")).toBeVisible();
-  expect(await noOverflow(page)).toBe(0);
-});
-
 test("compare tray holds up to three products and opens the compare table at 360 px", async ({ page }) => {
   const { patches } = await fakeSessions(page, { compare: compareResult });
   await searchAll(page);

@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, SlidersHorizontal } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useBrief } from "@/components/brief-provider";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,8 @@ const PROVIDERS = ["ترب‌پی", "اسنپ‌پی", "دیجی‌پی", "تا�
 const MUST_HAVE: Record<keyof MustHave, string> = { warranty: "گارانتی", test_in_presence: "تست در حضور مشتری", fast_delivery: "ارسال سریع" };
 
 type Sheet = "area" | "budget" | "all";
+// another part of the page (home's pasaj list) opens the area sheet with this window event
+export const OPEN_AREA = "pasazhgard:open-area";
 const TITLES: Record<Sheet, string> = { area: "محدوده", budget: "بودجه", all: "فیلترها" };
 
 const CHIP =
@@ -84,6 +86,14 @@ export function FilterChipBar() {
   const [sheet, setSheet] = useState<Sheet>("all");
   const [open, setOpen] = useState(false);
   const [geoError, setGeoError] = useState(false);
+  useEffect(() => {
+    const onOpen = () => {
+      setSheet("area");
+      setOpen(true);
+    };
+    window.addEventListener(OPEN_AREA, onOpen);
+    return () => window.removeEventListener(OPEN_AREA, onOpen);
+  }, []);
   if (!session) return null;
   const { brief, centers } = session;
   const set = (b: SessionPatch["brief"]) => patch({ brief: b });
