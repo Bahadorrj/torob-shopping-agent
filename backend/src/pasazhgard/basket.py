@@ -14,8 +14,6 @@ from pasazhgard.sellers import SellerQuery, _distance, _in_area, find_sellers
 # a coil of wire, in meters
 COIL_M = 100
 _UNITS = {"عدد": ("piece", 1), "تا": ("piece", 1), "دانه": ("piece", 1), "متر": ("meter", 1), "حلقه": ("meter", COIL_M), "کلاف": ("meter", COIL_M)}
-# only a number with a unit word is a quantity: in "کلید مینیاتوری ۱۶" the 16 is amperes
-_QUANTITY = re.compile(rf"(\d+(?:\.\d+)?)\s*({'|'.join(_UNITS)})(?!\w)")
 
 
 class BasketQuery(SellerQuery):
@@ -66,12 +64,14 @@ class Basket(BaseModel):
 
 def parse_lines(text: str) -> list[tuple[str, str, int, str]]:
     """Each line as (line, search words, quantity, unit); commas separate items as newlines do."""
+    # only a number with a unit word is a quantity: in "کلید مینیاتوری ۱۶" the 16 is amperes
+    quantity_re = re.compile(rf"(\d+(?:\.\d+)?)\s*({'|'.join(_UNITS)})(?!\w)")
     out = []
     for line in (p.strip() for p in re.split(r"[\n\r،,;]+", text)):
         if not line:
             continue
         words, quantity, unit = normalize(line), 1, "piece"
-        if m := _QUANTITY.search(words):
+        if m := quantity_re.search(words):
             unit, per = _UNITS[m[2]]
             quantity = max(1, round(float(m[1]) * per))
             words = (words[: m.start()] + words[m.end() :]).strip()
@@ -123,12 +123,13 @@ def optimize_basket(conn, q: BasketQuery, now: datetime) -> Basket:
                     )
     coverable = set().union(*(o.keys() for o in offers.values()))
 
-    def cost(o: dict[int, StopItem]) -> tuple[int, int]:
-        return (sum(s.total_toman is None for s in o.values()), sum(s.total_toman or 0 for s in o.values()))
+    def cost(items: list[StopItem]) -> tuple[int, int]:
+        """Priced before unpriced, then cheapest."""
+        return (sum(s.total_toman is None for s in items), sum(s.total_toman or 0 for s in items))
 
     # shops covering the same items compete; the 3 cheapest of each kind keep the exhaustive search small
     by_cover: dict[frozenset, list[str]] = {}
-    for shop_id in sorted(offers, key=lambda s: (cost(offers[s]), s)):
+    for shop_id in sorted(offers, key=lambda s: (cost(list(offers[s].values())), s)):
         by_cover.setdefault(frozenset(offers[shop_id]), []).append(shop_id)
     candidates = [s for shops in by_cover.values() for s in shops[:3]]
 
@@ -137,7 +138,7 @@ def optimize_basket(conn, q: BasketQuery, now: datetime) -> Basket:
         picks = {}
         for s in shops:
             for i, o in offers[s].items():
-                if i not in picks or (o.total_toman is None, o.total_toman or 0) < (picks[i][1].total_toman is None, picks[i][1].total_toman or 0):
+                if i not in picks or cost([o]) < cost([picks[i][1]]):
                     picks[i] = (s, o)
         return picks
 
@@ -147,7 +148,7 @@ def optimize_basket(conn, q: BasketQuery, now: datetime) -> Basket:
             picks = assign(shops)
             if picks.keys() != coverable:
                 continue
-            key = (sum(o.total_toman is None for _, o in picks.values()), sum(o.total_toman or 0 for _, o in picks.values()), shops)
+            key = (cost([o for _, o in picks.values()]), shops)
             if best is None or key < best[0]:
                 best = (key, picks)
         if best:
