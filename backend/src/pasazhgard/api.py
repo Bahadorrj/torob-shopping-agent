@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from pasazhgard.brief import Session, SessionPatch, create_session, get_session, patch_session
 from pasazhgard.search import SearchResult, search_products
+from pasazhgard.seller_compare import CompareQuery, SellerCompare, compare_sellers
 from pasazhgard.sellers import SellerList, SellerQuery, find_sellers
 from pasazhgard.shops import TEHRAN, ShopDetails, shop_details
 
@@ -64,6 +65,19 @@ def products_sellers(
     result = find_sellers(conn, product_id, q, now)
     if result is None:
         raise HTTPException(404, "product not found")
+    return result
+
+
+@app.get("/products/{product_id}/sellers/compare")
+def products_sellers_compare(
+    product_id: str,
+    q: Annotated[CompareQuery, Query()],
+    conn=Depends(get_conn),
+    now: datetime = Depends(get_now),
+) -> SellerCompare:
+    result = compare_sellers(conn, product_id, q, now)
+    if result is None:
+        raise HTTPException(404, "product or offer not found")
     return result
 
 
