@@ -17,7 +17,7 @@ from pasazhgard.search import SearchResult, search_products
 from pasazhgard.seller_compare import CompareQuery, SellerCompare, compare_sellers
 from pasazhgard.sellers import SellerList, SellerQuery, find_sellers
 from pasazhgard.shops import TEHRAN, ShopDetails, shop_details
-from pasazhgard.visit import Directions, DirectionsQuery, get_directions
+from pasazhgard.visit import Directions, DirectionsQuery, PlanQuery, VisitPlan, get_directions, plan_visit
 
 app = FastAPI(title="Pasazhgard")
 
@@ -134,6 +134,19 @@ def shops_directions(
     if directions is None:
         raise HTTPException(404, "shop not found")
     return directions
+
+
+@app.get("/visit-plan")
+def visit_plan(
+    q: Annotated[PlanQuery, Query()],
+    conn=Depends(get_conn),
+    now: datetime = Depends(get_now),
+    router: Router = Depends(get_router),
+) -> VisitPlan:
+    plan = plan_visit(conn, q, now, router)
+    if plan is None:
+        raise HTTPException(404, "shop not found")
+    return plan
 
 
 @app.post("/sessions", status_code=201)
