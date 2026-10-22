@@ -2,18 +2,18 @@
 
 import type { Message, ToolMessage } from "@ag-ui/client";
 import { CopilotKitProvider, useAgent, useConfigureSuggestions, useCopilotKit, useRenderToolCall, useSuggestions } from "@copilotkit/react-core/v2";
-import { ArrowUp, X } from "lucide-react";
+import { ArrowUp, History, SquarePen, Trash2, X } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { Fragment, useEffect, useState } from "react";
 
 import { AGENT_SEND, ToolRenderers } from "@/components/agent-blocks";
-import { useBrief } from "@/components/brief-provider";
+import { forgetSession, recentSessionIds, useBrief } from "@/components/brief-provider";
 import { CompareTrayBar } from "@/components/compare-tray";
 import { CATEGORIES } from "@/components/home-start";
 import { Button } from "@/components/ui/button";
-import { Drawer, DrawerClose, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
+import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
-import { getThread } from "@/lib/api";
+import { getSession, getThread } from "@/lib/api";
 
 export { AGENT_SEND };
 export const HELP_CHOOSE = "کمکم کن انتخاب کنم";
@@ -48,24 +48,94 @@ function lastBlock(messages: Message[]) {
 // Home shows the thread inline under its app bar; other routes keep it in a drawer behind the agent bar.
 export function AgentSheet() {
   const { session } = useBrief();
+  // kept above the per-chat Sheet, so switching chats leaves the drawer open
+  const [open, setOpen] = useState(false);
   // the session only exists in the browser, which also keeps the provider (it reads the clock) out of prerender
   if (!session) return null;
   return (
     <CopilotKitProvider runtimeUrl="/api/copilotkit" useSingleEndpoint>
       <ToolRenderers />
-      <Sheet key={session.session_id} threadId={session.session_id} />
+      <Sheet key={session.session_id} threadId={session.session_id} open={open} setOpen={setOpen} />
     </CopilotKitProvider>
   );
 }
 
-function Sheet({ threadId }: { threadId: string }) {
+type Chat = { id: string; title: string };
+
+// this device's chats titled by their first user message; gone sessions and chats nobody wrote in are left out
+async function pastChats(): Promise<Chat[]> {
+  const chats = await Promise.all(
+    recentSessionIds().map(async (id) => {
+      try {
+        const [session, thread] = await Promise.all([getSession(id), getThread(id)]);
+        const first = thread.find((m) => m.role === "user");
+        return session && first ? { id, title: String(first.content) } : null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return chats.filter((c) => c !== null);
+}
+
+function ChatHistory({ open, onOpenChange, current }: { open: boolean; onOpenChange: (open: boolean) => void; current: string }) {
+  const { resume } = useBrief();
+  const [chats, setChats] = useState<Chat[] | null>(null);
+
+  useEffect(() => {
+    if (open) pastChats().then(setChats);
+  }, [open]);
+
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange} showSwipeHandle>
+      <DrawerContent>
+        <DrawerHeader>
+          <DrawerTitle className="font-bold">تاریخچه</DrawerTitle>
+        </DrawerHeader>
+        <div className="overflow-y-auto p-4">
+          {chats?.length === 0 && <p className="text-sm text-muted-foreground">هنوز گفتگویی نیست.</p>}
+          <ul className="flex flex-col divide-y divide-rule">
+            {chats?.map((c) => (
+              <li key={c.id} className="flex items-center gap-2 py-1">
+                <button
+                  type="button"
+                  className="flex min-w-0 flex-1 flex-col items-start py-2 text-start"
+                  onClick={() => {
+                    onOpenChange(false);
+                    if (c.id !== current) resume(c.id);
+                  }}
+                >
+                  <span className="w-full truncate text-sm">{c.title}</span>
+                  {c.id === current && <span className="text-xs text-muted-foreground">گفتگوی فعلی</span>}
+                </button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="حذف از تاریخچه"
+                  onClick={() => {
+                    forgetSession(c.id);
+                    setChats(chats.filter((x) => x.id !== c.id));
+                  }}
+                >
+                  <Trash2 />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
+function Sheet({ threadId, open, setOpen }: { threadId: string; open: boolean; setOpen: (open: boolean) => void }) {
   const { agent } = useAgent({ agentId: "sheet", runtimeAgentId: "pasazhgard", threadId });
   const { copilotkit } = useCopilotKit();
   const renderToolCall = useRenderToolCall();
-  const { refresh } = useBrief();
-  const [open, setOpen] = useState(false);
+  const { refresh, resume } = useBrief();
   const [text, setText] = useState("");
   const [thread, setThread] = useState<Message[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const [shownPath, setShownPath] = useState(pathname);
@@ -108,6 +178,26 @@ function Sheet({ threadId }: { threadId: string }) {
     window.addEventListener(AGENT_SEND, onSend);
     return () => window.removeEventListener(AGENT_SEND, onSend);
   });
+
+  // a new chat is a new session, which also starts the brief over
+  const actions = (
+    <div className="flex items-center">
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={agent.isRunning || !agent.messages.some((m) => m.role === "user")}
+        onClick={() => resume(null)}
+      >
+        <SquarePen aria-hidden />
+        گفتگوی جدید
+      </Button>
+      <Button variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}>
+        <History aria-hidden />
+        تاریخچه
+      </Button>
+      <ChatHistory open={historyOpen} onOpenChange={setHistoryOpen} current={threadId} />
+    </div>
+  );
 
   const results = new Map(agent.messages.filter((m): m is ToolMessage => m.role === "tool").map((m) => [m.toolCallId, m]));
   const body = (
@@ -173,6 +263,7 @@ function Sheet({ threadId }: { threadId: string }) {
     return (
       // fills the screen under home's 56 px app bar, with the input at the bottom
       <section aria-label="دستیار" className="fixed inset-x-0 top-14 bottom-0 mx-auto flex w-full max-w-xl flex-col gap-2 px-4 pb-3">
+        <div className="flex justify-end pt-2">{actions}</div>
         {body}
       </section>
     );
@@ -194,8 +285,9 @@ function Sheet({ threadId }: { threadId: string }) {
       <Drawer open={open} onOpenChange={setOpen} modal={false} showSwipeHandle>
         <DrawerContent className="h-[90dvh] max-h-[90dvh]">
           <section aria-label="دستیار" className="mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col gap-2 px-4 pb-3">
-            <div className="flex items-center justify-between">
-              <DrawerTitle className="font-bold">دستیار خرید</DrawerTitle>
+            <div className="flex items-center gap-1">
+              <DrawerTitle className="flex-1 font-bold">دستیار خرید</DrawerTitle>
+              {actions}
               <DrawerClose render={<Button variant="ghost" size="icon" aria-label="بستن" />}>
                 <X />
               </DrawerClose>
