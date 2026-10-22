@@ -15,7 +15,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk
 from langchain_core.outputs import ChatGenerationChunk
 
 from pasazhgard.api import get_chat_model, get_small_model
-from pasazhgard.grounding import ungrounded_turn
+from pasazhgard.grounding import known_shops, ungrounded_turn
 from pasazhgard.normalize import normalize
 
 ADMIN_URL = os.environ.get("TEST_ADMIN_DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/postgres")
@@ -111,8 +111,10 @@ class Turn:
 class Agent:
     """Drives /agent as CopilotKit does: one AG-UI run per user message on the session's thread."""
 
-    def __init__(self, client):
+    def __init__(self, client, shops=None):
         self.client = client
+        # the data's shop names, for the grounding check
+        self.shops = shops
         self.session_id = client.post("/sessions").json()["session_id"]
         # CopilotKit sends the whole thread every run, as the last MESSAGES_SNAPSHOT left it
         self.history: list[dict] = []
@@ -155,14 +157,20 @@ class Agent:
         )
         # every turn of every test is checked against what its tools returned
         self.history = [e for e in events if e["type"] == "MESSAGES_SNAPSHOT"][-1]["messages"]
-        missing = ungrounded_turn(self.history)
+        missing = ungrounded_turn(self.history, self.shops)
         assert not missing, missing
         return turn
 
 
+@pytest.fixture(scope="session")
+def shops(database_url):
+    with psycopg.connect(database_url) as conn:
+        return known_shops(conn)
+
+
 @pytest.fixture
-def agent(client):
-    yield Agent(client)
+def agent(client, shops):
+    yield Agent(client, shops)
     client.app.dependency_overrides[get_chat_model] = lambda: None
 
 

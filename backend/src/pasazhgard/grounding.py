@@ -1,4 +1,4 @@
-"""Grounding check: prices, shop ids and availability the agent states must come from tool output."""
+"""Grounding check: prices, shops and availability the agent states must come from tool output."""
 
 import json
 import re
@@ -10,6 +10,15 @@ _NUMBER = re.compile(r"(\d+(?:[.٫/]\d+)?)\s*(میلیون|هزار)|\d{1,3}(?:[
 _SHOP = re.compile(r"shop_[0-9a-f]+")
 _IN_STOCK = re.compile(r"(?<!نا)موجود(?! نیست)")
 _OUT_OF_STOCK = re.compile(r"ناموجود|موجود نیست")
+_SENTENCE = re.compile(r"[.!?؟\n]+")
+
+
+def known_shops(conn) -> re.Pattern | None:
+    """The data's shop names as one pattern over normalized text, so agent text that names a shop can be checked.
+
+    A shop name absent from the data is not caught: only names of real shops are claims."""
+    names = sorted({normalize(r[0]) for r in conn.execute("SELECT name FROM shops")} - {""}, key=len, reverse=True)
+    return re.compile(r"(?<!\w)(?:" + "|".join(map(re.escape, names)) + r")(?!\w)") if names else None
 
 
 def _prices(text: str) -> set[int]:
@@ -42,21 +51,59 @@ def _known_prices(source: str) -> set[int]:
     return out
 
 
-def ungrounded(claims: str, sources: list[str]) -> list[str]:
-    """The claims in `claims` (agent text) that no source (tool output, the user's own words) backs."""
+def _availability(sources: list[str]) -> dict[str, set[str]]:
+    """The `available` values tool output gives each shop, by normalized name and by id: a value counts for the
+    nearest object above it that names a shop (an inquiry, a plan stop, a seller row)."""
+    out: dict[str, set[str]] = {}
+
+    def walk(node, shops):
+        if isinstance(node, dict):
+            shops = [normalize(v) for k in ("shop_id", "shop_name") if isinstance(v := node.get(k), str)] or shops
+            for k, v in node.items():
+                if k == "available" and isinstance(v, str):
+                    for s in shops:
+                        out.setdefault(s, set()).add(v)
+                else:
+                    walk(v, shops)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v, shops)
+
+    for source in sources:
+        try:
+            walk(json.loads(source), [])
+        except ValueError:
+            pass
+    return out
+
+
+def ungrounded(claims: str, sources: list[str], shops: re.Pattern | None = None) -> list[str]:
+    """The claims in `claims` (agent text) that no source (tool output, the user's own words) backs.
+    `shops`: the data's shop names (`known_shops`); without it only shop ids are checked."""
     source = " ".join(sources)
     known = set().union(*map(_known_prices, sources))
     missing = [f"price {p}" for p in sorted(_prices(claims) - known)]
     missing += [f"shop {s}" for s in sorted(set(_SHOP.findall(claims)) - set(_SHOP.findall(source)))]
-    text = normalize(claims)
-    if _IN_STOCK.search(text) and not re.search(r'"available":\s*"yes"', source):
-        missing.append("in stock")
-    if _OUT_OF_STOCK.search(text) and not re.search(r'"available":\s*"no"', source):
-        missing.append("out of stock")
+    text, said = normalize(claims), normalize(source)
+    if shops:
+        missing += [f"shop {s}" for s in sorted(set(shops.findall(text)) - set(shops.findall(said)))]
+    available = _availability(sources)
+    for sentence in _SENTENCE.split(text):
+        # stock said of named shops needs each of them to have said so; said of none, any seller will do
+        named = _SHOP.findall(sentence) + (shops.findall(sentence) if shops else [])
+        for claim, value, label in ((_IN_STOCK, "yes", "in stock"), (_OUT_OF_STOCK, "no", "out of stock")):
+            if not claim.search(sentence) or label in missing:
+                continue
+            if named:
+                backed = all(value in available.get(s, ()) for s in named)
+            else:
+                backed = re.search(rf'"available":\s*"{value}"', source)
+            if not backed:
+                missing.append(label)
     return missing
 
 
-def ungrounded_turn(messages: list[dict]) -> list[str]:
+def ungrounded_turn(messages: list[dict], shops: re.Pattern | None = None) -> list[str]:
     """Ungrounded claims in the last turn of an AG-UI thread: the assistant's text and the questions it asks,
     against that turn's tool output and the user's words."""
     turn = messages[max(i for i, m in enumerate(messages) if m["role"] == "user") :]
@@ -68,4 +115,4 @@ def ungrounded_turn(messages: list[dict]) -> list[str]:
                 claims.append(json.loads(m["content"]).get("question", ""))
             except (ValueError, AttributeError):
                 pass
-    return ungrounded(" ".join(claims), sources)
+    return ungrounded(" ".join(claims), sources, shops)

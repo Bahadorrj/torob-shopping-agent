@@ -182,6 +182,8 @@ def test_a_price_from_tool_output_is_grounded(agent):
         # the model code A3949 in the tool output is no price
         ("ارزان‌ترین ۳۹۴۹ تومان است.", "price 3949"),
         (f"فروشگاه {CHEAPEST_SHOP[:-1]}0 ارزان‌تر است.", "shop shop_"),
+        # a shop of the data that this turn's tools did not return
+        ("نیکورا نیکان ارزان‌تر است.", "shop نیکورا نیکان"),
         # no seller confirmed stock
         ("این هدفون موجود است.", "in stock"),
     ],
@@ -191,6 +193,24 @@ def test_an_ungrounded_price_shop_or_stock_claim_fails_the_turn(agent, claim, fo
 
     with pytest.raises(AssertionError, match=found):
         agent.turn("ارزان‌ترین فروشنده؟")
+
+
+def test_a_shop_named_in_tool_output_is_grounded(agent):
+    agent.script(agent.brief(), agent.call("find_sellers", product_id=ANKER), "نیکورا ویوان ارزان‌ترین است.")
+
+    agent.turn("ارزان‌ترین فروشنده؟")
+
+
+def test_stock_is_grounded_only_for_the_shop_that_confirmed_it(agent, client):
+    from test_inquiries import compose, confirm, ids, reply
+
+    mansa, _ = ids(confirm(client, agent.session_id, *ids(compose(client, agent.session_id, MANSA, MAHIS))))
+    reply(client, mansa, available="yes")
+    agent.script(agent.brief(), agent.call("get_inquiries"), "دیسیلا مانسا موجود دارد.", agent.brief(), agent.call("get_inquiries"), "نیین ماهیس موجود دارد.")
+
+    agent.turn("کی جواب داد؟")
+    with pytest.raises(AssertionError, match="in stock"):
+        agent.turn("نیین ماهیس چی؟")
 
 
 def test_the_quantity_the_user_states_applies_to_the_total_budget(agent):
