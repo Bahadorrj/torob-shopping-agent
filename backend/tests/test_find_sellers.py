@@ -179,3 +179,8 @@ def test_per_meter_prices_do_not_beat_per_piece_ones(database_url, now):
     assert [(r.price_toman, r.per_meter) for r in rows] == [(5000000, False), (436000, True), (3600000, True)]
     # the meter prices are not compared with the roll, and the roll has no per-piece rival
     assert [r.shop_id for r in rows if "cheapest" in kinds(r.model_dump())] == []
+
+
+def test_rows_carry_the_shop_location_for_the_map(client):
+    row = next(s for s in sellers(client)["sellers"] if s["shop_name"] == "دیسیلا مانسا")
+    assert (row["lat"], row["lon"]) == (ALADDIN["lat"], ALADDIN["lon"])
