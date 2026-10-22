@@ -22,12 +22,15 @@ def hit_count(client, cases: list[dict]) -> int:
 
 
 if __name__ == "__main__":
+    import asyncio
+
     from fastapi.testclient import TestClient
 
     from pasazhgard.api import app, get_embedder
 
     cases = json.loads((Path(__file__).parent / "search_queries.json").read_text(encoding="utf-8"))
-    with TestClient(app) as client:
+    # the agent's async checkpointer cannot run on Windows' default Proactor loop
+    with TestClient(app, backend_options={"loop_factory": asyncio.SelectorEventLoop}) as client:
         hits = hit_count(client, cases)
     print(f"mode: {'hybrid' if get_embedder() else 'lexical'}")
     print(f"top-5 hit rate: {hits}/{len(cases)} ({hits / len(cases):.0%})")

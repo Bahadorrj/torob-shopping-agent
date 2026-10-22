@@ -15,7 +15,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk
 from langchain_core.outputs import ChatGenerationChunk
 
 from pasazhgard.api import get_chat_model, get_small_model
-from pasazhgard.grounding import ungrounded
+from pasazhgard.grounding import ungrounded_turn
 from pasazhgard.normalize import normalize
 
 ADMIN_URL = os.environ.get("TEST_ADMIN_DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/postgres")
@@ -154,13 +154,8 @@ class Agent:
             [json.loads(e["content"]) for e in events if e["type"] == "TOOL_CALL_RESULT"],
         )
         # every turn of every test is checked against what its tools returned
-        snapshot = self.history = [e for e in events if e["type"] == "MESSAGES_SNAPSHOT"][-1]["messages"]
-        last_user = max(i for i, m in enumerate(snapshot) if m["role"] == "user")
-        this_turn = snapshot[last_user:]
-        claims = [m.get("content") or "" for m in this_turn if m["role"] == "assistant"]
-        claims += [b.get("question", "") for b in turn.blocks]
-        sources = [m["content"] for m in this_turn if m["role"] in ("tool", "user")]
-        missing = ungrounded(" ".join(claims), sources)
+        self.history = [e for e in events if e["type"] == "MESSAGES_SNAPSHOT"][-1]["messages"]
+        missing = ungrounded_turn(self.history)
         assert not missing, missing
         return turn
 
