@@ -253,10 +253,12 @@ def test_contact_seller_errors_are_for_the_model(agent):
 
 
 def test_get_inquiries_shows_the_tracker_and_lets_the_agent_say_in_stock(agent, client):
+    from test_inquiries import reply
+
     # MAHIS: the inquiry tests expect the Mansa console empty before they send
     [mahis] = [i["inquiry_id"] for i in client.post(f"/sessions/{agent.session_id}/inquiries", json={"offer_ids": [MAHIS]}).json()["inquiries"]]
     client.post(f"/sessions/{agent.session_id}/inquiries/confirm", json={"inquiry_ids": [mahis]})
-    client.post(f"/console/inquiries/{mahis}/replies", json={"available": "yes"})
+    reply(client, mahis, available="yes")
     agent.script(agent.brief(), agent.call("get_inquiries"), "نیین ماهیس گفته موجود است.")
 
     turn = agent.turn("فروشنده‌ها چه گفتند؟")
@@ -304,10 +306,12 @@ def test_get_directions_shows_the_route_and_last_leg(agent, client):
 
 
 def test_find_alternatives_shows_where_else_to_ask_for_an_inquiry_that_fell_through(agent, client):
+    from test_inquiries import reply
+
     sid = agent.session_id
     [draft] = client.post(f"/sessions/{sid}/inquiries", json={"offer_ids": [MANSA]}).json()["inquiries"]
     client.post(f"/sessions/{sid}/inquiries/confirm", json={"inquiry_ids": [draft["inquiry_id"]]})
-    client.post(f"/console/inquiries/{draft['inquiry_id']}/replies", json={"available": "no"})
+    reply(client, draft["inquiry_id"], available="no")
     other = client.post("/sessions").json()["session_id"]
     agent.script(
         agent.brief(),
@@ -328,10 +332,12 @@ def test_find_alternatives_shows_where_else_to_ask_for_an_inquiry_that_fell_thro
 
 
 def test_seller_tools_show_the_price_a_seller_confirmed_in_this_session(agent, client):
+    from test_inquiries import reply
+
     sid = agent.session_id
     [mahis] = [i["inquiry_id"] for i in client.post(f"/sessions/{sid}/inquiries", json={"offer_ids": [MAHIS]}).json()["inquiries"]]
     client.post(f"/sessions/{sid}/inquiries/confirm", json={"inquiry_ids": [mahis]})
-    client.post(f"/console/inquiries/{mahis}/replies", json={"latest_price_toman": 3_100_000})
+    reply(client, mahis, latest_price_toman=3_100_000)
     agent.script(agent.brief(), agent.call("find_sellers", product_id=ANKER), agent.call("compare_sellers", product_id=ANKER, offer_ids=[MAHIS]), "این‌ها.")
 
     turn = agent.turn("فروشنده‌ها")

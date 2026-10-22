@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { Alternatives } from "@/components/alternatives";
@@ -82,11 +81,6 @@ function Sent({ sessionId, inquiry: i }: { sessionId: string; inquiry: Inquiry }
         </Button>
       )}
       {FELL_THROUGH.includes(i.status) && <FallenThrough sessionId={sessionId} inquiry={i} />}
-      {i.simulated && (
-        <Link href={`/console/${i.shop_id}`} target="_blank" className="text-xs text-primary underline-offset-4 hover:underline">
-          کنسول فروشنده (شبیه‌سازی)
-        </Link>
-      )}
     </li>
   );
 }

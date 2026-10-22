@@ -1,5 +1,10 @@
 import datetime as dt
 import json
+import os
+
+import psycopg
+
+from pasazhgard.inquiries import console_token
 
 ANKER = "product_92ac53fa75e18e8e73f20b56"
 MANSA = "offer_948daebb31460ccf0b260704"  # دیسیلا مانسا: 3,500,000
@@ -9,6 +14,18 @@ PAKYAR = "offer_3c3d14695e8beea205c20a8c"  # دیسورا پاکیار
 MAHIS = "offer_4482530cb944bbe32546da26"  # نیین ماهیس
 AZAR = "offer_1700cc0225d2f15b0456b35a"  # آذرنوش دیسیس: open 10:30-18:00 on Wednesdays
 AZAR_SHOP = "shop_81c53acd00d779578fff4a40"
+# the client fixture's CONSOLE_SECRET
+SECRET = "test-console-secret"
+
+
+def token(shop_id):
+    return {"token": console_token(SECRET, shop_id)}
+
+
+def shop_of(inquiry_id):
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+        row = conn.execute("SELECT shop_id FROM inquiries WHERE inquiry_id = %s", [inquiry_id]).fetchone()
+    return row[0] if row else ""
 
 
 def new_session(client):
@@ -22,7 +39,7 @@ def compose(client, sid, *offers, status=201, **body):
 
 
 def inbox(client, shop_id):
-    r = client.get(f"/console/shops/{shop_id}/inquiries")
+    r = client.get(f"/console/shops/{shop_id}/inquiries", params=token(shop_id))
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -93,7 +110,7 @@ def sent(client, *offers):
 
 
 def reply(client, inquiry_id, status=200, **body):
-    r = client.post(f"/console/inquiries/{inquiry_id}/replies", json=body)
+    r = client.post(f"/console/inquiries/{inquiry_id}/replies", json=body, params=token(shop_of(inquiry_id)))
     assert r.status_code == status, r.text
     return r.json()
 
@@ -165,9 +182,31 @@ def test_tracker_updates_over_sse(client):
     assert client.get(f"/sessions/nope/inquiries/stream").status_code == 404
 
 
+def test_console_needs_the_shops_token(client):
+    sid, [mansa] = sent(client, MANSA)
+    inbox_url, reply_url = f"/console/shops/{MANSA_SHOP}/inquiries", f"/console/inquiries/{mansa}/replies"
+    for params in ({}, {"token": "guess"}, token(AZAR_SHOP)):
+        assert client.get(inbox_url, params=params).status_code == 403
+        assert client.get(f"{inbox_url}/stream", params=params).status_code == 403
+        assert client.post(reply_url, json={"available": "yes"}, params=params).status_code == 403
+    assert client.get(f"/sessions/{sid}/inquiries").json()["inquiries"][0]["status"] == "sent"
+    # the buyer's endpoints never carry it
+    assert token(MANSA_SHOP)["token"] not in client.get(f"/sessions/{sid}/inquiries").text
+
+
+def test_console_is_closed_without_a_secret(client):
+    from pasazhgard.api import app, get_console_secret
+
+    app.dependency_overrides[get_console_secret] = lambda: None
+    try:
+        assert client.get(f"/console/shops/{MANSA_SHOP}/inquiries", params=token(MANSA_SHOP)).status_code == 403
+    finally:
+        app.dependency_overrides[get_console_secret] = lambda: SECRET
+
+
 def test_console_updates_over_sse(client):
     _, [mansa] = sent(client, MANSA)
-    with client.stream("GET", f"/console/shops/{MANSA_SHOP}/inquiries/stream") as r:
+    with client.stream("GET", f"/console/shops/{MANSA_SHOP}/inquiries/stream", params=token(MANSA_SHOP)) as r:
         updates = events(r)
         assert next(updates)["inquiries"][0]["inquiry_id"] == mansa
         _, [newer] = sent(client, MANSA)

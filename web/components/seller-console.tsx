@@ -17,7 +17,7 @@ const QUICK: [string, ConsoleReply][] = [
   ["اقساط ندارم", { installments: false }],
 ];
 
-function Incoming({ inquiry: i }: { inquiry: Inquiry }) {
+function Incoming({ inquiry: i, token }: { inquiry: Inquiry; token: string }) {
   const [price, setPrice] = useState("");
   const [hold, setHold] = useState("");
   const [text, setText] = useState("");
@@ -27,7 +27,7 @@ function Incoming({ inquiry: i }: { inquiry: Inquiry }) {
 
   async function send(reply: ConsoleReply, clear?: () => void) {
     try {
-      await sendReply(i.inquiry_id, reply);
+      await sendReply(i.inquiry_id, reply, token);
       setError(false);
       clear?.();
     } catch {
@@ -101,8 +101,9 @@ function Incoming({ inquiry: i }: { inquiry: Inquiry }) {
 }
 
 // Demo channel: a person plays the seller of one shop and answers inquiries with quick replies.
-export function SellerConsole({ shopId }: { shopId: string }) {
-  const inbox = useEventStream<ConsoleInbox>(consoleStreamUrl(shopId));
+// `token`: the shop's console token from its link; without it the API answers 403
+export function SellerConsole({ shopId, token }: { shopId: string; token: string }) {
+  const inbox = useEventStream<ConsoleInbox>(consoleStreamUrl(shopId, token));
   return (
     <article data-seller-console className="flex flex-col gap-3">
       <p role="note" className="rounded-lg border border-dashed p-2 text-xs">
@@ -116,7 +117,7 @@ export function SellerConsole({ shopId }: { shopId: string }) {
       ) : (
         <ul className="flex flex-col gap-3">
           {inbox.inquiries.map((i) => (
-            <Incoming key={i.inquiry_id} inquiry={i} />
+            <Incoming key={i.inquiry_id} inquiry={i} token={token} />
           ))}
         </ul>
       )}

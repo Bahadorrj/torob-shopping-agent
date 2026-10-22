@@ -150,15 +150,20 @@ test("seller console: simulated label, incoming message and quick replies at 360
   const sent = { ...inquiry(0), status: "sent", channel: "seller_console", simulated: true };
   // an ambiguous free-text reply got the one follow-up question
   sent.events.push({ at: AT, status: "replied", reply: { text: "شاید" }, question: "یعنی الان موجود است؟" });
-  await page.route("**/api/console/shops/shop_a/inquiries/stream", (route) =>
-    route.fulfill(sse({ shop_id: "shop_a", shop_name: "دیسیلا مانسا", inquiries: [sent] })),
-  );
+  // the console link carries the shop's token; both console calls send it on
+  const tokens: (string | null)[] = [];
+  const token = (url: string) => tokens.push(new URL(url).searchParams.get("token"));
+  await page.route("**/api/console/shops/shop_a/inquiries/stream**", (route) => {
+    token(route.request().url());
+    return route.fulfill(sse({ shop_id: "shop_a", shop_name: "دیسیلا مانسا", inquiries: [sent] }));
+  });
   const replies: object[] = [];
-  await page.route("**/api/console/inquiries/1/replies", (route) => {
+  await page.route("**/api/console/inquiries/1/replies**", (route) => {
+    token(route.request().url());
     replies.push(route.request().postDataJSON());
     return route.fulfill({ json: sent });
   });
-  await page.goto("/console/shop_a");
+  await page.goto("/console/shop_a?token=t0k");
 
   await expect(page.getByRole("heading", { name: "کنسول فروشنده - دیسیلا مانسا" })).toBeVisible();
   await expect(page.getByRole("note")).toContainText("شبیه‌سازی");
@@ -183,5 +188,6 @@ test("seller console: simulated label, incoming message and quick replies at 360
     { installments: true },
     { text: "فردا هم داریم" },
   ]);
+  expect(new Set(tokens)).toEqual(new Set(["t0k"]));
   expect(await noOverflow(page)).toBe(0);
 });
