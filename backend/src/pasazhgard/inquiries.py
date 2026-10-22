@@ -1,6 +1,8 @@
 """Seller Liaison outside the graph (ADR-0002): the inquiry store, its state machine and the seller channel port."""
 
 import datetime as dt
+import hashlib
+import hmac
 import logging
 import os
 from textwrap import dedent
@@ -337,6 +339,11 @@ class SellerConsole:
 
     def send(self, conn, inquiry: Inquiry) -> None:
         pass
+
+
+def console_token(secret: str, shop_id: str) -> str:
+    """The shop's Seller Console token: derived, never stored, so no buyer-facing row can carry it."""
+    return hmac.new(secret.encode(), shop_id.encode(), hashlib.sha256).hexdigest()[:32]
 
 
 class ConsoleInbox(BaseModel):

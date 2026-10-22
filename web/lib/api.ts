@@ -333,7 +333,8 @@ const inquiriesUrl = (sessionId: string) => `/api/sessions/${encodeURIComponent(
 
 export const inquiriesStreamUrl = (sessionId: string) => `${inquiriesUrl(sessionId)}/stream`;
 
-export const consoleStreamUrl = (shopId: string) => `/api/console/shops/${encodeURIComponent(shopId)}/inquiries/stream`;
+export const consoleStreamUrl = (shopId: string, token: string) =>
+  `/api/console/shops/${encodeURIComponent(shopId)}/inquiries/stream?token=${encodeURIComponent(token)}`;
 
 export type Ask = { product_id: string; shop_id: string };
 
@@ -382,7 +383,8 @@ export async function askAlternative(sessionId: string, a: Alternative, insteadO
   return confirmInquiries(sessionId, inquiries.map((i) => i.inquiry_id));
 }
 
-export const sendReply = (inquiryId: number, reply: ConsoleReply) => post<Inquiry>(`/api/console/inquiries/${inquiryId}/replies`, reply);
+export const sendReply = (inquiryId: number, reply: ConsoleReply, token: string) =>
+  post<Inquiry>(`/api/console/inquiries/${inquiryId}/replies?token=${encodeURIComponent(token)}`, reply);
 
 // Mirrors Directions and VisitPlan in backend/src/pasazhgard/visit.py and Route in routing.py.
 export type Route = { distance_m: number; duration_min: number; source: "neshan" | "straight_line" };
@@ -396,6 +398,14 @@ export type Directions = {
   links: { neshan: string; balad: string; google: string };
   last_leg: { pasaj: string | null; landmark: string | null; floor: string | null; unit: string | null };
 };
+
+export async function getDirections(shopId: string, from: { lat: number; lon: number }, mode: TravelMode): Promise<Directions | null> {
+  const q = new URLSearchParams({ lat: String(from.lat), lon: String(from.lon), mode });
+  const r = await fetch(`/api/shops/${encodeURIComponent(shopId)}/directions?${q}`);
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`directions failed: ${r.status}`);
+  return r.json();
+}
 
 // the shop's latest sent inquiry in the plan's session
 export type StopInquiry = Outcome & {

@@ -1,3 +1,4 @@
+import hmac
 import os
 import time
 from collections.abc import AsyncIterable, Callable
@@ -36,6 +37,7 @@ from pasazhgard.inquiries import (
     SellerConsole,
     confirm_inquiries,
     console_inbox,
+    console_token,
     contact_seller,
     get_inquiries,
     record_reply,
@@ -111,6 +113,16 @@ def get_small_model() -> BaseChatModel | None:
 def get_channel() -> SellerChannel:
     """The seller channel port; the Seller Console is the only adapter."""
     return SellerConsole()
+
+
+def get_console_secret() -> str | None:
+    """Signs the Seller Console links; without it the console is closed."""
+    return os.environ.get("CONSOLE_SECRET") or None
+
+
+def _seller_of(shop_id: str, token: str | None, secret: str | None) -> None:
+    if not (secret and token and hmac.compare_digest(token, console_token(secret, shop_id))):
+        raise HTTPException(403, "not this shop's console link")
 
 
 @cache
@@ -332,7 +344,14 @@ def inquiries_alternatives(session_id: str, inquiry_id: int, conn=Depends(get_co
 
 
 @app.get("/console/shops/{shop_id}/inquiries")
-def console_read(shop_id: str, conn=Depends(get_conn), now: datetime = Depends(get_now)) -> ConsoleInbox:
+def console_read(
+    shop_id: str,
+    token: str | None = None,
+    conn=Depends(get_conn),
+    now: datetime = Depends(get_now),
+    secret: str | None = Depends(get_console_secret),
+) -> ConsoleInbox:
+    _seller_of(shop_id, token, secret)
     inbox = console_inbox(conn, shop_id, now)
     if inbox is None:
         raise HTTPException(404, "shop not found")
@@ -343,10 +362,14 @@ def console_read(shop_id: str, conn=Depends(get_conn), now: datetime = Depends(g
 def console_reply(
     inquiry_id: int,
     body: ConsoleReply,
+    token: str | None = None,
     conn=Depends(get_conn),
     now: datetime = Depends(get_now),
     model: BaseChatModel | None = Depends(get_small_model),
+    secret: str | None = Depends(get_console_secret),
 ) -> Inquiry:
+    row = conn.execute("SELECT shop_id FROM inquiries WHERE inquiry_id = %s", [inquiry_id]).fetchone()
+    _seller_of(row["shop_id"] if row else "", token, secret)
     try:
         return record_reply(conn, inquiry_id, body, now, model)
     except LookupError:
