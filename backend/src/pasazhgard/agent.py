@@ -95,6 +95,14 @@ def error(message: str) -> str:
     return json.dumps({"error": message})
 
 
+def _result(m: ToolMessage) -> dict:
+    """A tool result as JSON; {} for the plain-text error the tool node writes for a bad call."""
+    try:
+        return json.loads(m.content)
+    except ValueError:
+        return {}
+
+
 def load_brief(conn, sid: str) -> Brief:
     # a thread may start before its session row exists
     conn.execute(
@@ -271,9 +279,7 @@ def build_graph(ports: Ports) -> StateGraph:
         if answered[field]:
             return error(f"the brief already has {field}")
         asked = {
-            json.loads(m.content).get("field")
-            for m in state["messages"]
-            if isinstance(m, ToolMessage) and json.loads(m.content).get("block") == "chips"
+            _result(m).get("field") for m in state["messages"] if isinstance(m, ToolMessage) and _result(m).get("block") == "chips"
         }
         if field in asked:
             return error(f"already asked about {field}")
@@ -360,7 +366,7 @@ def build_graph(ports: Ports) -> StateGraph:
         for m in reversed(state["messages"]):
             if not isinstance(m, ToolMessage):
                 break
-            if json.loads(m.content).get("block") == "chips":
+            if _result(m).get("block") == "chips":
                 return END
         return "agent"
 

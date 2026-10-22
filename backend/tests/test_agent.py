@@ -109,6 +109,15 @@ def test_a_failed_tool_call_is_no_block_and_the_turn_goes_on(agent):
     assert turn.text == "این کالا را پیدا نکردم."
 
 
+def test_a_plain_text_tool_error_does_not_end_the_turn(agent):
+    # no product_id: the tool node answers with a plain-text error, not JSON
+    agent.script(agent.brief(), agent.call("find_sellers"), agent.call("ask_user", field="budget", question="بودجه چقدر است؟"))
+
+    turn = agent.turn("فروشنده‌ها")
+
+    assert kinds(turn) == ["chips"]
+
+
 def test_a_missing_field_is_asked_as_chips_and_ends_the_turn(agent):
     # the script has no reply after the question: a further model call would fail the turn
     agent.script(agent.brief(need="هندزفری"), agent.call("ask_user", field="area", question="کجا می‌خواهید بروید؟"))
