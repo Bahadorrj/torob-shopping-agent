@@ -1,5 +1,6 @@
 "use client";
 
+import { useRenderTool } from "@copilotkit/react-core/v2";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -11,6 +12,7 @@ import { ListedPrice, ProductCard } from "@/components/product-card";
 import { Seller } from "@/components/seller-list";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { clock, OpenBadge, RouteDetails } from "@/components/visit-plan";
 import {
   confirmInquiries,
@@ -195,6 +197,56 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
     </div>
   ),
 };
+
+// the home screen's input, chips and blocks post their text to the sheet through this window event
+export const AGENT_SEND = "agent-send";
+const toAgent = (text: string) => window.dispatchEvent(new CustomEvent(AGENT_SEND, { detail: text }));
+
+// what the drawer says while each backend tool (backend/src/pasazhgard/agent.py) runs
+const BUSY: Record<string, string> = {
+  search_products: "در حال جستجوی کالا",
+  compare_products: "در حال مقایسه مدل‌ها",
+  find_sellers: "در حال یافتن فروشنده‌ها",
+  compare_sellers: "در حال مقایسه فروشنده‌ها",
+  suggest_models: "در حال انتخاب مدل‌ها",
+  plan_visit: "در حال برنامه‌ریزی مسیر",
+  get_directions: "در حال مسیریابی",
+  find_alternatives: "در حال یافتن جایگزین",
+  ask_user: "در حال آماده کردن سؤال",
+  contact_seller: "در حال نوشتن پیام‌ها",
+  optimize_basket: "در حال چیدن سبد",
+  get_inquiries: "در حال خواندن استعلام‌ها",
+  fetch_site_price: "در حال خواندن قیمت سایت",
+};
+
+// backend tools take their arguments from the model; the drawer only reads the result
+const anyArgs = { "~standard": { version: 1, vendor: "pasazhgard", validate: (value: unknown) => ({ value }) } } as const;
+
+function ToolRenderer({ name }: { name: string }) {
+  useRenderTool(
+    {
+      name,
+      parameters: anyArgs,
+      render: ({ status, result }) =>
+        status === "complete" ? (
+          <Block content={result} send={toAgent} />
+        ) : (
+          <div role="status" className="flex flex-col gap-2">
+            <p className="text-xs text-muted-foreground">{BUSY[name]}...</p>
+            <Skeleton className="h-24 rounded-xl" />
+            <Skeleton className="h-24 rounded-xl" />
+          </div>
+        ),
+    },
+    [],
+  );
+  return null;
+}
+
+// registers one renderer per backend tool; the thread draws them with useRenderToolCall
+export function ToolRenderers() {
+  return Object.keys(BUSY).map((name) => <ToolRenderer key={name} name={name} />);
+}
 
 export function Block({ content, send }: { content: string; send: (text: string) => void }) {
   let data: { block?: string };
