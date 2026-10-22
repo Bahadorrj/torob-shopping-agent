@@ -14,7 +14,7 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, AIMessageChunk
 from langchain_core.outputs import ChatGenerationChunk
 
-from pasazhgard.api import get_chat_model
+from pasazhgard.api import get_chat_model, get_small_model
 from pasazhgard.grounding import ungrounded
 from pasazhgard.normalize import normalize
 
@@ -77,6 +77,7 @@ def client(database_url, now):
     app.dependency_overrides[get_router] = lambda: StraightLine()
     # degraded unless a test scripts the model
     app.dependency_overrides[get_chat_model] = lambda: None
+    app.dependency_overrides[get_small_model] = lambda: None
     # the async checkpointer's psycopg cannot run on Windows' default Proactor loop
     with TestClient(app, backend_options={"loop_factory": asyncio.SelectorEventLoop}) as c:
         yield c
@@ -168,3 +169,15 @@ class Agent:
 def agent(client):
     yield Agent(client)
     client.app.dependency_overrides[get_chat_model] = lambda: None
+
+
+@pytest.fixture
+def seller_parses(client):
+    """Scripts the small model's parses of free-text seller replies, one per reply, as `ReplyParse` fields."""
+
+    def script(*parses: dict):
+        model = ScriptedModel(messages=iter(Agent.call("ReplyParse", **p) for p in parses))
+        client.app.dependency_overrides[get_small_model] = lambda: model
+
+    yield script
+    client.app.dependency_overrides[get_small_model] = lambda: None

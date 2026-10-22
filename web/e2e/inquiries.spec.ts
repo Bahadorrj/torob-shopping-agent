@@ -53,7 +53,7 @@ const inquiry = (n: number) => ({
   channel: null as string | null,
   simulated: false,
   reply: { ...noReply } as Record<string, unknown>,
-  events: [{ at: "2026-10-21T12:00:00+03:30", status: "draft", reply: null }] as { at: string; status: string; reply: object | null }[],
+  events: [{ at: "2026-10-21T12:00:00+03:30", status: "draft", reply: null }] as { at: string; status: string; reply: object | null; question?: string }[],
 });
 
 type Inquiry = ReturnType<typeof inquiry>;
@@ -148,6 +148,8 @@ test("ask three sellers: drafts first, send on consent, replies update the track
 test("seller console: simulated label, incoming message and quick replies at 360 px", async ({ page }) => {
   await fakeSessions(page, {});
   const sent = { ...inquiry(0), status: "sent", channel: "seller_console", simulated: true };
+  // an ambiguous free-text reply got the one follow-up question
+  sent.events.push({ at: AT, status: "replied", reply: { text: "شاید" }, question: "یعنی الان موجود است؟" });
   await page.route("**/api/console/shops/shop_a/inquiries/stream", (route) =>
     route.fulfill(sse({ shop_id: "shop_a", shop_name: "دیسیلا مانسا", inquiries: [sent] })),
   );
@@ -161,6 +163,7 @@ test("seller console: simulated label, incoming message and quick replies at 360
   await expect(page.getByRole("heading", { name: "کنسول فروشنده - دیسیلا مانسا" })).toBeVisible();
   await expect(page.getByRole("note")).toContainText("شبیه‌سازی");
   await expect(page.getByText(sent.message)).toBeVisible();
+  await expect(page.getByText("خریدار: یعنی الان موجود است؟")).toBeVisible();
   // the buyer's brief bar is not on the seller's page
   await expect(page.getByRole("region", { name: "خلاصه خرید" })).toBeHidden();
 

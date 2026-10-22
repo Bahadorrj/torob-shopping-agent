@@ -3,6 +3,7 @@
 import datetime as dt
 from typing import Annotated, Literal, Protocol, Self
 
+from langchain_core.messages import HumanMessage, SystemMessage
 from psycopg.types.json import Jsonb
 from pydantic import AfterValidator, BaseModel, Field, model_validator
 
@@ -29,6 +30,8 @@ class Event(BaseModel):
     at: dt.datetime
     status: Status
     reply: dict | None = None
+    # the Seller Liaison's one follow-up question to the seller, after an ambiguous free-text reply
+    question: str | None = None
 
 
 class Inquiry(BaseModel):
@@ -188,7 +191,7 @@ def _move(conn, inquiry: Inquiry, to: Status, now: dt.datetime, **changes) -> No
     allowed = {"draft": {"sent"}, "sent": replied, **dict.fromkeys(replied, replied)}
     if to not in allowed[inquiry.status]:
         raise ValueError(f"{inquiry.status} -> {to}")
-    events = [*inquiry.events, Event(at=now, status=to, reply=changes.pop("event_reply", None))]
+    events = [*inquiry.events, Event(at=now, status=to, reply=changes.pop("event_reply", None), question=changes.pop("event_question", None))]
     sets = ", ".join(f"{k} = %s" for k in changes)
     conn.execute(
         f"UPDATE inquiries SET status = %s, events = %s{', ' + sets if sets else ''} WHERE inquiry_id = %s",
@@ -264,16 +267,58 @@ class ConsoleReply(BaseModel):
         return self
 
 
-def record_reply(conn, inquiry_id: int, body: ConsoleReply, now: dt.datetime) -> Inquiry:
-    """Merge a seller reply into the inquiry. LookupError for an unknown inquiry, ValueError for one not sent yet."""
+class ReplyParse(BaseModel):
+    """What a seller's free-text reply says. Leave a field null when the reply does not say it."""
+
+    available: Literal["yes", "no", "unknown"] = Field("unknown", description="whether the item is in stock now")
+    latest_price_toman: int | None = Field(None, gt=0, description="today's price in toman")
+    hold_until: dt.time | None = Field(None, description="the local time the seller holds the item until")
+    installments: bool | None = Field(None, description="whether the seller takes installments or Torob Pay")
+    notes: str | None = Field(None, description="anything else the buyer should know, short Persian")
+    confidence: float = Field(ge=0, le=1, description="how sure this parse is")
+    follow_up: str | None = Field(
+        None, description="one short polite Persian question to the seller when the reply leaves availability or price unclear"
+    )
+
+
+PARSE_PROMPT = """You read a seller's free-text answer to a buyer's inquiry in Tehran. Times are local (Asia/Tehran);
+"5 عصر" is 17:00. Prices are in toman; "3 میلیون و 400" is 3400000.
+The buyer asked: {message}
+{asked}"""
+
+
+def _parse(model, inquiry: Inquiry, text: str) -> ReplyParse:
+    asked = next((f"Then you asked: {e.question}" for e in reversed(inquiry.events) if e.question), "")
+    structured = model.with_structured_output(ReplyParse, method="json_schema")
+    return structured.invoke([SystemMessage(PARSE_PROMPT.format(message=inquiry.message, asked=asked)), HumanMessage(text)])
+
+
+def record_reply(conn, inquiry_id: int, body: ConsoleReply, now: dt.datetime, model=None) -> Inquiry:
+    """Merge a seller reply into the inquiry. LookupError for an unknown inquiry, ValueError for one not sent yet.
+
+    Free text is parsed by `model` (the small chat model); an ambiguous one gets one follow-up question per inquiry.
+    Without a model free text is kept as-is and leaves the parse alone.
+    """
     row = conn.execute("SELECT * FROM inquiries WHERE inquiry_id = %s FOR UPDATE", [inquiry_id]).fetchone()
     if row is None:
         raise LookupError(inquiry_id)
     inquiry = _inquiry(row)
-    sent = body.model_dump(exclude_none=True)
-    # shortcut: free text is stored as-is and leaves the parse alone, until the free-text parser exists
-    quick = {k: v for k, v in sent.items() if k != "text"}
-    reply = inquiry.reply.model_copy(update=quick | ({"confidence": 1.0} if quick else {}))
+    sent =body.model_dump(exclude_none=True)
+    update = {k: v for k, v in sent.items() if k != "text"}
+    update |= {"confidence": 1.0} if update else {}
+    question = None
+    if body.text and model:
+        # shortcut: the model call runs inside the row lock, which only delays other replies to this inquiry
+        parse = _parse(model, inquiry, body.text)
+        update |= {k: v for k, v in parse.model_dump(exclude={"follow_up"}).items() if v not in (None, "unknown")}
+        if not any(e.question for e in inquiry.events):
+            question = parse.follow_up
+    reply = inquiry.reply.model_copy(update=update)
     to = {"yes": "confirmed", "no": "unavailable"}.get(reply.available, "replied")
-    _move(conn, inquiry, to, now, reply=Jsonb(reply.model_dump(mode="json")), event_reply=body.model_dump(mode="json", exclude_none=True))
+    _move(
+        conn, inquiry, to, now,
+        reply=Jsonb(reply.model_dump(mode="json")),
+        event_reply=body.model_dump(mode="json", exclude_none=True),
+        event_question=question,
+    )
     return _inquiry(conn.execute("SELECT * FROM inquiries WHERE inquiry_id = %s", [inquiry_id]).fetchone())

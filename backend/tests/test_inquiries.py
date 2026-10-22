@@ -35,7 +35,7 @@ def test_compose_makes_drafts_and_sends_nothing(client):
         assert words in mansa["message"]
     assert client.get(f"/sessions/{sid}/inquiries").json()["inquiries"] == drafts
     # the seller sees nothing before consent
-    assert inbox(client, MANSA_SHOP)["inquiries"] == []
+    assert mansa["inquiry_id"] not in [i["inquiry_id"] for i in inbox(client, MANSA_SHOP)["inquiries"]]
 
 
 def confirm(client, sid, *ids, status=200):

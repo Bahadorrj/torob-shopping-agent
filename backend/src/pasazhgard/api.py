@@ -97,6 +97,12 @@ def get_chat_model() -> BaseChatModel | None:
     return chat_model_from_env()
 
 
+@cache
+def get_small_model() -> BaseChatModel | None:
+    """The small model port that parses free-text seller replies; None without a key, and they stay unparsed."""
+    return chat_model_from_env(small=True)
+
+
 def get_channel() -> SellerChannel:
     """The seller channel port; the Seller Console is the only adapter."""
     return SellerConsole()
@@ -287,9 +293,15 @@ def console_read(shop_id: str, conn=Depends(get_conn)) -> ConsoleInbox:
 
 
 @app.post("/console/inquiries/{inquiry_id}/replies")
-def console_reply(inquiry_id: int, body: ConsoleReply, conn=Depends(get_conn), now: datetime = Depends(get_now)) -> Inquiry:
+def console_reply(
+    inquiry_id: int,
+    body: ConsoleReply,
+    conn=Depends(get_conn),
+    now: datetime = Depends(get_now),
+    model: BaseChatModel | None = Depends(get_small_model),
+) -> Inquiry:
     try:
-        return record_reply(conn, inquiry_id, body, now)
+        return record_reply(conn, inquiry_id, body, now, model)
     except LookupError:
         raise HTTPException(404, "inquiry not found") from None
     except ValueError:

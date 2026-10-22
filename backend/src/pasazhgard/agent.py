@@ -38,15 +38,15 @@ from pasazhgard.sellers import area_options
 from pasazhgard.sellers import find_sellers as _find_sellers
 
 
-def chat_model_from_env() -> BaseChatModel | None:
-    """The chat model port; None without a key, and the agent runs degraded."""
+def chat_model_from_env(small: bool = False) -> BaseChatModel | None:
+    """The chat model port, or with `small` the small model that parses seller replies; None without a key."""
     key = os.environ.get("LLM_API_KEY")
     if not key:
         return None
     return ChatOpenAI(
         base_url=os.environ.get("LLM_BASE_URL", "https://ai.boxapi.ir/ai/v1"),
         api_key=key,
-        model=os.environ.get("LLM_MODEL", "gpt-5.6-terra"),
+        model=os.environ.get("LLM_SMALL_MODEL", "gpt-5.4-mini") if small else os.environ.get("LLM_MODEL", "gpt-5.6-terra"),
         timeout=60,
         max_retries=1,
     )

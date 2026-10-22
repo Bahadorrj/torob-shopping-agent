@@ -268,7 +268,8 @@ export type Inquiry = {
   channel: string | null;
   simulated: boolean;
   reply: Reply;
-  events: { at: string; status: InquiryState; reply: ConsoleReply | null }[];
+  // question: the Seller Liaison's one follow-up to the seller after an ambiguous free-text reply
+  events: { at: string; status: InquiryState; reply: ConsoleReply | null; question: string | null }[];
 };
 
 export type InquiryStatus = { inquiries: Inquiry[] };
