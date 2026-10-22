@@ -7,6 +7,7 @@ from functools import lru_cache
 from typing import Literal
 from zoneinfo import ZoneInfo
 
+import psycopg
 from pydantic import BaseModel
 
 from pasazhgard.clean import BAD_PRICE_FLAGS, PriceFlag
@@ -166,10 +167,17 @@ def _semantic(conn, query: str, embedder: Embedder | None, pool: int) -> list[st
         # degraded mode: any provider failure leaves the lexical results
         log.warning("query embedding failed, searching lexically", exc_info=True)
         return []
-    rows = conn.execute(
-        "SELECT product_id, embedding <=> %s::vector AS distance FROM products ORDER BY distance LIMIT %s",
-        [str(vector), pool],
-    ).fetchall()
+    try:
+        # a savepoint, so a failed vector query leaves the request's transaction usable
+        with conn.transaction():
+            rows = conn.execute(
+                "SELECT product_id, embedding <=> %s::vector AS distance FROM products ORDER BY distance LIMIT %s",
+                [str(vector), pool],
+            ).fetchall()
+    except psycopg.Error:
+        # e.g. EMBEDDING_DIMENSIONS no longer matches the stored vectors
+        log.warning("vector query failed, searching lexically", exc_info=True)
+        return []
     return [r["product_id"] for r in rows if r["distance"] is not None and r["distance"] <= max_distance]
 
 

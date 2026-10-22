@@ -87,3 +87,20 @@ def test_cards_say_when_they_match_by_meaning(client, hybrid):
     assert not any(p["matched"] for p in card["score_parts"])
     app.dependency_overrides[get_embedder] = lambda: None
     assert not any(c["meaning_match"] for c in client.get("/products/search", params={"q": "هندزفری ورزشی"}).json()["items"])
+
+
+class WrongSizeEmbedder:
+    # EMBEDDING_DIMENSIONS changed after ingest: query vectors no longer fit the stored ones
+    name, dimensions = "fake/3", 3
+
+    def embed(self, texts):
+        return [[1.0, 0.0, 0.0] for _ in texts]
+
+
+def test_search_is_lexical_when_the_vector_query_fails(client):
+    lexical = ids(client, "هندزفری ورزشی")
+    app.dependency_overrides[get_embedder] = WrongSizeEmbedder
+    try:
+        assert ids(client, "هندزفری ورزشی") == lexical
+    finally:
+        app.dependency_overrides[get_embedder] = lambda: None
