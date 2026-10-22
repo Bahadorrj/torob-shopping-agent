@@ -442,7 +442,32 @@ export type StopInquiry = Outcome & {
 // `route` is the leg from the previous stop, or from the origin for the first one
 export type Stop = Directions & { eta: string; open_at_eta: boolean | null; inquiry: StopInquiry | null };
 
-export type VisitPlan = { origin: { lat: number; lon: number }; depart_at: string; mode: TravelMode; stops: Stop[] };
+export type Swap = { shop_id: string; shop_name: string; offer_id: string; price_toman: number | null; distance_m: number | null };
+
+// a stop that closes between leaving and arriving; `swap` is another seller of its item, open then
+export type ClosingNudge = { kind: "closing"; shop_id: string; shop_name: string; closes_at: string; leave_by: string; swap: Swap | null };
+
+// a seller-confirmed or website price other than the listed one, against the brief's budget
+export type PriceNudge = {
+  kind: "price";
+  shop_id: string;
+  shop_name: string;
+  product_id: string;
+  product_title: string;
+  listed_price_toman: number;
+  latest_price_toman: number;
+  price_delta_toman: number;
+  trust_level: "confirmed" | "website_price";
+  over_budget: boolean;
+};
+
+export type VisitPlan = {
+  origin: { lat: number; lon: number };
+  depart_at: string;
+  mode: TravelMode;
+  stops: Stop[];
+  nudges: (ClosingNudge | PriceNudge)[];
+};
 
 // a plan with a session_id follows the session's inquiries
 export const visitPlanStreamUrl = (query: string) => `/api/visit-plan/stream?${query}`;
