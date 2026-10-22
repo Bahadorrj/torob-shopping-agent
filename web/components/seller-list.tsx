@@ -7,6 +7,7 @@ import { Choices } from "@/components/brief-bar";
 import { useBrief } from "@/components/brief-provider";
 import { CompareToggle } from "@/components/compare-tray";
 import { InquiryTracker } from "@/components/inquiry-tracker";
+import { pasajHref } from "@/components/pasaj-view";
 import { pinKey, pins, SellerMap } from "@/components/seller-map";
 import { RouteDetails } from "@/components/visit-plan";
 
@@ -244,6 +245,11 @@ export function SellerList({ productId }: { productId: string }) {
               <h2 id="picked" className="text-sm font-semibold">
                 {picked.label}
               </h2>
+              {picked.rows[0].pasaj && (
+                <Link href={pasajHref(picked.rows[0].pasaj, productId)} className={`${SHOP_LINK} text-sm`}>
+                  همه فروشگاه‌های این پاساژ
+                </Link>
+              )}
               <ul className="flex flex-col gap-3">
                 {picked.rows.map((s) => (
                   <li key={s.offer_id}>

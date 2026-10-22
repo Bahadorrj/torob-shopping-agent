@@ -44,6 +44,8 @@ from pasazhgard.seller_compare import CompareQuery
 from pasazhgard.seller_compare import compare_sellers as _compare_sellers
 from pasazhgard.sellers import area_options
 from pasazhgard.sellers import find_sellers as _find_sellers
+from pasazhgard.site_prices import FetchQuery, WebFetch
+from pasazhgard.site_prices import fetch_site_price as _fetch_site_price
 from pasazhgard.visit import DirectionsQuery, PlanQuery
 from pasazhgard.visit import get_directions as _get_directions
 from pasazhgard.visit import plan_visit as _plan_visit
@@ -71,6 +73,9 @@ class Ports:
     now: Callable[[], datetime]
     embedder: Callable[[], Embedder | None]
     router: Callable[[], Router]
+    # the small model reads website prices off seller pages
+    small_model: Callable[[], BaseChatModel | None]
+    web: Callable[[], WebFetch]
     # a connection that commits on exit
     connect: Callable[[], AbstractContextManager]
 
@@ -320,9 +325,21 @@ def build_graph(ports: Ports) -> StateGraph:
         with ports.connect() as conn:
             return block("inquiry_status", _get_inquiries(conn, sid, ports.now()))
 
+    @tool
+    def fetch_site_price(shop_id: str, product_id: str, config: RunnableConfig) -> str:
+        """Read a product's latest price from the shop's own website, for shops with a website. Says nothing about stock.
+        Shows it in the inquiry tracker; when it is unavailable, offer contact_seller instead."""
+        sid = session_of(config)
+        with ports.connect() as conn:
+            try:
+                result = _fetch_site_price(conn, sid, FetchQuery(shop_id=shop_id, product_id=product_id), ports.web(), ports.small_model(), ports.now())
+            except ValueError:
+                return error("this shop has no website: offer contact_seller instead")
+        return block("inquiry_status", {"inquiries": [], "site_prices": [result.model_dump(mode="json")]}) if result else error("shop or product not found")
+
     tools = [
         search_products, suggest_models, compare_products, find_sellers, compare_sellers, plan_visit, get_directions,
-        find_alternatives, ask_user, contact_seller, get_inquiries, optimize_basket,
+        find_alternatives, ask_user, contact_seller, get_inquiries, fetch_site_price, optimize_basket,
     ]
 
     def patch_brief(state: MessagesState, config: RunnableConfig) -> dict:
@@ -363,6 +380,7 @@ def build_graph(ports: Ports) -> StateGraph:
             - Never say an item is in stock unless a seller confirmed it.
             - contact_seller only drafts messages; the user sends them with the button under the drafts. Never say a message
               was sent or a seller answered unless get_inquiries shows it.
+            - A website price (fetch_site_price) is the shop's site, not a seller's word: never say it is in stock from it.
             - When an inquiry turns unavailable, no_reply or closed, call find_alternatives for it; to ask an alternative,
               call contact_seller with its offer id and instead_of set to that inquiry."""
         )

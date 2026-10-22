@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 
 import { Alternatives } from "@/components/alternatives";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { askAlternative, confirmInquiries, getAlternatives, type Alternatives as Block, type ConsoleReply, type Inquiry, type InquiryState } from "@/lib/api";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { askAlternative, composeInquiries, confirmInquiries, getAlternatives, type SitePrice, type Alternatives as Block, type ConsoleReply, type Inquiry, type InquiryState } from "@/lib/api";
 import { faDigits, faText } from "@/lib/format";
 
 export const STATUS: Record<InquiryState, string> = {
@@ -85,14 +85,66 @@ function Sent({ sessionId, inquiry: i }: { sessionId: string; inquiry: Inquiry }
   );
 }
 
-// The inquiry_status block: drafts waiting for consent, then a timeline per shop.
+// the user sends the message themselves; no recipient, since the dataset's numbers are not real
+function SendYourself({ message }: { message: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    await navigator.clipboard.writeText(message);
+    setCopied(true);
+  };
+  // Bale has no documented prefill link; the system share sheet hands it the text where installed
+  const share = () => (navigator.share ? navigator.share({ text: message }).catch(() => {}) : copy());
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <Button size="xs" variant="outline" onClick={copy}>
+        {copied ? "کپی شد" : "کپی پیام"}
+      </Button>
+      <a href={`https://wa.me/?text=${encodeURIComponent(message)}`} target="_blank" rel="noreferrer" className={buttonVariants({ size: "xs", variant: "outline" })}>
+        واتس‌اپ
+      </a>
+      <Button size="xs" variant="outline" onClick={share}>
+        بله و دیگر برنامه‌ها
+      </Button>
+    </div>
+  );
+}
+
+// a failed fetch offers the inquiry instead; the shop is asked about the item as an ask, whatever it lists
+function Site({ sessionId, price: p }: { sessionId: string; price: SitePrice }) {
+  return (
+    <li className="flex flex-col gap-1.5 rounded-lg border p-3 text-sm">
+      <span className="font-semibold">{p.shop_name}</span>
+      {p.status === "found" && p.price_toman !== null ? (
+        <p>
+          قیمت سایت: <span className="font-bold">{faDigits(p.price_toman)} تومان</span> - ساعت {clock(p.fetched_at)} - موجودی تأیید نشده
+        </p>
+      ) : (
+        <>
+          <p className="text-muted-foreground">قیمت سایت در دسترس نبود</p>
+          <Button
+            size="xs"
+            variant="outline"
+            className="h-auto self-start py-1 whitespace-normal"
+            onClick={() => composeInquiries(sessionId, [], [{ product_id: p.product_id, shop_id: p.shop_id }])}
+          >
+            استعلام از {p.shop_name}
+          </Button>
+        </>
+      )}
+    </li>
+  );
+}
+
+// The inquiry_status block: drafts waiting for consent, then a timeline per shop, then website prices.
 export function InquiryTracker({
   sessionId,
   inquiries,
+  sitePrices = [],
   onConfirm,
 }: {
   sessionId: string;
   inquiries: Inquiry[];
+  sitePrices?: SitePrice[];
   onConfirm: (ids: number[]) => Promise<unknown>;
 }) {
   const [sending, setSending] = useState(false);
@@ -123,9 +175,13 @@ export function InquiryTracker({
               <li key={d.inquiry_id} className="flex flex-col gap-0.5">
                 <span className="font-semibold">{d.shop_name}</span>
                 <span>{d.message}</span>
+                <SendYourself message={d.message} />
               </li>
             ))}
           </ul>
+          <p className="text-xs text-muted-foreground">
+            می‌توانید پیام را خودتان هم بفرستید. شماره‌های تماس فروشگاه‌ها در داده‌های این دمو واقعی نیستند.
+          </p>
           <Button onClick={confirm} disabled={sending} className="h-auto py-1.5 whitespace-normal">
             ارسال به {faDigits(drafts.length)} فروشنده
           </Button>
@@ -143,6 +199,16 @@ export function InquiryTracker({
           {sent.some((i) => i.simulated) && (
             <p className="text-xs text-muted-foreground">پاسخ‌ها در این دمو از کنسول فروشنده می‌آیند و شبیه‌سازی هستند.</p>
           )}
+        </>
+      )}
+      {sitePrices.length > 0 && (
+        <>
+          <h2 className="font-bold">قیمت سایت فروشنده‌ها</h2>
+          <ul className="flex flex-col gap-2">
+            {sitePrices.map((p) => (
+              <Site key={p.shop_id} sessionId={sessionId} price={p} />
+            ))}
+          </ul>
         </>
       )}
     </section>

@@ -14,6 +14,7 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validat
 
 from pasazhgard.normalize import distinct
 from pasazhgard.shops import open_at
+from pasazhgard.site_prices import SitePrice, site_prices
 
 log = logging.getLogger(__name__)
 
@@ -66,9 +67,10 @@ class Inquiry(BaseModel):
 
 
 class InquiryStatus(BaseModel):
-    """The `inquiry_status` block: a session's inquiries, oldest first."""
+    """The `inquiry_status` block: a session's inquiries, oldest first, and the website prices it fetched."""
 
     inquiries: list[Inquiry]
+    site_prices: list[SitePrice] = []
 
 
 class Outcome(BaseModel):
@@ -86,21 +88,25 @@ class Outcome(BaseModel):
 
 
 class LatestPrice(BaseModel):
-    """A price newer than the listing: one a seller confirmed in an inquiry."""
+    """A price newer than the listing: one a seller confirmed in an inquiry, else one read from the seller's website."""
 
-    # shortcut: no website price until fetch_site_price exists
-    status: Literal["not_asked", "asked", "confirmed"] = "not_asked"
+    status: Literal["not_asked", "asked", "website", "confirmed"] = "not_asked"
     price_toman: int | None = None
-    trust_level: Literal["confirmed", "unknown"] = "unknown"
+    trust_level: Literal["confirmed", "website_price", "unknown"] = "unknown"
     at: dt.datetime | None = None
 
 
-def latest_price(o: Outcome | None) -> LatestPrice:
-    if o is None:
-        return LatestPrice()
-    if o.latest_price_toman is None:
-        return LatestPrice(status="asked")
-    return LatestPrice(status="confirmed", price_toman=o.latest_price_toman, trust_level="confirmed", at=o.replied_at)
+def latest_price(o: Outcome | None, site: SitePrice | None = None) -> LatestPrice:
+    if o is not None and o.latest_price_toman is not None:
+        return LatestPrice(status="confirmed", price_toman=o.latest_price_toman, trust_level="confirmed", at=o.replied_at)
+    if site is not None and site.status == "found":
+        return LatestPrice(status="website", price_toman=site.price_toman, trust_level="website_price", at=site.fetched_at)
+    return LatestPrice(status="not_asked" if o is None else "asked")
+
+
+def sites(conn, sid: str, product_id: str) -> dict[str, SitePrice]:
+    """The session's website price per shop for one item."""
+    return {p.shop_id: p for p in site_prices(conn, sid, product_id)}
 
 
 def outcomes(conn, sid: str, product_id: str, now: dt.datetime) -> dict[str, Outcome]:
@@ -185,7 +191,7 @@ def get_inquiries(conn, sid: str, now: dt.datetime) -> InquiryStatus | None:
         return None
     _tick(conn, now)
     rows = conn.execute("SELECT * FROM inquiries WHERE session_id = %s ORDER BY inquiry_id", [sid]).fetchall()
-    return InquiryStatus(inquiries=[_inquiry(r) for r in rows])
+    return InquiryStatus(inquiries=[_inquiry(r) for r in rows], site_prices=site_prices(conn, sid))
 
 
 def _open(conn, sid: str, product_id: str) -> int:
@@ -407,11 +413,11 @@ def _parse(model, inquiry: Inquiry, text: str) -> ReplyParse:
     return structured.invoke([SystemMessage(prompt.format(message=inquiry.message, asked=asked)), HumanMessage(text)])
 
 
-def record_reply(conn, inquiry_id: int, body: ConsoleReply, now: dt.datetime, model=None) -> Inquiry:
+def record_reply(conn, inquiry_id: int, body: ConsoleReply, now: dt.datetime, model=None, auto: bool = False) -> Inquiry:
     """Merge a seller reply into the inquiry. LookupError for an unknown inquiry, ValueError for one not sent yet.
 
     Free text is parsed by `model` (the small chat model); an ambiguous one gets one follow-up question per inquiry.
-    Without a model free text is kept as-is and leaves the parse alone.
+    Without a model free text is kept as-is and leaves the parse alone. `auto` marks a reply from the auto-responder.
     """
     def read(lock: str = "") -> Inquiry:
         row = conn.execute(f"SELECT * FROM inquiries WHERE inquiry_id = %s {lock}", [inquiry_id]).fetchone()
@@ -441,7 +447,7 @@ def record_reply(conn, inquiry_id: int, body: ConsoleReply, now: dt.datetime, mo
     _move(
         conn, inquiry, to, now,
         reply=Jsonb(reply.model_dump(mode="json")),
-        event_reply=body.model_dump(mode="json", exclude_none=True),
+        event_reply=body.model_dump(mode="json", exclude_none=True) | ({"auto": True} if auto else {}),
         event_question=question,
     )
     return _inquiry(conn.execute("SELECT * FROM inquiries WHERE inquiry_id = %s", [inquiry_id]).fetchone())

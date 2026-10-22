@@ -346,3 +346,23 @@ def test_seller_tools_show_the_price_a_seller_confirmed_in_this_session(agent, c
     [listed] = [s for s in sellers if s["offer_id"] == MAHIS]
     for row in (listed, compared):
         assert (row["latest_price"]["status"], row["latest_price"]["price_toman"]) == ("confirmed", 3_100_000)
+
+
+def test_fetch_site_price_shows_the_website_price_in_the_tracker(agent, site):
+    from test_site_price import CABLE, MAHDI, PAGE
+
+    site({"https://mahdicable.ir/": PAGE}, {"price_toman": 580000})
+    agent.script(agent.brief(), agent.call("fetch_site_price", shop_id=MAHDI, product_id=CABLE), "قیمت سایت را ببینید.")
+
+    turn = agent.turn("قیمت سایتش چنده؟")
+
+    [status] = turn.blocks
+    assert status["block"] == "inquiry_status"
+    assert status["inquiries"] == []
+    assert [(p["shop_id"], p["status"], p["price_toman"]) for p in status["site_prices"]] == [(MAHDI, "found", 580000)]
+
+
+def test_fetch_site_price_for_a_shop_without_a_website_is_for_the_model(agent):
+    agent.script(agent.brief(), agent.call("fetch_site_price", shop_id=CHEAPEST_SHOP, product_id="product_92ac53fa75e18e8e73f20b56"), "سایت ندارد.")
+
+    assert [b.get("block") for b in agent.turn("قیمت سایتش؟").blocks] == [None]

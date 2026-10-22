@@ -65,6 +65,12 @@ const ROWS: [string, (s: SellerColumn) => React.ReactNode][] = [
           <span className="font-bold">{faDigits(p.price_toman)} تومان</span>
           <span className="text-muted-foreground">تأیید فروشنده - ساعت {clock(p.at)}</span>
         </div>
+      ) : p.status === "website" && p.price_toman !== null && p.at ? (
+        <div className="flex flex-col gap-0.5">
+          <span className="font-bold">{faDigits(p.price_toman)} تومان</span>
+          <span className="text-muted-foreground">سایت فروشنده - ساعت {clock(p.at)}</span>
+          <span className="text-muted-foreground">موجودی تأیید نشده</span>
+        </div>
       ) : (
         <NotRecorded text={p.status === "asked" ? "منتظر پاسخ فروشنده" : "هنوز استعلام نشده"} />
       ),
@@ -100,6 +106,8 @@ const ROWS: [string, (s: SellerColumn) => React.ReactNode][] = [
     (s) =>
       s.latest_price.status === "confirmed" ? (
         <Badge>تأییدشده</Badge>
+      ) : s.latest_price.status === "website" ? (
+        <Badge variant="outline">قیمت سایت</Badge>
       ) : (
         s.trust_level === "listed" && <Badge variant="secondary">ثبت‌شده</Badge>
       ),
@@ -132,8 +140,9 @@ export function SellerCompare({ productId, offerIds }: { productId: string; offe
   const sid = session?.session_id ?? null;
   const tracked = useEventStream<InquiryStatus>(sid && inquiriesStreamUrl(sid));
   const inquiries = (tracked?.inquiries ?? []).filter((i) => i.product_id === productId);
-  // refetch only when a brief field the compare reads changes, or a seller replies
-  const replies = inquiries.map((i) => i.events.length).join();
+  const sitePrices = (tracked?.site_prices ?? []).filter((p) => p.product_id === productId);
+  // refetch only when a brief field the compare reads changes, a seller replies or a website price comes in
+  const replies = [...inquiries.map((i) => i.events.length), ...sitePrices.map((p) => p.fetched_at)].join();
   const key = session && JSON.stringify({ ...params(session.brief), session_id: session.session_id });
   const ids = offerIds.join();
 
@@ -216,7 +225,7 @@ export function SellerCompare({ productId, offerIds }: { productId: string; offe
       </Button>
       <p className="text-xs text-muted-foreground">موجودی، قیمت امروز، نگه‌داشتن کالا و اقساط را می‌پرسیم. اول پیش‌نویس را می‌بینید.</p>
       {composeError && <p className="text-sm text-destructive">پیش‌نویس ساخته نشد. برای هر کالا حداکثر ۳ استعلام باز می‌ماند.</p>}
-      {sid && <InquiryTracker sessionId={sid} inquiries={inquiries} onConfirm={(inquiryIds) => confirmInquiries(sid, inquiryIds)} />}
+      {sid && <InquiryTracker sessionId={sid} inquiries={inquiries} sitePrices={sitePrices} onConfirm={(inquiryIds) => confirmInquiries(sid, inquiryIds)} />}
       {plan ? (
         <Link href={plan} className={buttonVariants({ size: "lg", className: "self-center" })}>
           برنامه مراجعه
