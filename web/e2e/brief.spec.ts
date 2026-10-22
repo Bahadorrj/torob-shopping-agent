@@ -94,7 +94,7 @@ test("a product link opens its sellers with the brief kept, and back keeps it to
 
   await page.goBack();
   // the link closed the sheet; the thread is still there
-  await sheet(page).getByRole("button", { name: "گفتگو" }).click();
+  await page.getByRole("button", { name: "دستیار خرید" }).click();
   await expect(sheet(page).getByRole("link", { name: "دیدن فروشنده‌ها" })).toBeVisible();
   await expect(chip(page, "محدوده")).toContainText("فردوسی");
 });
@@ -135,7 +135,8 @@ test("home offers examples, a near-me chip and recent sessions", async ({ page }
 
   await page.goto("/");
   await page.getByRole("region", { name: "جلسه‌های اخیر" }).getByRole("button", { name: "شارژر اپل" }).click();
-  // the resumed session opens its own thread
+  // the resumed session has its own thread behind the agent bar
+  await page.getByRole("button", { name: "دستیار خرید" }).click();
   await expect(sheet(page).getByText("شارژر اپل")).toBeVisible();
   await expect(sheet(page).getByRole("link", { name: "دیدن فروشنده‌ها" })).toBeVisible();
 });

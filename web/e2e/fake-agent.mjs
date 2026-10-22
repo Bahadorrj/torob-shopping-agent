@@ -1,5 +1,5 @@
 // A stand-in for the FastAPI /agent endpoint: answers every AG-UI run with text, product cards, inquiry drafts, chips
-// and a shortlist.
+// and a shortlist. SLOW_SELLERS gets one find_sellers call whose result comes a while after the call starts.
 import { createServer } from "node:http";
 
 import { runEvents } from "./agent-events.mjs";
@@ -60,11 +60,28 @@ const blocks = [
   },
 ];
 
+const SLOW_SELLERS = "فروشنده‌ها را پیدا کن";
+const sellers = {
+  block: "seller_list", product_id: "p1", title: "هدفون انکر R50i", count: 1, ask_them: [], category_only: [],
+  nearest_covered: null, areas: [], pasajs: [],
+  sellers: [{
+    offer_id: "o1", shop_id: "shop_a", shop_name: "دیسیلا مانسا", area: "شیخ هادی", pasaj: null, floor: null, unit: null,
+    lat: null, lon: null, distance_m: 40, price_toman: 3500000, per_meter: false, price_age_days: 2, price_age_bucket: "<=7",
+    trust_level: "listed", warranty: null, declared_hours: true, open_now: true, payment_options: [], reasons: [],
+    latest_price: null, inquiry: null, unknown: [],
+  }],
+};
+
 createServer((req, res) => {
   let body = "";
   req.on("data", (c) => (body += c));
   req.on("end", () => {
+    const input = JSON.parse(body);
     res.writeHead(200, { "content-type": "text/event-stream" });
-    res.end(runEvents(JSON.parse(body), blocks, "این هدفون را پیدا کردم."));
+    if (input.messages.at(-1)?.content !== SLOW_SELLERS) return res.end(runEvents(input, blocks, "این هدفون را پیدا کردم."));
+    const events = runEvents(input, [sellers], "");
+    const at = events.indexOf('data: {"type":"TOOL_CALL_RESULT"');
+    res.write(events.slice(0, at));
+    setTimeout(() => res.end(events.slice(at)), 2000);
   });
 }).listen(Number(process.argv[2]));
