@@ -1,66 +1,103 @@
 "use client";
 
+import { ChevronLeft, History, MessageCircle, Search, Store } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { AGENT_SEND, HELP_CHOOSE } from "@/components/agent-sheet";
+import { OPEN_AREA } from "@/components/brief-bar";
 import { recentSessionIds, useBrief } from "@/components/brief-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getSession, type Session } from "@/lib/api";
-import { locate } from "@/lib/format";
+import { faText } from "@/lib/format";
 
-const NEAR_ME_M = 1000;
-
-const EXAMPLES = [
-  "یه هندزفری بلوتوثی برای باشگاه میخوام، حوالی جمهوری، ساعت ۵ عصر، قسطی",
-  "شارژر ۲۰ وات اپل تا ۸۰۰ هزار تومان، امروز توی پاساژ علاالدین",
-  "کلید مینیاتوری ۱۶ آمپر می‌خوام، فردا صبح، نقدی",
-];
+// hand-picked from the dataset's largest category_name values
+const CATEGORIES = ["هدفون و هندزفری", "کیف و کاور گوشی", "تاچ و ال‌سی‌دی گوشی", "ساعت مچی", "دوربین مدار بسته", "سیم و کابل برق"];
 
 const toAgent = (text: string) => window.dispatchEvent(new CustomEvent(AGENT_SEND, { detail: text }));
 
-// the home screen's main input (PRD 9): one sentence to the agent, which answers in the sheet
+// the home screen's main input (PRD 9): one sentence to the agent, which answers in the drawer
 export function AgentStart() {
   const [text, setText] = useState("");
   const router = useRouter();
   return (
-    <div className="flex flex-col gap-2">
-      <form
-        className="flex gap-2"
-        onSubmit={(e) => {
+    <form
+      className="flex h-12 items-center gap-2 rounded-lg bg-muted p-1 ps-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!text.trim()) return;
+        toAgent(text);
+        setText("");
+      }}
+    >
+      <Input
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        // a one-line input drops newlines, so a pasted multi-line list goes to basket mode before it lands
+        onPaste={(e) => {
+          const pasted = e.clipboardData.getData("text");
+          if (!pasted.trim().includes("\n")) return;
           e.preventDefault();
-          if (!text.trim()) return;
-          toAgent(text);
-          setText("");
+          router.push(`/basket?${new URLSearchParams({ text: pasted })}`);
         }}
-      >
-        <Input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          // a one-line input drops newlines, so a pasted multi-line list goes to basket mode before it lands
-          onPaste={(e) => {
-            const pasted = e.clipboardData.getData("text");
-            if (!pasted.trim().includes("\n")) return;
-            e.preventDefault();
-            router.push(`/basket?${new URLSearchParams({ text: pasted })}`);
-          }}
-          placeholder="چه می‌خواهید، کجا و کی؟"
-          aria-label="خرید شما در یک جمله"
-          className="h-11"
-        />
-        <Button type="submit" className="h-11 px-5">
-          بپرس
-        </Button>
-      </form>
-      <div className="flex flex-col items-start gap-2">
-        {EXAMPLES.map((q) => (
-          <Button key={q} variant="outline" size="sm" className="h-auto max-w-full py-1.5 text-start whitespace-normal" onClick={() => toAgent(q)}>
-            {q}
-          </Button>
+        placeholder="مثلا هندزفری بلوتوثی برای ورزش"
+        aria-label="خرید شما در یک جمله"
+        className="h-full border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+      />
+      <Button type="submit" variant="buy" size="icon" aria-label="بپرس" className="size-10 shrink-0 rounded-lg">
+        <Search />
+      </Button>
+    </form>
+  );
+}
+
+export function CategoryTiles() {
+  return (
+    <section aria-labelledby="categories" className="flex flex-col gap-3">
+      <h2 id="categories" className="text-base font-bold">
+        از یک دسته شروع کنید
+      </h2>
+      <div className="grid grid-cols-2 gap-2">
+        {CATEGORIES.map((c) => (
+          <button key={c} type="button" className="h-14 rounded-xl bg-card px-4 text-start text-sm font-bold" onClick={() => toAgent(`${c} می‌خواهم`)}>
+            {c}
+          </button>
         ))}
       </div>
-    </div>
+    </section>
+  );
+}
+
+export function PasajList() {
+  const { session } = useBrief();
+  if (!session) return null;
+  return (
+    <section aria-labelledby="pasajs" className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <h2 id="pasajs" className="text-base font-bold">
+          پاساژها
+        </h2>
+        <button type="button" className="text-sm text-contact" onClick={() => window.dispatchEvent(new Event(OPEN_AREA))}>
+          همه مناطق
+        </button>
+      </div>
+      <ul className="flex flex-col divide-y divide-rule overflow-hidden rounded-xl bg-card">
+        {session.pasajs.slice(0, 3).map((p) => (
+          <li key={p}>
+            <Link href={`/pasajs/${encodeURIComponent(p)}`} className="flex items-center gap-3 px-4 py-3">
+              <Store className="size-5 shrink-0" aria-hidden />
+              <span className="flex flex-1 flex-col">
+                <span className="text-sm font-bold">پاساژ {faText(p)}</span>
+                <span className="text-xs text-muted-foreground">فروشگاه‌ها به تفکیک طبقه</span>
+              </span>
+              <ChevronLeft className="size-4" aria-hidden />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -70,37 +107,10 @@ function label(s: Session) {
 
 export function HelpChoose() {
   return (
-    <Button size="sm" className="self-start" onClick={() => toAgent(HELP_CHOOSE)}>
+    <Button variant="secondary" className="h-12 justify-start gap-2 bg-card" onClick={() => toAgent(HELP_CHOOSE)}>
+      <MessageCircle aria-hidden />
       {HELP_CHOOSE}
     </Button>
-  );
-}
-
-export function NearMe() {
-  const { session, patch } = useBrief();
-  const [geoError, setGeoError] = useState(false);
-  const on = session?.brief.area?.radius_m != null;
-  return (
-    <div className="flex flex-col gap-1">
-      <Button
-        variant={on ? "default" : "outline"}
-        size="sm"
-        aria-pressed={on}
-        className="self-start"
-        onClick={async () => {
-          try {
-            const origin = await locate();
-            setGeoError(false);
-            patch({ brief: { origin, area: { radius_m: NEAR_ME_M } } });
-          } catch {
-            setGeoError(true);
-          }
-        }}
-      >
-        نزدیک من
-      </Button>
-      {geoError && <p className="text-xs text-destructive">موقعیت شما در دسترس نیست. محله یا پاساژ را از نوار بالا انتخاب کنید.</p>}
-    </div>
   );
 }
 
@@ -121,25 +131,24 @@ export function RecentSessions() {
   if (recent.length === 0) return null;
   return (
     <section aria-labelledby="recent" className="flex flex-col gap-2">
-      <h2 id="recent" className="text-sm font-semibold">
+      <h2 id="recent" className="sr-only">
         جلسه‌های اخیر
       </h2>
-      <div className="flex flex-wrap gap-2">
-        {recent.map((s) => (
-          <Button
-            key={s.session_id}
-            variant="outline"
-            size="sm"
-            className="max-w-full truncate"
-            onClick={async () => {
-              const resumed = await resume(s.session_id);
-              if (resumed?.step?.kind === "sellers") router.push(`/products/${resumed.step.product_id}/sellers`);
-            }}
-          >
-            {label(s)}
-          </Button>
-        ))}
-      </div>
+      {recent.map((s) => (
+        <button
+          key={s.session_id}
+          type="button"
+          className="flex items-center gap-3 rounded-xl bg-card px-4 py-3 text-start"
+          onClick={async () => {
+            const resumed = await resume(s.session_id);
+            if (resumed?.step?.kind === "sellers") router.push(`/products/${resumed.step.product_id}/sellers`);
+          }}
+        >
+          <History className="size-5 shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1 truncate text-sm font-bold">{label(s)}</span>
+          <span className="text-xs text-muted-foreground">ادامه</span>
+        </button>
+      ))}
     </section>
   );
 }

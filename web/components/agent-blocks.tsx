@@ -32,6 +32,7 @@ import {
   type VisitPlan,
 } from "@/lib/api";
 import { faDigits, faText } from "@/lib/format";
+import { productReasons } from "@/lib/reasons";
 import { useEventStream } from "@/lib/use-event-stream";
 
 // One renderer per block type. A block is an agent tool result: `{ block: "<type>", ...tool output }`
@@ -103,18 +104,21 @@ function Pick({ m }: { m: ModelPick }) {
 }
 
 export const BLOCKS: Record<string, (data: never, send: (text: string) => void) => ReactNode> = {
-  product_cards: (d: { items: Product[] }) =>
-    d.items.length ? (
+  product_cards: (d: { items: Product[] }) => {
+    const items = d.items.slice(0, 5);
+    const reasons = productReasons(items);
+    return items.length ? (
       <ul className="flex flex-col gap-2">
-        {d.items.slice(0, 5).map((p) => (
+        {items.map((p, i) => (
           <li key={p.product_id}>
-            <ProductCard product={p} />
+            <ProductCard product={p} reason={reasons[i]} />
           </li>
         ))}
       </ul>
     ) : (
       <p className="text-sm text-muted-foreground">کالایی پیدا نشد.</p>
-    ),
+    );
+  },
   model_shortlist: (d: Shortlist) => (
     <div className="flex flex-col gap-2">
       <ul className="flex flex-col gap-2">
