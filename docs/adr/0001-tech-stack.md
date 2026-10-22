@@ -154,6 +154,7 @@ session's inquiries change, with each leg routed once per stream.
 | `NESHAN_API_KEY` | Neshan service key | no; straight-line fallback |
 | `INQUIRY_NO_REPLY_SECONDS` | `120` | no |
 | `INQUIRY_MAX_PARALLEL` | `3` | no |
+| `SITE_FETCH_TIMEOUT_SECONDS` | `5` | no; per-site timeout of the website price fetch (#21), a timeout is `unavailable` |
 | `AUTO_RESPONDER_ENABLED` | `false` | no; its rate settings come with #22 |
 | `CONSOLE_SECRET` | long random string | no; signs the Seller Console links (#37), the console is closed without it |
 
