@@ -84,7 +84,7 @@ test("map pins cluster one pasaj, tapping one shows its shops, the toggle keeps 
 
   // a filter change while on the map redraws the pins and stays on the map
   await page.getByRole("region", { name: "خلاصه خرید" }).getByRole("button", { name: /^محدوده/ }).click();
-  await page.getByLabel("انتخاب محدوده").selectOption({ label: "فردوسی" });
+  await page.getByRole("dialog", { name: "محدوده" }).getByRole("button", { name: "فردوسی", exact: true }).click();
   await expect(pins).toHaveCount(1);
   await expect(page.getByRole("button", { name: "نقشه", exact: true })).toHaveAttribute("aria-pressed", "true");
 });

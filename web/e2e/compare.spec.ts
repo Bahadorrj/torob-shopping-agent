@@ -111,6 +111,6 @@ test("the compare table re-runs when the brief area changes", async ({ page }) =
   const sellersRow = page.getByRole("table").getByRole("row", { name: /فروشنده در محدوده/ });
   await expect(sellersRow).toContainText("۳ فروشنده ثبت‌شده");
   await page.getByRole("region", { name: "خلاصه خرید" }).getByRole("button", { name: /^محدوده/ }).click();
-  await page.getByLabel("انتخاب محدوده").selectOption({ label: "فردوسی" });
+  await page.getByRole("dialog", { name: "محدوده" }).getByRole("button", { name: "فردوسی", exact: true }).click();
   await expect(sellersRow).toContainText("فروشنده‌ای در این محدوده نیست");
 });

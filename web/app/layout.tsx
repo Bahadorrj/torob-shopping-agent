@@ -3,7 +3,6 @@ import "@fontsource-variable/vazirmatn";
 import "./globals.css";
 
 import { AgentSheet } from "@/components/agent-sheet";
-import { BriefBar } from "@/components/brief-bar";
 import { BriefProvider } from "@/components/brief-provider";
 import { CompareTrayProvider } from "@/components/compare-tray";
 
@@ -20,7 +19,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       {/* bottom padding keeps the end of the page above the agent sheet */}
       <body className="min-h-full flex flex-col pb-14">
         <BriefProvider>
-          <BriefBar />
           <CompareTrayProvider>
             {children}
             <AgentSheet />

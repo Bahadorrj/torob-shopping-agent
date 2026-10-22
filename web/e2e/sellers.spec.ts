@@ -101,19 +101,21 @@ test("seller rows show reason chips, trust badge and link to the shop at 360 px"
 test("area and ranking changes in the brief bar refetch the list and update the count", async ({ page }) => {
   const patches = await open(page, (b) => (area(b)?.name ? { ...list, count: 1, sellers: [unpriced] } : list));
   await bar(page).getByRole("button", { name: /^محدوده/ }).click();
-  await page.getByLabel("انتخاب محدوده").selectOption({ label: "فردوسی" });
+  await page.getByRole("dialog", { name: "محدوده" }).getByRole("button", { name: "فردوسی", exact: true }).click();
   await expect(page.getByText("۱ فروشنده")).toBeVisible();
   expect(patches.at(-1)?.brief?.area).toEqual({ name: "فردوسی" });
 
-  await page.getByLabel("انتخاب محدوده").selectOption({ label: "پاساژ علاالدین" });
+  await bar(page).getByRole("button", { name: /^محدوده/ }).click();
+  await page.getByRole("dialog", { name: "محدوده" }).getByRole("button", { name: "پاساژ علاالدین", exact: true }).click();
   await expect.poll(() => patches.at(-1)?.brief?.area).toEqual({ pasaj: "علاالدین" });
 
-  await page.getByLabel("انتخاب محدوده").selectOption({ label: "نزدیک من، ۱ کیلومتر" });
+  await bar(page).getByRole("button", { name: /^محدوده/ }).click();
+  await page.getByRole("dialog", { name: "محدوده" }).getByRole("button", { name: "نزدیک من، ۱ کیلومتر", exact: true }).click();
   await expect.poll(() => patches.at(-1)?.brief?.area).toEqual({ radius_m: 1000 });
   expect(patches.at(-1)?.brief?.origin).toEqual({ lat: 35.6948, lon: 51.4115 });
 
-  await bar(page).getByRole("button", { name: /^اولویت/ }).click();
-  await page.getByRole("button", { name: "معتبرترین" }).click();
+  await bar(page).getByRole("button", { name: /^فیلترها/ }).click();
+  await page.getByRole("dialog", { name: "فیلترها" }).getByRole("button", { name: "معتبرترین" }).click();
   await expect.poll(() => patches.at(-1)?.brief?.priority).toBe("most_reliable");
   await expect(page.getByRole("button", { name: "معتبرترین", exact: true })).toHaveAttribute("aria-pressed", "true");
 });

@@ -1,14 +1,17 @@
 "use client";
 
+import { ChevronDown, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 
 import { useBrief } from "@/components/brief-provider";
 import { Button } from "@/components/ui/button";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import type { Brief, Center, MustHave, PaymentKind, Priority, SessionPatch, TravelMode } from "@/lib/api";
 import { distance, faDigits, faText, localDate, locate } from "@/lib/format";
 
 const RADII = [500, 1000, 2000, 5000];
+const BUDGETS = [2, 5, 10, 20].map((m) => m * 1000000);
 
 const PRIORITIES: Record<Priority, string> = { cheapest: "ارزان‌ترین", closest: "نزدیک‌ترین", most_reliable: "معتبرترین" };
 export const MODES: Record<TravelMode, string> = { walk: "پیاده", transit: "مترو و اتوبوس", car: "خودرو" };
@@ -17,7 +20,16 @@ const PAYMENTS: Record<PaymentKind, string> = { any: "هر روشی", cash: "ن�
 const PROVIDERS = ["ترب‌پی", "اسنپ‌پی", "دیجی‌پی", "تارا", "ازکی‌وام"];
 const MUST_HAVE: Record<keyof MustHave, string> = { warranty: "گارانتی", test_in_presence: "تست در حضور مشتری", fast_delivery: "ارسال سریع" };
 
-type Field = "area" | "budget" | "visit" | "travel" | "payment" | "must_have" | "priority";
+type Sheet = "area" | "budget" | "all";
+const TITLES: Record<Sheet, string> = { area: "محدوده", budget: "بودجه", all: "فیلترها" };
+
+const CHIP =
+  "inline-flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-border bg-card px-3 text-sm text-foreground data-[on=true]:border-foreground data-[on=true]:font-bold data-[on=true]:shadow-[0_0_0_0.5px_var(--foreground)]";
+// pressed: 1.5px of ink as a 1px border plus a 0.5px ring; Chrome floors border widths to whole pixels
+
+function Chip({ on, toggle, ...props }: React.ComponentProps<"button"> & { on: boolean; toggle?: boolean }) {
+  return <button type="button" data-on={on} aria-pressed={toggle ? on : undefined} className={CHIP} {...props} />;
+}
 
 function placeLabel(kind: "area" | "pasaj", name: string) {
   return kind === "area" ? name : `پاساژ ${faText(name)}`;
@@ -40,11 +52,9 @@ function visitLabel(v: Brief["visit_window"]) {
   return [day, time].filter(Boolean).join("، ") || "هر زمان";
 }
 
-// "all", "near:<m>", "area:<name>" or "pasaj:<name>"
-function areaValue(area: Brief["area"]) {
-  if (!area) return "all";
-  if (area.radius_m !== null) return `near:${area.radius_m}`;
-  return area.name !== null ? `area:${area.name}` : `pasaj:${area.pasaj}`;
+function nowTime() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 export function Choices<T extends string>({ label, options, value, onPick }: { label: string; options: Record<T, string>; value: T | null; onPick: (v: T) => void }) {
@@ -59,19 +69,35 @@ export function Choices<T extends string>({ label, options, value, onPick }: { l
   );
 }
 
-export function BriefBar() {
+function Group({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2" role="group" aria-label={label}>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <div className="flex flex-wrap gap-2">{children}</div>
+    </div>
+  );
+}
+
+// The brief as filter chips: one-tap toggles, plus bottom sheets for area, budget and everything else
+export function FilterChipBar() {
   const { session, patch } = useBrief();
-  const [open, setOpen] = useState<Field | null>(null);
+  const [sheet, setSheet] = useState<Sheet>("all");
+  const [open, setOpen] = useState(false);
   const [geoError, setGeoError] = useState(false);
   if (!session) return null;
-  const { brief } = session;
+  const { brief, centers } = session;
   const set = (b: SessionPatch["brief"]) => patch({ brief: b });
-  const { origin } = brief;
-  const { centers } = session;
+  const { origin, visit_window: visit, payment, must_have } = brief;
   const center = origin ? centers.find((c) => c.lat === origin.lat && c.lon === origin.lon) : undefined;
 
-  async function pickOrigin(v: string) {
-    const picked = centers.find((c) => `${c.kind}:${c.name}` === v);
+  const show = (s: Sheet) => {
+    setSheet(s);
+    setOpen(true);
+  };
+  // a pick in the area or budget sheet closes it; the filters sheet stays open for more edits
+  const done = () => sheet !== "all" && setOpen(false);
+
+  async function pickOrigin(picked: Center | null) {
     if (picked) return set({ origin: { lat: picked.lat, lon: picked.lon } });
     try {
       const here = await locate();
@@ -82,191 +108,223 @@ export function BriefBar() {
     }
   }
 
-  // geolocation first when a choice needs the origin; the origin is kept for later radius and distance use
+  // geolocation first when a choice needs the origin; the origin is kept for later radius and distance use.
+  // false when the position is unavailable
   async function withOrigin(b: NonNullable<SessionPatch["brief"]>) {
-    if (brief.origin) return set(b);
+    if (brief.origin) {
+      set(b);
+      return true;
+    }
     try {
       const origin = await locate();
       setGeoError(false);
-      return set({ ...b, origin });
+      set({ ...b, origin });
+      return true;
     } catch {
       setGeoError(true);
       // a ranking still works without the origin, a radius does not
-      if (!("area" in b)) return set(b);
+      if (!("area" in b)) set(b);
+      return false;
     }
   }
 
-  function pickArea(v: string) {
-    const kind = v.split(":")[0];
-    const value = v.slice(kind.length + 1);
-    if (kind === "near") return withOrigin({ area: { radius_m: Number(value) } });
-    set({ area: kind === "area" ? { name: value } : kind === "pasaj" ? { pasaj: value } : null });
+  async function pickArea(area: { radius_m: number } | { name: string } | { pasaj: string } | null) {
+    if (area && "radius_m" in area) {
+      if (!(await withOrigin({ area }))) return;
+    } else set({ area });
+    done();
   }
 
-  const chips: { field: Field; label: string; value: string }[] = [
-    { field: "area", label: "محدوده", value: areaLabel(brief.area, center) },
-    {
-      field: "budget",
-      label: "بودجه",
-      value: brief.budget.max_total_toman ? `تا ${faDigits(brief.budget.max_total_toman)} تومان` : "بدون سقف",
-    },
-    { field: "visit", label: "زمان مراجعه", value: visitLabel(brief.visit_window) },
-    { field: "travel", label: "نحوه رفتن", value: brief.travel_mode ? MODES[brief.travel_mode] : "انتخاب نشده" },
-    { field: "payment", label: "پرداخت", value: [PAYMENTS[brief.payment.kind], brief.payment.provider].filter(Boolean).join(" ") },
-    {
-      field: "must_have",
-      label: "شرایط",
-      value: (Object.keys(MUST_HAVE) as (keyof MustHave)[]).filter((k) => brief.must_have[k]).map((k) => MUST_HAVE[k]).join("، ") || "هیچ",
-    },
-    { field: "priority", label: "اولویت", value: PRIORITIES[brief.priority] },
-  ];
+  const setBudget = (n: number | null) => {
+    set({ budget: { ...brief.budget, max_total_toman: n } });
+    done();
+  };
+
+  const nowOn = visit.earliest_arrival !== null;
+  // an arrival already passed today is "now"; a later one names its time
+  const nowLabel = !nowOn || (visit.date === localDate() && visit.earliest_arrival!.slice(0, 5) <= nowTime()) ? "الان باز" : visitLabel(visit);
+  const pay = (k: PaymentKind) => set({ payment: { kind: payment.kind === k ? "any" : k, provider: null } });
+  const active = [brief.area, brief.budget.max_total_toman, visit.date || visit.earliest_arrival, payment.kind !== "any", ...Object.values(must_have)].filter(Boolean).length;
+  const area = areaLabel(brief.area, center);
+  const budget = brief.budget.max_total_toman ? `تا ${faDigits(brief.budget.max_total_toman)} تومان` : null;
+
+  const areaPanel = (
+    <>
+      <Group label={center ? "شعاع" : "نزدیک من"}>
+        {RADII.map((r) => (
+          <Chip key={r} on={brief.area?.radius_m === r} toggle onClick={() => pickArea({ radius_m: r })}>
+            {radiusLabel(r, center)}
+          </Chip>
+        ))}
+      </Group>
+      <Group label="مرکز شعاع">
+        <Chip on={!!origin && !center} toggle onClick={() => pickOrigin(null)}>
+          مرکز: موقعیت من
+        </Chip>
+        {centers.map((c) => (
+          <Chip key={`${c.kind}:${c.name}`} on={c === center} toggle onClick={() => pickOrigin(c)}>
+            مرکز: {placeLabel(c.kind, c.name)}
+          </Chip>
+        ))}
+      </Group>
+      <Group label="محله">
+        <Chip on={!brief.area} toggle onClick={() => pickArea(null)}>
+          همه مناطق
+        </Chip>
+        {session.areas.map((a) => (
+          <Chip key={a} on={brief.area?.name === a} toggle onClick={() => pickArea({ name: a })}>
+            {a}
+          </Chip>
+        ))}
+      </Group>
+      <Group label="پاساژ">
+        {session.pasajs.map((p) => (
+          <Chip key={p} on={brief.area?.pasaj === p} toggle onClick={() => pickArea({ pasaj: p })}>
+            {placeLabel("pasaj", p)}
+          </Chip>
+        ))}
+      </Group>
+    </>
+  );
+
+  const budgetPanel = (
+    <>
+      <Group label="سقف بودجه">
+        <Chip on={!budget} toggle onClick={() => setBudget(null)}>
+          بدون سقف
+        </Chip>
+        {BUDGETS.map((n) => (
+          <Chip key={n} on={brief.budget.max_total_toman === n} toggle onClick={() => setBudget(n)}>
+            {faDigits(n / 1000000)} میلیون
+          </Chip>
+        ))}
+      </Group>
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const n = Number(new FormData(e.currentTarget).get("budget"));
+          setBudget(n > 0 ? n : null);
+        }}
+      >
+        <Input
+          name="budget"
+          type="number"
+          min={0}
+          step={1000}
+          defaultValue={brief.budget.max_total_toman ?? ""}
+          aria-label="سقف بودجه به تومان"
+          placeholder="سقف بودجه (تومان)"
+          className="h-9"
+        />
+        <Button type="submit" className="h-9" aria-label="اعمال بودجه">
+          اعمال
+        </Button>
+      </form>
+    </>
+  );
 
   return (
-    <section aria-label="خلاصه خرید" data-brief-bar className="sticky top-0 z-10 border-b bg-background">
-      <div className="mx-auto flex w-full max-w-xl flex-col gap-2 px-4 py-2">
-        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
-          {chips.map((c) => (
-            <Button
-              key={c.field}
-              size="sm"
-              variant={open === c.field ? "secondary" : "outline"}
-              aria-expanded={open === c.field}
-              onClick={() => setOpen(open === c.field ? null : c.field)}
-            >
-              {c.label}: {c.value}
-            </Button>
-          ))}
-        </div>
-
-        {open === "area" && (
-          <select
-            aria-label="مرکز شعاع"
-            value={center ? `${center.kind}:${center.name}` : origin ? "me" : ""}
-            onChange={(e) => pickOrigin(e.target.value)}
-            className="h-9 min-w-0 rounded-lg border bg-background px-2 text-sm"
-          >
-            {!origin && <option value="">مرکز شعاع: انتخاب نشده</option>}
-            <option value="me">مرکز شعاع: موقعیت من</option>
-            {centers.map((c) => (
-              <option key={`${c.kind}:${c.name}`} value={`${c.kind}:${c.name}`}>
-                مرکز شعاع: {placeLabel(c.kind, c.name)}
-              </option>
-            ))}
-          </select>
-        )}
-        {open === "area" && (
-          <select
-            aria-label="انتخاب محدوده"
-            value={areaValue(brief.area)}
-            onChange={(e) => pickArea(e.target.value)}
-            className="h-9 min-w-0 rounded-lg border bg-background px-2 text-sm"
-          >
-            <option value="all">همه مناطق پوشش‌داده‌شده</option>
-            <optgroup label={center ? "شعاع" : "نزدیک من"}>
-              {RADII.map((r) => (
-                <option key={r} value={`near:${r}`}>
-                  {radiusLabel(r, center)}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="محله">
-              {session.areas.map((a) => (
-                <option key={a} value={`area:${a}`}>
-                  {a}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="پاساژ">
-              {session.pasajs.map((p) => (
-                <option key={p} value={`pasaj:${p}`}>
-                  پاساژ {faText(p)}
-                </option>
-              ))}
-            </optgroup>
-          </select>
-        )}
-        {open === "budget" && (
-          <form
-            className="flex gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const n = Number(new FormData(e.currentTarget).get("budget"));
-              set({ budget: { ...brief.budget, max_total_toman: n > 0 ? n : null } });
-            }}
-          >
-            <Input
-              name="budget"
-              type="number"
-              min={0}
-              step={1000}
-              defaultValue={brief.budget.max_total_toman ?? ""}
-              aria-label="سقف بودجه به تومان"
-              placeholder="سقف بودجه (تومان)"
-              className="h-9"
-            />
-            <Button type="submit" className="h-9" aria-label="اعمال بودجه">
-              اعمال
-            </Button>
-          </form>
-        )}
-        {open === "visit" && (
-          <div className="flex gap-2">
-            <select
-              aria-label="روز مراجعه"
-              value={brief.visit_window.date ?? ""}
-              onChange={(e) => set({ visit_window: { ...brief.visit_window, date: e.target.value || null } })}
-              className="h-9 min-w-0 flex-1 rounded-lg border bg-background px-2 text-sm"
-            >
-              <option value="">هر روز</option>
-              <option value={localDate()}>امروز</option>
-              <option value={localDate(1)}>فردا</option>
-            </select>
-            <Input
-              type="time"
-              aria-label="ساعت رسیدن"
-              value={brief.visit_window.earliest_arrival?.slice(0, 5) ?? ""}
-              onChange={(e) => set({ visit_window: { ...brief.visit_window, earliest_arrival: e.target.value || null } })}
-              className="h-9 flex-1"
-            />
-          </div>
-        )}
-        {open === "travel" && <Choices label="نحوه رفتن" options={MODES} value={brief.travel_mode} onPick={(v) => set({ travel_mode: v })} />}
-        {open === "payment" && (
-          <Choices label="پرداخت" options={PAYMENTS} value={brief.payment.kind} onPick={(v) => set({ payment: { kind: v, provider: null } })} />
-        )}
-        {open === "payment" && brief.payment.kind === "installment" && (
-          <Choices
-            label="ارائه‌دهنده اقساط"
-            options={Object.fromEntries([["", "هر کدام"], ...PROVIDERS.map((p) => [p, p])])}
-            value={brief.payment.provider ?? ""}
-            onPick={(v) => set({ payment: { kind: "installment", provider: v || null } })}
-          />
-        )}
-        {open === "must_have" && (
-          <div className="flex flex-wrap gap-2" role="group" aria-label="شرایط لازم">
-            {(Object.keys(MUST_HAVE) as (keyof MustHave)[]).map((k) => (
-              <Button
-                key={k}
-                size="sm"
-                variant={brief.must_have[k] ? "default" : "outline"}
-                aria-pressed={brief.must_have[k]}
-                onClick={() => set({ must_have: { ...brief.must_have, [k]: !brief.must_have[k] } })}
-              >
-                {MUST_HAVE[k]}
-              </Button>
-            ))}
-          </div>
-        )}
-        {open === "priority" && (
-          <Choices
-            label="مرتب‌سازی"
-            options={PRIORITIES}
-            value={brief.priority}
-            onPick={(v) => (v === "closest" ? withOrigin({ priority: v }) : set({ priority: v }))}
-          />
-        )}
-        {geoError && <p className="text-xs text-destructive">موقعیت شما در دسترس نیست. محله یا پاساژ را انتخاب کنید.</p>}
+    <section aria-label="خلاصه خرید" className="sticky top-0 z-10 border-b border-hairline bg-card">
+      <div data-chip-row className="mx-auto flex h-[52px] w-full max-w-xl items-center gap-2 overflow-x-auto px-4 [scrollbar-width:none]">
+        <Chip on={active > 0} aria-haspopup="dialog" aria-label={active ? `فیلترها، ${faDigits(active)} فعال` : "فیلترها"} onClick={() => show("all")}>
+          <SlidersHorizontal className="size-4" aria-hidden />
+          فیلترها
+          {active > 0 && (
+            <span className="flex size-5 items-center justify-center rounded-full bg-foreground text-xs text-background tabular-nums">{faDigits(active)}</span>
+          )}
+        </Chip>
+        <Chip on={!!brief.area} aria-haspopup="dialog" aria-label={`محدوده: ${area}`} onClick={() => show("area")}>
+          {brief.area ? area : "محدوده"}
+          <ChevronDown className="size-4" aria-hidden />
+        </Chip>
+        <Chip
+          on={nowOn}
+          toggle
+          onClick={() =>
+            set({
+              visit_window: nowOn
+                ? { date: null, earliest_arrival: null, latest_departure: null }
+                : { ...visit, date: localDate(), earliest_arrival: nowTime() },
+            })
+          }
+        >
+          {nowOn && <span className="size-2 rounded-full bg-open" aria-hidden />}
+          {nowLabel}
+        </Chip>
+        <Chip on={!!budget} aria-haspopup="dialog" aria-label={`بودجه: ${budget ?? "بدون سقف"}`} onClick={() => show("budget")}>
+          {budget ?? "بودجه"}
+          <ChevronDown className="size-4" aria-hidden />
+        </Chip>
+        <Chip on={payment.kind === "torob_pay"} toggle onClick={() => pay("torob_pay")}>
+          ترب‌پی حضوری
+        </Chip>
+        <Chip on={payment.kind === "installment"} toggle onClick={() => pay("installment")}>
+          اقساطی
+        </Chip>
+        <Chip on={must_have.warranty} toggle onClick={() => set({ must_have: { ...must_have, warranty: !must_have.warranty } })}>
+          گارانتی
+        </Chip>
       </div>
+
+      <Drawer open={open} onOpenChange={setOpen} showSwipeHandle>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle className="font-bold">{TITLES[sheet]}</DrawerTitle>
+          </DrawerHeader>
+          <div className="flex flex-col gap-4 overflow-y-auto p-4">
+            {sheet !== "budget" && areaPanel}
+            {sheet !== "area" && budgetPanel}
+            {sheet === "all" && (
+              <>
+                <div className="flex gap-2" role="group" aria-label="زمان مراجعه">
+                  <select
+                    aria-label="روز مراجعه"
+                    value={visit.date ?? ""}
+                    onChange={(e) => set({ visit_window: { ...visit, date: e.target.value || null } })}
+                    className="h-9 min-w-0 flex-1 rounded-lg border bg-card px-2 text-sm"
+                  >
+                    <option value="">هر روز</option>
+                    <option value={localDate()}>امروز</option>
+                    <option value={localDate(1)}>فردا</option>
+                  </select>
+                  <Input
+                    type="time"
+                    aria-label="ساعت رسیدن"
+                    value={visit.earliest_arrival?.slice(0, 5) ?? ""}
+                    onChange={(e) => set({ visit_window: { ...visit, earliest_arrival: e.target.value || null } })}
+                    className="h-9 flex-1"
+                  />
+                </div>
+                <Choices label="نحوه رفتن" options={MODES} value={brief.travel_mode} onPick={(v) => set({ travel_mode: v })} />
+                <Choices label="پرداخت" options={PAYMENTS} value={payment.kind} onPick={(v) => set({ payment: { kind: v, provider: null } })} />
+                {payment.kind === "installment" && (
+                  <Choices
+                    label="ارائه‌دهنده اقساط"
+                    options={Object.fromEntries([["", "هر کدام"], ...PROVIDERS.map((p) => [p, p])])}
+                    value={payment.provider ?? ""}
+                    onPick={(v) => set({ payment: { kind: "installment", provider: v || null } })}
+                  />
+                )}
+                <div className="flex flex-wrap gap-2" role="group" aria-label="شرایط لازم">
+                  {(Object.keys(MUST_HAVE) as (keyof MustHave)[]).map((k) => (
+                    <Chip key={k} on={must_have[k]} toggle onClick={() => set({ must_have: { ...must_have, [k]: !must_have[k] } })}>
+                      {MUST_HAVE[k]}
+                    </Chip>
+                  ))}
+                </div>
+                <Choices
+                  label="مرتب‌سازی"
+                  options={PRIORITIES}
+                  value={brief.priority}
+                  onPick={(v) => (v === "closest" ? withOrigin({ priority: v }) : set({ priority: v }))}
+                />
+              </>
+            )}
+            {geoError && <p className="text-xs text-destructive">موقعیت شما در دسترس نیست. محله یا پاساژ را انتخاب کنید.</p>}
+          </div>
+        </DrawerContent>
+      </Drawer>
     </section>
   );
 }
