@@ -27,6 +27,14 @@ const blocks = [
   { block: "product_cards", query: "هدفون", items: [product] },
   { block: "visit_plan", ...plan },
   { block: "directions", ...directions },
+  {
+    block: "alternatives", inquiry_id: 1, reason: "no_reply",
+    alternatives: [{
+      kind: "same_product", offer_id: "o9", product_id: "p1", product_title: "هدفون انکر R50i", shop_id: "shop_c", shop_name: "نیکورا ویوان",
+      pasaj: "علاالدین", price_toman: 3300000, price_delta_toman: -200000, same_pasaj: true, open_now: true, distance_m: 9,
+      tradeoff: "۲۰۰ هزار تومان ارزان‌تر، همین پاساژ، الان باز است",
+    }],
+  },
   { block: "chips", field: "area", question: "کجا می‌خواهید بروید؟", options: ["نزدیک من", "فردوسی", "علاالدین"] },
 ];
 
@@ -40,7 +48,7 @@ createServer((req, res) => {
     blocks.forEach((b, i) => {
       const id = `call-${n}-${i}`;
       events.push(
-        { type: "TOOL_CALL_START", toolCallId: id, toolCallName: { chips: "ask_user", visit_plan: "plan_visit", directions: "get_directions" }[b.block] ?? "search_products" },
+        { type: "TOOL_CALL_START", toolCallId: id, toolCallName: { chips: "ask_user", visit_plan: "plan_visit", directions: "get_directions", alternatives: "find_alternatives" }[b.block] ?? "search_products" },
         { type: "TOOL_CALL_ARGS", toolCallId: id, delta: "{}" },
         { type: "TOOL_CALL_END", toolCallId: id },
         { type: "TOOL_CALL_RESULT", messageId: `result-${n}-${i}`, toolCallId: id, content: JSON.stringify(b), role: "tool" },

@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { useBrief } from "@/components/brief-provider";
 import { Button } from "@/components/ui/button";
-import type { Alternative, Alternatives as Block } from "@/lib/api";
+import { askAlternative, type Alternative, type Alternatives as Block } from "@/lib/api";
 
 const REASON: Record<Block["reason"], string> = {
   unavailable: "موجود نبود. به جایش:",
@@ -54,4 +55,10 @@ export function Alternatives({ block, onAsk }: { block: Block; onAsk: (a: Altern
       {error && <p className="text-xs text-destructive">ارسال نشد. برای هر کالا حداکثر ۳ استعلام باز می‌ماند.</p>}
     </section>
   );
+}
+
+// the agent's alternatives block: the thread is the session, so a tap asks for this session
+export function AgentAlternatives({ block }: { block: Block }) {
+  const { session } = useBrief();
+  return session && <Alternatives block={block} onAsk={(a) => askAlternative(session.session_id, a)} />;
 }

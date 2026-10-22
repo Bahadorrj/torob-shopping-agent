@@ -22,6 +22,11 @@ test("the agent sheet renders blocks at 360 px and a chip answers the question",
   // directions: route, last leg and map app links
   await expect(sheet.getByText("پاساژ علاالدین، رو‌به‌روی پاساژ چهارسو، طبقه ۲، واحد ۲۱۶")).toBeVisible();
   await expect(sheet.getByRole("link", { name: "باز کردن در نشان" })).toBeVisible();
+  // alternatives: the reason, a trade-off line and a one-tap ask
+  const alternatives = sheet.getByRole("region", { name: "جایگزین‌ها" });
+  await expect(alternatives).toContainText("پاسخ نداد. به جایش:");
+  await expect(alternatives).toContainText("۲۰۰ هزار تومان ارزان‌تر، همین پاساژ، الان باز است");
+  await expect(alternatives.getByRole("button", { name: "از این فروشنده بپرس" })).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBe(0);
 

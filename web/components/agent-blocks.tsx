@@ -3,11 +3,12 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { AgentAlternatives } from "@/components/alternatives";
 import { ProductCard } from "@/components/product-card";
 import { Seller } from "@/components/seller-list";
 import { Button } from "@/components/ui/button";
 import { clock, OpenBadge, RouteDetails } from "@/components/visit-plan";
-import type { Directions, ProductCard as Product, ProductCompare, SellerCompare, SellerList, VisitPlan } from "@/lib/api";
+import type { Alternatives, Directions, ProductCard as Product, ProductCompare, SellerCompare, SellerList, VisitPlan } from "@/lib/api";
 import { faDigits } from "@/lib/format";
 
 // One renderer per block type. A block is an agent tool result: `{ block: "<type>", ...tool output }`
@@ -91,6 +92,7 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
       <RouteDetails d={d} />
     </div>
   ),
+  alternatives: (d: Alternatives) => <AgentAlternatives block={d} />,
   chips: (d: Chips, send) => (
     <div className="flex flex-col gap-2">
       <p className="text-sm">{d.question}</p>
