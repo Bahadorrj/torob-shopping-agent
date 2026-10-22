@@ -67,6 +67,24 @@ export async function getShop(shopId: string): Promise<ShopDetails | null> {
 }
 
 // Mirrors SellerList in backend/src/pasazhgard/sellers.py.
+export type PasajShop = {
+  shop_id: string;
+  shop_name: string;
+  unit: string | null;
+  products: { product_id: string; title: string; price_toman: number | null }[];
+};
+
+// `floor` null groups the shops whose floor is not recorded
+export type PasajView = { pasaj: string; count: number; floors: { floor: string | null; level: number | null; shops: PasajShop[] }[] };
+
+export async function getPasaj(pasaj: string, productIds: string[], sessionId?: string): Promise<PasajView | null> {
+  const q = new URLSearchParams([...productIds.map((id) => ["product_id", id]), ...(sessionId ? [["session_id", sessionId]] : [])]);
+  const r = await fetch(`/api/pasajs/${encodeURIComponent(pasaj)}?${q}`);
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`pasaj failed: ${r.status}`);
+  return r.json();
+}
+
 export type Priority = "cheapest" | "closest" | "most_reliable";
 
 export type Reason = {
@@ -301,14 +319,26 @@ export type Inquiry = {
   events: { at: string; status: InquiryState; reply: ConsoleReply | null; question: string | null }[];
 };
 
-export type InquiryStatus = { inquiries: Inquiry[] };
+// a price read from the shop's website: says nothing about stock; unavailable when the site failed or showed no price
+export type SitePrice = {
+  shop_id: string;
+  shop_name: string;
+  product_id: string;
+  status: "found" | "unavailable";
+  price_toman: number | null;
+  trust_level: "website_price";
+  fetched_at: string;
+  url: string;
+};
+
+export type InquiryStatus = { inquiries: Inquiry[]; site_prices?: SitePrice[] };
 
 export type ConsoleInbox = { shop_id: string; shop_name: string; inquiries: Inquiry[] };
 
 export type LatestPrice = {
-  status: "not_asked" | "asked" | "confirmed";
+  status: "not_asked" | "asked" | "website" | "confirmed";
   price_toman: number | null;
-  trust_level: "confirmed" | "unknown";
+  trust_level: "confirmed" | "website_price" | "unknown";
   at: string | null;
 };
 
@@ -421,7 +451,32 @@ export type StopInquiry = Outcome & {
 // `route` is the leg from the previous stop, or from the origin for the first one
 export type Stop = Directions & { eta: string; open_at_eta: boolean | null; inquiry: StopInquiry | null };
 
-export type VisitPlan = { origin: { lat: number; lon: number }; depart_at: string; mode: TravelMode; stops: Stop[] };
+export type Swap = { shop_id: string; shop_name: string; offer_id: string; price_toman: number | null; distance_m: number | null };
+
+// a stop that closes between leaving and arriving; `swap` is another seller of its item, open then
+export type ClosingNudge = { kind: "closing"; shop_id: string; shop_name: string; closes_at: string; leave_by: string; swap: Swap | null };
+
+// a seller-confirmed or website price other than the listed one, against the brief's budget
+export type PriceNudge = {
+  kind: "price";
+  shop_id: string;
+  shop_name: string;
+  product_id: string;
+  product_title: string;
+  listed_price_toman: number;
+  latest_price_toman: number;
+  price_delta_toman: number;
+  trust_level: "confirmed" | "website_price";
+  over_budget: boolean;
+};
+
+export type VisitPlan = {
+  origin: { lat: number; lon: number };
+  depart_at: string;
+  mode: TravelMode;
+  stops: Stop[];
+  nudges: (ClosingNudge | PriceNudge)[];
+};
 
 // a plan with a session_id follows the session's inquiries
 export const visitPlanStreamUrl = (query: string) => `/api/visit-plan/stream?${query}`;
@@ -431,5 +486,34 @@ export async function getVisitPlan(query: string): Promise<VisitPlan | null> {
   const r = await fetch(`/api/visit-plan?${query}`);
   if (r.status === 404) return null;
   if (!r.ok) throw new Error(`plan failed: ${r.status}`);
+  return r.json();
+}
+
+// Mirrors Basket in backend/src/pasazhgard/basket.py.
+export type BasketItem = { line: string; product_id: string | null; title: string | null; category: string | null; quantity: number; unit: "piece" | "meter" };
+export type BasketStopItem = {
+  item: number;
+  offer_id: string | null;
+  price_toman: number | null;
+  per_meter: boolean;
+  total_toman: number | null;
+  trust_level: "listed" | "unknown" | "category_only";
+};
+export type BasketStop = {
+  shop_id: string;
+  shop_name: string;
+  address: string | null;
+  pasaj: string | null;
+  floor: string | null;
+  unit: string | null;
+  items: BasketStopItem[];
+  total_toman: number;
+};
+export type Basket = { items: BasketItem[]; stops: BasketStop[]; missing: number[]; total_toman: number };
+
+export async function optimizeBasket(text: string, b: Brief): Promise<Basket> {
+  const area = { lat: b.origin?.lat, lon: b.origin?.lon, radius_m: b.area?.radius_m, area: b.area?.name, pasaj: b.area?.pasaj };
+  const r = await fetch("/api/basket", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, ...area }) });
+  if (!r.ok) throw new Error(`basket failed: ${r.status}`);
   return r.json();
 }

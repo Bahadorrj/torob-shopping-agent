@@ -194,3 +194,35 @@ def clock(client, now):
 
     yield lambda at: app.dependency_overrides.__setitem__(get_now, lambda: at)
     app.dependency_overrides[get_now] = lambda: now
+
+
+class FakeWeb:
+    """The web fetch port in tests: a page per URL prefix, or an exception to raise for it."""
+
+    def __init__(self, pages):
+        self.pages = pages
+        self.urls = []
+
+    def get(self, url):
+        self.urls.append(url)
+        page = next((p for prefix, p in self.pages.items() if url.startswith(prefix)), None)
+        if page is None or isinstance(page, Exception):
+            raise page or LookupError(url)
+        return page
+
+
+@pytest.fixture
+def site(client):
+    """Scripts a site price fetch: `site(pages, *parses)`, pages by URL prefix, parses as `SitePriceParse` fields."""
+    from pasazhgard.api import app, get_web_fetch
+
+    def script(pages, *parses: dict):
+        web = FakeWeb(pages)
+        model = ScriptedModel(messages=iter(Agent.call("SitePriceParse", **p) for p in parses))
+        app.dependency_overrides[get_web_fetch] = lambda: web
+        app.dependency_overrides[get_small_model] = lambda: model
+        return web
+
+    yield script
+    app.dependency_overrides.pop(get_web_fetch, None)
+    app.dependency_overrides[get_small_model] = lambda: None

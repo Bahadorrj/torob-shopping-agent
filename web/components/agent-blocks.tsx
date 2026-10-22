@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { AgentAlternatives } from "@/components/alternatives";
+import { BasketView } from "@/components/basket";
 import { useBrief } from "@/components/brief-provider";
 import { InquiryTracker } from "@/components/inquiry-tracker";
 import { ListedPrice, ProductCard } from "@/components/product-card";
@@ -15,6 +16,7 @@ import {
   confirmInquiries,
   inquiriesStreamUrl,
   type Alternatives,
+  type Basket,
   type Directions,
   type Inquiry,
   type InquiryStatus,
@@ -23,6 +25,7 @@ import {
   type ProductCompare,
   type SellerCompare,
   type SellerList,
+  type SitePrice,
   type Shortlist,
   type VisitPlan,
 } from "@/lib/api";
@@ -35,14 +38,16 @@ type Chips = { field: string; question: string; options: string[] };
 
 // The block's inquiries as they are now, not as the tool saw them. The tap sends through the REST confirm path:
 // consent never goes through the model (ADR-0002 fallback).
-function Inquiries({ initial }: { initial: Inquiry[] }) {
+function Inquiries({ initial, sites }: { initial: Inquiry[]; sites: SitePrice[] }) {
   // the sheet renders only once the session exists
   const sid = useBrief().session!.session_id;
   // shortcut: one stream per block; share one per session if threads grow many inquiry blocks
   const live = useEventStream<InquiryStatus>(inquiriesStreamUrl(sid));
   const ids = new Set(initial.map((i) => i.inquiry_id));
   const inquiries = live ? live.inquiries.filter((i) => ids.has(i.inquiry_id)) : initial;
-  return <InquiryTracker sessionId={sid} inquiries={inquiries} onConfirm={(inquiryIds) => confirmInquiries(sid, inquiryIds)} />;
+  const keys = new Set(sites.map((p) => `${p.shop_id} ${p.product_id}`));
+  const sitePrices = live ? (live.site_prices ?? []).filter((p) => keys.has(`${p.shop_id} ${p.product_id}`)) : sites;
+  return <InquiryTracker sessionId={sid} inquiries={inquiries} sitePrices={sitePrices} onConfirm={(inquiryIds) => confirmInquiries(sid, inquiryIds)} />;
 }
 
 // the plan screen's query asks the backend for the same plan; with the session the plan follows its inquiries,
@@ -153,7 +158,7 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
       </Link>
     </div>
   ),
-  inquiry_status: (d: InquiryStatus) => <Inquiries initial={d.inquiries} />,
+  inquiry_status: (d: InquiryStatus) => <Inquiries initial={d.inquiries} sites={d.site_prices ?? []} />,
   visit_plan: (d: VisitPlan) => (
     <div className="flex flex-col gap-1.5 text-sm">
       <ol className="flex flex-col gap-1">
@@ -176,6 +181,7 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
     </div>
   ),
   alternatives: (d: Alternatives) => <AgentAlternatives block={d} />,
+  basket: (d: Basket) => <BasketView basket={d} />,
   chips: (d: Chips, send) => (
     <div className="flex flex-col gap-2">
       <p className="text-sm">{d.question}</p>

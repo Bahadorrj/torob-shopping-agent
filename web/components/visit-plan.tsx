@@ -8,7 +8,7 @@ import { FELL_THROUGH, STATUS } from "@/components/inquiry-tracker";
 import { SellerMap, type Pin } from "@/components/seller-map";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { getVisitPlan, visitPlanStreamUrl, type Directions, type Stop, type StopInquiry, type VisitPlan as Plan } from "@/lib/api";
+import { getVisitPlan, visitPlanStreamUrl, type ClosingNudge, type Directions, type PriceNudge, type Stop, type StopInquiry, type VisitPlan as Plan } from "@/lib/api";
 import { distance, faDigits, faText } from "@/lib/format";
 import { useEventStream } from "@/lib/use-event-stream";
 
@@ -100,7 +100,39 @@ export function RouteDetails({ d }: { d: Directions }) {
   );
 }
 
-type State = { status: "loading" } | { status: "error" } | { status: "missing" } | { status: "done"; plan: Plan };
+const weekday = (iso: string) => new Date(iso).toLocaleDateString("fa-IR", { timeZone: "Asia/Tehran", weekday: "long" });
+
+// "پنجشنبه تا ۱۴ باز است؛ تا ۱۳:۱۵ حرکت کنید", with the swap as the same plan with that shop replaced
+function NudgeLine({ n, query }: { n: ClosingNudge | PriceNudge; query: string }) {
+  if (n.kind === "price") {
+    const d = n.price_delta_toman;
+    return (
+      <>
+        <span>
+          {n.shop_name}: {n.trust_level === "confirmed" ? "قیمت تأییدشده" : "قیمت سایت فروشگاه"} {faDigits(n.latest_price_toman)} تومان،{" "}
+          {faDigits(Math.abs(d))} تومان {d > 0 ? "گران‌تر" : "ارزان‌تر"} از قیمت ثبت‌شده
+        </span>
+        {n.over_budget ? <Badge variant="destructive">بیشتر از بودجه</Badge> : <Badge variant="secondary">در بودجه</Badge>}
+      </>
+    );
+  }
+  const swapped = (to: string) =>
+    new URLSearchParams([...new URLSearchParams(query)].map(([k, v]) => [k, k === "shop_id" && v === n.shop_id ? to : v])).toString();
+  return (
+    <>
+      <span>
+        {n.shop_name} {weekday(n.closes_at)} تا {clock(n.closes_at)} باز است؛ تا {clock(n.leave_by)} حرکت کنید
+      </span>
+      {n.swap && (
+        <Link href={`/plan?${swapped(n.swap.shop_id)}`} className={buttonVariants({ size: "xs", variant: "outline" })}>
+          جایگزین: {n.swap.shop_name}
+        </Link>
+      )}
+    </>
+  );
+}
+
+type State ={ status: "loading" } | { status: "error" } | { status: "missing" } | { status: "done"; plan: Plan };
 
 export function VisitPlan({ query }: { query: string }) {
   const [state, setState] = useState<State>({ status: "loading" });
@@ -146,6 +178,21 @@ export function VisitPlan({ query }: { query: string }) {
           حرکت {day(plan.depart_at)} ساعت {clock(plan.depart_at)}، {MODES[plan.mode]}
         </p>
       </header>
+
+      {plan.nudges.length > 0 && (
+        <section aria-label="هشدارها">
+          <ul className="flex flex-col gap-2">
+            {plan.nudges.map((n) => (
+              <li
+                key={`${n.kind}-${n.shop_id}-${n.kind === "price" ? n.product_id : ""}`}
+                className="flex flex-wrap items-center gap-1.5 rounded-lg border border-amber-500 bg-amber-50 p-3 text-sm dark:bg-amber-950"
+              >
+                <NudgeLine n={n} query={query} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <SellerMap pins={pins} selected={selected} onSelect={setSelected} />
 

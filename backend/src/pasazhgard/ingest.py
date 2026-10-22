@@ -154,6 +154,18 @@ def ingest(data_dir: Path, database_url: str, embedder: Embedder | None = None) 
     ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS instead_of bigint;
     CREATE INDEX IF NOT EXISTS inquiries_session_id ON inquiries (session_id);
     CREATE INDEX IF NOT EXISTS inquiries_shop_id ON inquiries (shop_id);
+    -- the latest website price per shop and product a session fetched; it says nothing about stock
+    CREATE TABLE IF NOT EXISTS site_prices (
+        session_id text NOT NULL REFERENCES sessions ON DELETE CASCADE,
+        shop_id text NOT NULL,
+        shop_name text NOT NULL,
+        product_id text NOT NULL,
+        status text NOT NULL,
+        price_toman bigint,
+        fetched_at timestamptz NOT NULL,
+        url text NOT NULL,
+        PRIMARY KEY (session_id, shop_id, product_id)
+    );
     """
     offers = [clean_offer(r) for r in _rows(data_dir / "offers.csv")]
     flag_far_from_median(offers)

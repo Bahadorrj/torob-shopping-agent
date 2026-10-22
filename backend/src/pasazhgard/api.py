@@ -1,4 +1,5 @@
 import hmac
+import logging
 import os
 import time
 from collections.abc import AsyncIterable, Callable
@@ -22,6 +23,7 @@ from pydantic import BaseModel, ValidationError
 
 from pasazhgard.agent import Ports, build_graph, chat_model_from_env
 from pasazhgard.alternatives import Alternatives, find_alternatives
+from pasazhgard.basket import Basket, BasketQuery, optimize_basket
 from pasazhgard.brief import Session, SessionPatch, create_session, get_session, patch_session
 from pasazhgard.compare import Product, ProductCompare, ProductCompareQuery, compare_products, get_product
 from pasazhgard.discovery import Shortlist, SuggestQuery, suggest_models
@@ -42,10 +44,13 @@ from pasazhgard.inquiries import (
     get_inquiries,
     record_reply,
 )
+from pasazhgard.pasaj import PasajView, brief_products, pasaj_view
+from pasazhgard.responder import Responder, respond, responder_from_env
 from pasazhgard.routing import Router, router_from_env
 from pasazhgard.search import SearchResult, search_products
 from pasazhgard.seller_compare import CompareQuery, SellerCompare, compare_sellers
 from pasazhgard.sellers import SellerList, SellerQuery, find_sellers
+from pasazhgard.site_prices import FetchQuery, HttpFetch, SitePrice, WebFetch, fetch_site_price
 from pasazhgard.shops import TEHRAN, ShopDetails, shop_details
 from pasazhgard.visit import Directions, DirectionsQuery, PlanQuery, VisitPlan, get_directions, plan_visit
 
@@ -62,11 +67,32 @@ async def lifespan(app: FastAPI):
             now=lambda: _resolve(get_now),
             embedder=lambda: _resolve(get_embedder),
             router=lambda: _resolve(get_router),
+            small_model=lambda: _resolve(get_small_model),
+            web=lambda: _resolve(get_web_fetch),
             connect=lambda: _connect(row_factory=dict_row),
         )
         graph = app.state.graph = build_graph(ports).compile(checkpointer=checkpointer)
         add_langgraph_fastapi_endpoint(app, LangGraphAgent(name="pasazhgard", graph=graph, emit_raw_events=False), "/agent")
-        yield
+        async with anyio.create_task_group() as tg:
+            if responder := responder_from_env():
+                tg.start_soon(_auto_respond, responder)
+            yield
+            tg.cancel_scope.cancel()
+
+
+async def _auto_respond(config: Responder) -> None:
+    """The auto-responder's loop: every few seconds the waiting Seller Console inquiries get their replies."""
+    while True:
+        try:
+            await anyio.to_thread.run_sync(_respond_once, config)
+        except Exception:
+            logging.getLogger(__name__).warning("auto-responder pass failed", exc_info=True)
+        await anyio.sleep(5)
+
+
+def _respond_once(config: Responder) -> None:
+    with _connect(row_factory=dict_row) as conn:
+        respond(conn, config, _resolve(get_now), _resolve(get_chat_model), _resolve(get_small_model))
 
 
 app = FastAPI(title="Pasazhgard", lifespan=lifespan)
@@ -123,6 +149,12 @@ def get_console_secret() -> str | None:
 def _seller_of(shop_id: str, token: str | None, secret: str | None) -> None:
     if not (secret and token and hmac.compare_digest(token, console_token(secret, shop_id))):
         raise HTTPException(403, "not this shop's console link")
+
+
+@cache
+def get_web_fetch() -> WebFetch:
+    """The port to seller websites."""
+    return HttpFetch()
 
 
 @cache
@@ -219,6 +251,25 @@ def shops_detail(shop_id: str, conn=Depends(get_conn), now: datetime = Depends(g
     return shop
 
 
+@app.get("/pasajs/{pasaj}")
+def pasajs_detail(
+    pasaj: str,
+    product_id: Annotated[list[str], Query()] = [],
+    session_id: str | None = None,
+    conn=Depends(get_conn),
+    now: datetime = Depends(get_now),
+) -> PasajView:
+    if session_id is not None:
+        session = get_session(conn, session_id)
+        if session is None:
+            raise HTTPException(404, "session not found")
+        product_id = [*product_id, *brief_products(session)]
+    view = pasaj_view(conn, pasaj, product_id, now)
+    if view is None:
+        raise HTTPException(404, "pasaj not found")
+    return view
+
+
 @app.get("/shops/{shop_id}/directions")
 def shops_directions(
     shop_id: str, q: Annotated[DirectionsQuery, Query()], conn=Depends(get_conn), router: Router = Depends(get_router)
@@ -227,6 +278,12 @@ def shops_directions(
     if directions is None:
         raise HTTPException(404, "shop not found")
     return directions
+
+
+# a POST: a pasted list can be longer than a URL should be
+@app.post("/basket")
+def basket(q: BasketQuery, conn=Depends(get_conn), now: datetime = Depends(get_now)) -> Basket:
+    return optimize_basket(conn, q, now)
 
 
 class _RouteOnce:
@@ -330,6 +387,24 @@ def inquiries_read(session_id: str, conn=Depends(get_conn), now: datetime = Depe
     if status is None:
         raise HTTPException(404, "session not found")
     return status
+
+
+@app.post("/sessions/{session_id}/site-prices")
+def site_prices_fetch(
+    session_id: str,
+    q: FetchQuery,
+    conn=Depends(get_conn),
+    now: datetime = Depends(get_now),
+    web: WebFetch = Depends(get_web_fetch),
+    model: BaseChatModel | None = Depends(get_small_model),
+) -> SitePrice:
+    try:
+        price = fetch_site_price(conn, session_id, q, web, model, now)
+    except ValueError:
+        raise HTTPException(409, "shop has no website") from None
+    if price is None:
+        raise HTTPException(404, "session, shop or product not found")
+    return price
 
 
 @app.get("/sessions/{session_id}/inquiries/{inquiry_id}/alternatives")
