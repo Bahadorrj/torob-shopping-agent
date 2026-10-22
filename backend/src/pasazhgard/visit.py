@@ -3,14 +3,16 @@
 import re
 from datetime import datetime, timedelta
 from itertools import permutations
-from typing import Annotated
+from typing import Annotated, get_args
 
 from pydantic import AfterValidator, AwareDatetime, BaseModel, Field
 
-from pasazhgard.brief import Point
+from pasazhgard.alternatives import Reason
+from pasazhgard.brief import Brief, Point, seller_query
+from pasazhgard.inquiries import Outcome, get_inquiries, outcome
 from pasazhgard.normalize import distinct, normalize
 from pasazhgard.routing import LatLon, Route, Router, TravelMode, straight_line
-from pasazhgard.sellers import distance_m
+from pasazhgard.sellers import _over_budget, distance_m
 from pasazhgard.shops import TEHRAN, open_at
 
 
@@ -94,6 +96,21 @@ class PlanQuery(DirectionsQuery):
     shop_id: Annotated[list[str], Field(min_length=1, max_length=6), AfterValidator(distinct)]
     # defaults to now
     depart_at: AwareDatetime | None = None
+    # the session whose inquiries the plan follows
+    session_id: str | None = None
+
+
+class StopInquiry(Outcome):
+    """The shop's latest sent inquiry in the session."""
+
+    product_id: str
+    product_title: str
+    # None for a shop asked about an item it does not list
+    listed_price_toman: int | None
+    # the seller's price minus the listed one; None until both are known
+    price_delta_toman: int | None
+    # the seller's price, else the listed one, against the brief's budget; False while no price is known
+    over_budget: bool
 
 
 class Stop(Directions):
@@ -102,6 +119,7 @@ class Stop(Directions):
     eta: datetime
     # None when the shop's hours for that day are not recorded
     open_at_eta: bool | None
+    inquiry: StopInquiry | None = None
 
 
 class VisitPlan(BaseModel):
@@ -149,21 +167,58 @@ def _order(origin: LatLon, shops: list[dict]) -> list[dict]:
 
 
 def plan_visit(conn, q: PlanQuery, now: datetime, router: Router) -> VisitPlan | None:
-    """None when a shop is not found."""
+    """None when a shop or the session is not found.
+
+    With a session, each stop carries the shop's latest sent inquiry, a shop whose inquiry fell through gives its
+    stop to the alternative asked instead, and shops that confirmed come first.
+    """
     dwell = timedelta(minutes=15)
-    found = _shops(conn, q.shop_id)
-    if len(found) != len(q.shop_id):
+    asked, instead, listed = {}, {}, {}
+    if q.session_id:
+        status = get_inquiries(conn, q.session_id, now)
+        if status is None:
+            return None
+        brief = Brief.model_validate(conn.execute("SELECT brief FROM sessions WHERE session_id = %s", [q.session_id]).fetchone()["brief"])
+        sent = [i for i in status.inquiries if i.status != "draft"]
+        rows = conn.execute("SELECT offer_id, price_toman FROM offers WHERE offer_id = ANY(%s)", [[i.offer_id for i in sent]])
+        listed = {r["offer_id"]: r["price_toman"] for r in rows}
+        # oldest first, so a shop's latest inquiry wins
+        asked = {i.shop_id: i for i in sent}
+        instead = {i.instead_of: i for i in sent if i.instead_of}
+
+    def stand_in(shop_id: str) -> str:
+        # each step moves to a newer inquiry, so the walk ends
+        while (i := asked.get(shop_id)) and i.status in get_args(Reason) and i.inquiry_id in instead:
+            shop_id = instead[i.inquiry_id].shop_id
+        return shop_id
+
+    shop_ids = list(dict.fromkeys(map(stand_in, q.shop_id)))
+    found = _shops(conn, shop_ids)
+    if len(found) != len(shop_ids):
         return None
     depart = (q.depart_at or now).astimezone(TEHRAN)
     here = origin = (q.lat, q.lon)
     prev, eta = None, depart
     stops = []
-    for s in _order(origin, list(found.values())):
+    confirmed = _order(origin, [s for s in found.values() if s["shop_id"] in asked and asked[s["shop_id"]].status == "confirmed"])
+    after = (confirmed[-1]["lat"], confirmed[-1]["lon"]) if confirmed else origin
+    for s in confirmed + _order(after, [s for s in found.values() if s not in confirmed]):
         b = (s["lat"], s["lon"])
         # inside one pasaj you walk, whatever the travel mode
         same_pasaj = prev is not None and s["pasaj"] and s["pasaj"] == prev["pasaj"]
         leg = straight_line(here, b, "walk") if same_pasaj else router.route(here, b, q.mode)
         eta = eta + (dwell if prev else timedelta()) + timedelta(minutes=leg.duration_min)
-        stops.append(Stop(**_directions(s, here, leg, q.mode).model_dump(), eta=eta, open_at_eta=open_at(s["hours"], eta)))
+        inquiry = None
+        if i := asked.get(s["shop_id"]):
+            o, price = outcome(i), listed.get(i.offer_id)
+            inquiry = StopInquiry(
+                **o.model_dump(),
+                product_id=i.product_id,
+                product_title=i.product_title,
+                listed_price_toman=price,
+                price_delta_toman=o.latest_price_toman - price if o.latest_price_toman and price else None,
+                over_budget=_over_budget(seller_query(brief, i.product_id, now), o.latest_price_toman or price),
+            )
+        stops.append(Stop(**_directions(s, here, leg, q.mode).model_dump(), eta=eta, open_at_eta=open_at(s["hours"], eta), inquiry=inquiry))
         here, prev = b, s
     return VisitPlan(origin=Point(lat=q.lat, lon=q.lon), depart_at=depart, mode=q.mode, stops=stops)

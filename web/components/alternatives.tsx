@@ -60,5 +60,5 @@ export function Alternatives({ block, onAsk }: { block: Block; onAsk: (a: Altern
 // the agent's alternatives block: the thread is the session, so a tap asks for this session
 export function AgentAlternatives({ block }: { block: Block }) {
   const { session } = useBrief();
-  return session && <Alternatives block={block} onAsk={(a) => askAlternative(session.session_id, a)} />;
+  return session && <Alternatives block={block} onAsk={(a) => askAlternative(session.session_id, a, block.inquiry_id)} />;
 }

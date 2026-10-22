@@ -62,6 +62,15 @@ another ID and change it in `backend/liara.json` / `web/liara.json` (`app`, and 
 
 ## Deploy
 
+The API does not change the schema itself; the ingest does. When a release adds a column to `sessions` or
+`inquiries`, apply it before deploying the API, or the routes that write it fail. Run the ingest (next
+sections), or with public access on run only the new statements from `ingest.py`. The release with plan
+reacts to inquiries (#19) needs, or every `POST /sessions/{id}/inquiries` returns 500:
+
+```sql
+ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS instead_of bigint;
+```
+
 From the repo root, API first:
 
 ```

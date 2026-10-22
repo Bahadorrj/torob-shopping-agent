@@ -216,16 +216,26 @@ def shops_directions(
     return directions
 
 
+class _RouteOnce:
+    def __init__(self, router: Router):
+        self.route = cache(router.route)
+
+
+def get_plan_router(router: Router = Depends(get_router)) -> Router:
+    """The routing port, each leg routed once per request: the plan stream recomputes the plan twice a second."""
+    return _RouteOnce(router)
+
+
 @app.get("/visit-plan")
 def visit_plan(
     q: Annotated[PlanQuery, Query()],
     conn=Depends(get_conn),
     now: datetime = Depends(get_now),
-    router: Router = Depends(get_router),
+    router: Router = Depends(get_plan_router),
 ) -> VisitPlan:
     plan = plan_visit(conn, q, now, router)
     if plan is None:
-        raise HTTPException(404, "shop not found")
+        raise HTTPException(404, "shop or session not found")
     return plan
 
 
@@ -360,6 +370,29 @@ async def inquiries_stream(
 ) -> AsyncIterable[InquiryStatus]:
     async for status in _changes(lambda conn, at: get_inquiries(conn, session_id, at), now):
         yield status
+
+
+class PlanStreamQuery(PlanQuery):
+    # without a session the plan never changes
+    session_id: str
+
+
+def _plan_found(q: Annotated[PlanStreamQuery, Query()], now: datetime = Depends(get_now), router: Router = Depends(get_plan_router)) -> None:
+    # its own connection, closed before the stream opens the one it polls on
+    with _connect(row_factory=dict_row) as conn:
+        visit_plan(q, conn, now, router)
+
+
+@app.get("/visit-plan/stream", response_class=EventSourceResponse, dependencies=[Depends(_no_transform), Depends(_plan_found)])
+async def visit_plan_stream(
+    q: Annotated[PlanStreamQuery, Query()],
+    now: datetime = Depends(get_now),
+    router: Router = Depends(get_plan_router),
+) -> AsyncIterable[VisitPlan]:
+    # the trip leaves when the stream opens, so only the session's inquiries change the plan
+    fixed = q.model_copy(update={"depart_at": q.depart_at or now})
+    async for plan in _changes(lambda conn, at: plan_visit(conn, fixed, at, router), now):
+        yield plan
 
 
 @app.get("/console/shops/{shop_id}/inquiries/stream", response_class=EventSourceResponse, dependencies=[Depends(_no_transform)])

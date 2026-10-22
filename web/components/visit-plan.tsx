@@ -4,11 +4,13 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { MODES } from "@/components/brief-bar";
+import { FELL_THROUGH, STATUS } from "@/components/inquiry-tracker";
 import { SellerMap, type Pin } from "@/components/seller-map";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { getVisitPlan, type Directions, type Stop, type VisitPlan as Plan } from "@/lib/api";
+import { getVisitPlan, visitPlanStreamUrl, type Directions, type Stop, type StopInquiry, type VisitPlan as Plan } from "@/lib/api";
 import { distance, faDigits, faText } from "@/lib/format";
+import { useEventStream } from "@/lib/use-event-stream";
 
 // times come in Tehran's fixed +03:30 offset, so the clock time is read off the string
 export const clock = (iso: string) => faText(iso.slice(11, 16));
@@ -37,6 +39,29 @@ function planPins(stops: Stop[]): Pin<Stop>[] {
     else out.push({ key: s.shop_id, label: s.last_leg.pasaj ? faText(`پاساژ ${s.last_leg.pasaj}`) : s.shop_name, lat: s.lat, lon: s.lon, rows: [s], text: faDigits(i + 1) });
   });
   return out;
+}
+
+// the stop's inquiry: confirmed badge and time, the seller's price against the listed one, the budget check
+function StopInquiryLine({ i }: { i: StopInquiry }) {
+  const delta = i.price_delta_toman;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {i.status === "confirmed" && i.replied_at ? (
+        <Badge>تأیید شد ساعت {clock(i.replied_at)}</Badge>
+      ) : (
+        <Badge variant={FELL_THROUGH.includes(i.status) ? "destructive" : "outline"}>{STATUS[i.status]}</Badge>
+      )}
+      {i.latest_price_toman !== null ? (
+        <span>
+          {i.status === "confirmed" ? "قیمت تأییدشده" : "قیمت فروشنده"} {faDigits(i.latest_price_toman)} تومان
+          {delta !== null && delta !== 0 && `، ${faDigits(Math.abs(delta))} تومان ${delta > 0 ? "گران‌تر" : "ارزان‌تر"} از قیمت ثبت‌شده`}
+        </span>
+      ) : (
+        i.listed_price_toman !== null && <span>قیمت ثبت‌شده {faDigits(i.listed_price_toman)} تومان</span>
+      )}
+      {i.over_budget && <Badge variant="destructive">بیشتر از بودجه</Badge>}
+    </div>
+  );
 }
 
 // the route to one shop, on a plan stop and in the agent's directions block
@@ -82,24 +107,34 @@ export function VisitPlan({ query }: { query: string }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [shared, setShared] = useState(false);
 
+  // with a session the plan follows its inquiries over the stream alone; without one it is fixed
+  const stream = new URLSearchParams(query).has("session_id") ? visitPlanStreamUrl(query) : null;
+  // a refused stream falls back to the one-time plan, which tells a missing plan from a failed one
+  const [refused, setRefused] = useState(false);
+  const live = useEventStream<Plan>(stream, setRefused);
+
   useEffect(() => {
+    if (stream && !refused) return;
     getVisitPlan(query).then(
       (plan) => setState(plan ? { status: "done", plan } : { status: "missing" }),
       () => setState({ status: "error" }),
     );
-  }, [query]);
+  }, [query, stream, refused]);
 
-  const pins = useMemo(() => (state.status === "done" ? planPins(state.plan.stops) : []), [state]);
+  const current = live ?? (state.status === "done" ? state.plan : null);
+  const pins = useMemo(() => (current ? planPins(current.stops) : []), [current]);
 
-  if (state.status === "loading") return <p className="text-sm text-muted-foreground">در حال بارگذاری...</p>;
   if (state.status === "error") return <p className="text-sm text-destructive">برنامه مراجعه دریافت نشد. دوباره تلاش کنید.</p>;
   if (state.status === "missing") return <p className="text-sm text-muted-foreground">فروشگاه‌های این برنامه پیدا نشدند.</p>;
+  if (!current) return <p className="text-sm text-muted-foreground">در حال بارگذاری...</p>;
 
-  const { plan } = state;
+  const plan = current;
   const pinOf = (s: Stop) => pins.find((p) => p.rows.includes(s))?.key;
   const share = async () => {
-    // the page's own link is the plan: it has no controls that change it
-    await navigator.clipboard.writeText(location.href);
+    // the page's link is the plan, without the session: the session id is the only key to its inquiries
+    const link = new URL(location.href);
+    link.searchParams.delete("session_id");
+    await navigator.clipboard.writeText(link.href);
     setShared(true);
   };
 
@@ -131,6 +166,7 @@ export function VisitPlan({ query }: { query: string }) {
               <span>رسیدن {clock(s.eta)}</span>
               <OpenBadge open={s.open_at_eta} />
             </div>
+            {s.inquiry && <StopInquiryLine i={s.inquiry} />}
             <RouteDetails d={s} />
           </li>
         ))}

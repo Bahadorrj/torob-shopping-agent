@@ -107,7 +107,7 @@ const ROWS: [string, (s: SellerColumn) => React.ReactNode][] = [
 ];
 
 // the visit plan for the compared shops; the brief's visit time, else now, is when the trip starts
-function planLink(b: Brief, shopIds: string[]) {
+function planLink(b: Brief, shopIds: string[], sessionId: string) {
   if (!b.origin) return null;
   const { lat, lon, mode, arrival } = params(b);
   const q = new URLSearchParams(shopIds.map((id) => ["shop_id", id]));
@@ -115,6 +115,8 @@ function planLink(b: Brief, shopIds: string[]) {
   q.set("lon", String(lon));
   q.set("mode", mode ?? "walk");
   q.set("depart_at", arrival ?? new Date().toISOString());
+  // the plan follows the session's inquiries
+  q.set("session_id", sessionId);
   return `/plan?${q}`;
 }
 
@@ -157,7 +159,7 @@ export function SellerCompare({ productId, offerIds }: { productId: string; offe
   if (state.status === "missing") return <p className="text-sm text-muted-foreground">فروشنده‌های انتخاب‌شده پیدا نشدند.</p>;
 
   const { compare } = state;
-  const plan = session && planLink(session.brief, [...new Set(compare.sellers.map((s) => s.shop_id))]);
+  const plan = session && planLink(session.brief, [...new Set(compare.sellers.map((s) => s.shop_id))], session.session_id);
   return (
     <article className="flex flex-col gap-3">
       <h1 className="text-lg font-bold leading-7">مقایسه فروشنده‌ها</h1>

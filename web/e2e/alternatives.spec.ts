@@ -86,9 +86,10 @@ test("no reply and closed inquiries bring up alternatives with one-tap ask and q
   await tracker.getByRole("button", { name: "هنگام باز شدن بفرست" }).click();
   await expect.poll(() => posts.length).toBe(5);
   expect(posts).toEqual([
-    { path: "", body: { offer_ids: ["o9"], asks: [] } },
+    // each stands in for the inquiry that fell through, so the visit plan swaps the stop
+    { path: "", body: { offer_ids: ["o9"], asks: [], instead_of: 1 } },
     { path: "/confirm", body: { inquiry_ids: [7], queue: false } },
-    { path: "", body: { offer_ids: [], asks: [{ product_id: "p1", shop_id: "shop_y" }] } },
+    { path: "", body: { offer_ids: [], asks: [{ product_id: "p1", shop_id: "shop_y" }], instead_of: 1 } },
     { path: "/confirm", body: { inquiry_ids: [7], queue: false } },
     { path: "/confirm", body: { inquiry_ids: [2], queue: true } },
   ]);

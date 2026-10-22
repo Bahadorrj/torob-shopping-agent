@@ -20,7 +20,7 @@ export const STATUS: Record<InquiryState, string> = {
   no_reply: "پاسخ نداد",
 };
 
-const FELL_THROUGH: InquiryState[] = ["unavailable", "no_reply", "closed"];
+export const FELL_THROUGH: InquiryState[] = ["unavailable", "no_reply", "closed"];
 
 // shown as soon as an inquiry falls through; fetched again only when its status changes
 function FallenThrough({ sessionId, inquiry }: { sessionId: string; inquiry: Inquiry }) {
@@ -29,7 +29,7 @@ function FallenThrough({ sessionId, inquiry }: { sessionId: string; inquiry: Inq
   useEffect(() => {
     getAlternatives(sessionId, inquiry_id).then(setBlock, () => setBlock(null));
   }, [sessionId, inquiry_id, status]);
-  return block && <Alternatives block={block} onAsk={(a) => askAlternative(sessionId, a)} />;
+  return block && <Alternatives block={block} onAsk={(a) => askAlternative(sessionId, a, inquiry_id)} />;
 }
 
 // an ISO time from the API, in Tehran time, as HH:MM
