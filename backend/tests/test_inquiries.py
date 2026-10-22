@@ -253,7 +253,7 @@ def test_unanswered_inquiries_turn_no_reply_after_n_minutes(client, clock, now):
     [late, answered] = client.get(f"/sessions/{sid}/inquiries").json()["inquiries"]
     assert (late["status"], answered["status"]) == ("no_reply", "confirmed")
     # the step happened when the wait ran out, not when someone looked
-    assert late["events"][-1] == {"at": (now + dt.timedelta(minutes=2)).isoformat(), "status": "no_reply", "reply": None}
+    assert late["events"][-1] == {"at": (now + dt.timedelta(minutes=2)).isoformat(), "status": "no_reply", "reply": None, "question": None}
     # a late reply still counts
     assert reply(client, mansa, available="yes")["status"] == "confirmed"
 

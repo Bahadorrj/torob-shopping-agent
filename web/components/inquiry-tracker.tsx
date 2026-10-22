@@ -72,6 +72,7 @@ function Sent({ sessionId, inquiry: i }: { sessionId: string; inquiry: Inquiry }
           .map((e, n) => (
             <li key={n}>
               {clock(e.at)} - {e.reply ? `فروشنده: ${replyText(e.reply)}` : e.status === "sent" ? "پیام ارسال شد" : STATUS[e.status]}
+              {e.question && ` - سؤال تکمیلی: ${e.question}`}
             </li>
           ))}
       </ol>

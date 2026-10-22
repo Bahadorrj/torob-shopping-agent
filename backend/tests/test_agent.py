@@ -195,6 +195,44 @@ def test_the_quantity_the_user_states_applies_to_the_total_budget(agent):
     assert CHEAPEST_SHOP not in [s["shop_id"] for s in turn.blocks[0]["sellers"]]
 
 
+def test_contact_seller_composes_drafts_the_user_must_send(agent, client):
+    agent.script(agent.brief(), agent.call("contact_seller", offer_ids=[MANSA, MAHIS]), "پیش‌نویس‌ها آماده است؛ با دکمه ارسال بفرستید.")
+
+    turn = agent.turn("از این دو فروشنده بپرس")
+
+    [status] = turn.blocks
+    assert status["block"] == "inquiry_status"
+    assert [(i["shop_name"], i["status"]) for i in status["inquiries"]] == [("دیسیلا مانسا", "draft"), ("نیین ماهیس", "draft")]
+    # nothing reaches a seller until the user's tap confirms through the REST path
+    stored = client.get(f"/sessions/{agent.session_id}/inquiries").json()["inquiries"]
+    assert {i["status"] for i in stored} == {"draft"}
+
+
+def test_contact_seller_errors_are_for_the_model(agent):
+    agent.script(
+        agent.brief(),
+        agent.call("contact_seller", offer_ids=["offer_missing"]),
+        agent.call("contact_seller", offer_ids=[]),
+        "نشد.",
+    )
+
+    turn = agent.turn("بپرس")
+
+    assert [b.get("block") for b in turn.blocks] == [None, None]
+
+
+def test_get_inquiries_shows_the_tracker_and_lets_the_agent_say_in_stock(agent, client):
+    # MAHIS: the inquiry tests expect the Mansa console empty before they send
+    [mahis] = [i["inquiry_id"] for i in client.post(f"/sessions/{agent.session_id}/inquiries", json={"offer_ids": [MAHIS]}).json()["inquiries"]]
+    client.post(f"/sessions/{agent.session_id}/inquiries/confirm", json={"inquiry_ids": [mahis]})
+    client.post(f"/console/inquiries/{mahis}/replies", json={"available": "yes"})
+    agent.script(agent.brief(), agent.call("get_inquiries"), "نیین ماهیس گفته موجود است.")
+
+    turn = agent.turn("فروشنده‌ها چه گفتند؟")
+
+    [status] = turn.blocks
+    assert status["block"] == "inquiry_status"
+    assert [(i["inquiry_id"], i["status"]) for i in status["inquiries"]] == [(mahis, "confirmed")]
 ALADDIN = {"lat": 35.69483032610498, "lon": 51.41152782573596}
 VIVAN = "shop_c060bc5ea37b78e00ece4bdb"  # علاالدین, زیر همکف
 PAKYAR = "shop_4934392f0e4fefe1526308c6"  # علاالدین, floor 5

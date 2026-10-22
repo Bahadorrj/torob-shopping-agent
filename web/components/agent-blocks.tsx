@@ -4,27 +4,46 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { AgentAlternatives } from "@/components/alternatives";
+import { useBrief } from "@/components/brief-provider";
+import { InquiryTracker } from "@/components/inquiry-tracker";
 import { ListedPrice, ProductCard } from "@/components/product-card";
 import { Seller } from "@/components/seller-list";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { clock, OpenBadge, RouteDetails } from "@/components/visit-plan";
-import type {
-  Alternatives,
-  Directions,
-  ModelPick,
-  ProductCard as Product,
-  ProductCompare,
-  SellerCompare,
-  SellerList,
-  Shortlist,
-  VisitPlan,
+import {
+  confirmInquiries,
+  inquiriesStreamUrl,
+  type Alternatives,
+  type Directions,
+  type Inquiry,
+  type InquiryStatus,
+  type ModelPick,
+  type ProductCard as Product,
+  type ProductCompare,
+  type SellerCompare,
+  type SellerList,
+  type Shortlist,
+  type VisitPlan,
 } from "@/lib/api";
 import { faDigits, faText } from "@/lib/format";
+import { useEventStream } from "@/lib/use-event-stream";
 
 // One renderer per block type. A block is an agent tool result: `{ block: "<type>", ...tool output }`
 // (backend/src/pasazhgard/agent.py). Numbers on screen come from these fields only, never from agent text.
 type Chips = { field: string; question: string; options: string[] };
+
+// The block's inquiries as they are now, not as the tool saw them. The tap sends through the REST confirm path:
+// consent never goes through the model (ADR-0002 fallback).
+function Inquiries({ initial }: { initial: Inquiry[] }) {
+  // the sheet renders only once the session exists
+  const sid = useBrief().session!.session_id;
+  // shortcut: one stream per block; share one per session if threads grow many inquiry blocks
+  const live = useEventStream<InquiryStatus>(inquiriesStreamUrl(sid));
+  const ids = new Set(initial.map((i) => i.inquiry_id));
+  const inquiries = live ? live.inquiries.filter((i) => ids.has(i.inquiry_id)) : initial;
+  return <InquiryTracker sessionId={sid} inquiries={inquiries} onConfirm={(inquiryIds) => confirmInquiries(sid, inquiryIds)} />;
+}
 
 // the plan screen's query asks the backend for the same plan, so it is also the share link
 const planHref = (p: VisitPlan) =>
@@ -36,7 +55,7 @@ const planHref = (p: VisitPlan) =>
     ["depart_at", p.depart_at],
   ])}`;
 
-const linkClass ="text-sm font-medium text-primary underline-offset-4 hover:underline";
+const linkClass = "text-sm font-medium text-primary underline-offset-4 hover:underline";
 
 const compareHref = (ids: string[]) => `/compare?${new URLSearchParams({ ids: ids.join(",") })}`;
 
@@ -123,6 +142,7 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
       </Link>
     </div>
   ),
+  inquiry_status: (d: InquiryStatus) => <Inquiries initial={d.inquiries} />,
   visit_plan: (d: VisitPlan) => (
     <div className="flex flex-col gap-1.5 text-sm">
       <ol className="flex flex-col gap-1">

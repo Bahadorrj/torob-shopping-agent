@@ -31,6 +31,9 @@ from pasazhgard.compare import compare_products as _compare_products
 from pasazhgard.discovery import SuggestQuery
 from pasazhgard.discovery import suggest_models as _suggest_models
 from pasazhgard.embeddings import Embedder
+from pasazhgard.inquiries import Compose
+from pasazhgard.inquiries import contact_seller as _contact_seller
+from pasazhgard.inquiries import get_inquiries as _get_inquiries
 from pasazhgard.routing import Router
 from pasazhgard.search import search_products as _search_products
 from pasazhgard.seller_compare import CompareQuery
@@ -42,15 +45,15 @@ from pasazhgard.visit import get_directions as _get_directions
 from pasazhgard.visit import plan_visit as _plan_visit
 
 
-def chat_model_from_env() -> BaseChatModel | None:
-    """The chat model port; None without a key, and the agent runs degraded."""
+def chat_model_from_env(small: bool = False) -> BaseChatModel | None:
+    """The chat model port, or with `small` the small model that parses seller replies; None without a key."""
     key = os.environ.get("LLM_API_KEY")
     if not key:
         return None
     return ChatOpenAI(
         base_url=os.environ.get("LLM_BASE_URL", "https://ai.boxapi.ir/ai/v1"),
         api_key=key,
-        model=os.environ.get("LLM_MODEL", "gpt-5.6-terra"),
+        model=os.environ.get("LLM_SMALL_MODEL", "gpt-5.4-mini") if small else os.environ.get("LLM_MODEL", "gpt-5.6-terra"),
         timeout=60,
         max_retries=1,
     )
@@ -128,6 +131,8 @@ Now: {now} (Asia/Tehran). Shopping Brief: {brief}
   features and budget, at most these three and only what the brief lacks; give use and features 3-5 short options.
   In the reply, explain the trade-offs from the shortlist; do not repeat its prices.
 - Never say an item is in stock unless a seller confirmed it.
+- contact_seller only drafts messages; the user sends them with the button under the drafts. Never say a message
+  was sent or a seller answered unless get_inquiries shows it.
 - When an inquiry turns unavailable, no_reply or closed, call find_alternatives for it."""
 
 CHIP_FIELDS = Literal["area", "budget", "visit_window", "payment", "quantity", "need", "use", "features"]
@@ -284,9 +289,35 @@ def build_graph(ports: Ports) -> StateGraph:
             options = ["همین الان", "امروز عصر", "فردا"]
         return block("chips", {"field": field, "question": question, "options": options})
 
+    @tool
+    def contact_seller(offer_ids: list[str], config: RunnableConfig) -> str:
+        """Draft one short Persian inquiry per offer (1-3 offers): available now, today's price, hold, installments.
+        Nothing is sent: the user sends the drafts with a tap. Shows the inquiry tracker."""
+        sid = _session(config)
+        # creates the session row a thread may start without
+        brief_of(config)
+        try:
+            change = Compose(offer_ids=offer_ids)
+            with ports.connect() as conn:
+                return block("inquiry_status", _contact_seller(conn, sid, change, ports.now()))
+        except LookupError:
+            return error("offer not found")
+        except ValueError:
+            # pydantic's ValidationError is a ValueError too
+            return error("give 1-3 distinct offer ids; an item has at most 3 open inquiries")
+
+    @tool
+    def get_inquiries(config: RunnableConfig) -> str:
+        """This session's inquiries to sellers with each seller's latest reply. Shows the inquiry tracker."""
+        sid = _session(config)
+        # creates the session row a thread may start without
+        brief_of(config)
+        with ports.connect() as conn:
+            return block("inquiry_status", _get_inquiries(conn, sid, ports.now()))
+
     tools = [
         search_products, suggest_models, compare_products, find_sellers, compare_sellers, plan_visit, get_directions,
-        find_alternatives, ask_user,
+        find_alternatives, ask_user, contact_seller, get_inquiries,
     ]
 
     def patch_brief(state: MessagesState, config: RunnableConfig) -> dict:

@@ -29,6 +29,9 @@ The orchestrator and the Seller Liaison run on LangGraph, with LangChain chat mo
   an AG-UI endpoint. CopilotKit's `HttpAgent` points at it (`AGENT_URL`). No hand-written AG-UI encoder.
 - **Consent.** The Seller Liaison is a subgraph. It composes drafts, then calls `interrupt()`; the user's
   tap in the CopilotKit human-in-the-loop action resumes it, and only then are inquiries sent.
+  *Amended (#15 wiring):* the interrupt round trip was not proven end to end, so the fallback below is in use:
+  `contact_seller` is a plain graph tool that stores drafts and returns the `inquiry_status` block; the block's
+  send button calls `POST /sessions/{id}/inquiries/confirm` (`confirm_inquiries`). The model has no send tool.
 - **State.** Conversation state and pending interrupts are kept by `langgraph-checkpoint-postgres` in the
   existing database.
 - **Outside the graph.** The inquiry store, its state machine (`sent -> no_reply` after N minutes, hours

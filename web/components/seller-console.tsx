@@ -48,6 +48,7 @@ function Incoming({ inquiry: i }: { inquiry: Inquiry }) {
           .map((e, n) => (
             <li key={n}>
               {clock(e.at)} - شما: {replyText(e.reply!)}
+              {e.question && <p className="mt-0.5 rounded-md bg-muted p-2 text-sm text-foreground">خریدار: {e.question}</p>}
             </li>
           ))}
       </ol>
