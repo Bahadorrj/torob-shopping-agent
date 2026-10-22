@@ -236,7 +236,8 @@ export async function compareSellers(productId: string, offerIds: string[], p: C
 }
 
 // Mirrors backend/src/pasazhgard/inquiries.py.
-export type InquiryState = "draft" | "sent" | "replied" | "confirmed" | "unavailable";
+// closed: the shop was closed at consent; queued: goes out when it opens; no_reply: no answer in N minutes
+export type InquiryState = "draft" | "closed" | "queued" | "sent" | "replied" | "confirmed" | "unavailable" | "no_reply";
 
 export type Reply = {
   available: "yes" | "no" | "unknown";
@@ -258,7 +259,8 @@ export type ConsoleReply = {
 
 export type Inquiry = {
   inquiry_id: number;
-  offer_id: string;
+  // null when the shop does not list the item and is asked anyway
+  offer_id: string | null;
   product_id: string;
   product_title: string;
   shop_id: string;
@@ -305,12 +307,46 @@ export const inquiriesStreamUrl = (sessionId: string) => `${inquiriesUrl(session
 
 export const consoleStreamUrl = (shopId: string) => `/api/console/shops/${encodeURIComponent(shopId)}/inquiries/stream`;
 
-// drafts only: nothing reaches a seller before confirmInquiries
-export const composeInquiries = (sessionId: string, offerIds: string[]) =>
-  post<InquiryStatus>(inquiriesUrl(sessionId), { offer_ids: offerIds });
+export type Ask = { product_id: string; shop_id: string };
 
-export const confirmInquiries = (sessionId: string, inquiryIds: number[]) =>
-  post<InquiryStatus>(`${inquiriesUrl(sessionId)}/confirm`, { inquiry_ids: inquiryIds });
+// drafts only: nothing reaches a seller before confirmInquiries
+export const composeInquiries = (sessionId: string, offerIds: string[], asks: Ask[] = []) =>
+  post<InquiryStatus>(inquiriesUrl(sessionId), { offer_ids: offerIds, asks });
+
+// `queue`: a shop closed now gets the message when it opens
+export const confirmInquiries = (sessionId: string, inquiryIds: number[], queue = false) =>
+  post<InquiryStatus>(`${inquiriesUrl(sessionId)}/confirm`, { inquiry_ids: inquiryIds, queue });
+
+// Mirrors Alternatives in backend/src/pasazhgard/alternatives.py.
+export type Alternative = {
+  kind: "same_product" | "similar_product" | "category_only" | "fast_delivery";
+  offer_id: string | null;
+  product_id: string;
+  product_title: string;
+  shop_id: string;
+  shop_name: string;
+  pasaj: string | null;
+  price_toman: number | null;
+  price_delta_toman: number | null;
+  same_pasaj: boolean;
+  open_now: boolean | null;
+  distance_m: number | null;
+  tradeoff: string;
+};
+
+export type Alternatives = { inquiry_id: number; reason: "unavailable" | "no_reply" | "closed"; alternatives: Alternative[] };
+
+export async function getAlternatives(sessionId: string, inquiryId: number): Promise<Alternatives> {
+  const r = await fetch(`${inquiriesUrl(sessionId)}/${inquiryId}/alternatives`);
+  if (!r.ok) throw new Error(`alternatives failed: ${r.status}`);
+  return r.json();
+}
+
+// the one tap on an alternative: the tap is the consent, so the draft is sent straight away
+export async function askAlternative(sessionId: string, a: Alternative) {
+  const { inquiries } = await composeInquiries(sessionId, a.offer_id ? [a.offer_id] : [], a.offer_id ? [] : [{ product_id: a.product_id, shop_id: a.shop_id }]);
+  return confirmInquiries(sessionId, inquiries.map((i) => i.inquiry_id));
+}
 
 export const sendReply = (inquiryId: number, reply: ConsoleReply) => post<Inquiry>(`/api/console/inquiries/${inquiryId}/replies`, reply);
 

@@ -214,7 +214,7 @@ export function SellerCompare({ productId, offerIds }: { productId: string; offe
       </Button>
       <p className="text-xs text-muted-foreground">موجودی، قیمت امروز، نگه‌داشتن کالا و اقساط را می‌پرسیم. اول پیش‌نویس را می‌بینید.</p>
       {composeError && <p className="text-sm text-destructive">پیش‌نویس ساخته نشد. برای هر کالا حداکثر ۳ استعلام باز می‌ماند.</p>}
-      <InquiryTracker inquiries={inquiries} onConfirm={(inquiryIds) => confirmInquiries(sid!, inquiryIds)} />
+      {sid && <InquiryTracker sessionId={sid} inquiries={inquiries} onConfirm={(inquiryIds) => confirmInquiries(sid, inquiryIds)} />}
       {plan ? (
         <Link href={plan} className={buttonVariants({ size: "lg", className: "self-center" })}>
           برنامه مراجعه
