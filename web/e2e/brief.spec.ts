@@ -32,6 +32,8 @@ const sheet = (page: Page) => page.getByRole("region", { name: "دستیار" })
 const bar = (page: Page) => page.getByRole("region", { name: "خلاصه خرید" });
 const chip = (page: Page, name: string) => bar(page).getByRole("button", { name: new RegExp(`^${name}`) });
 const drawer = (page: Page, name: string) => page.getByRole("dialog", { name });
+// a place or center row in the area sheet's search list
+const place = (page: Page, name: string) => drawer(page, "محدوده").getByRole("listitem").filter({ hasText: name }).getByRole("button");
 const noOverflow = (page: Page) =>
   page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const border = (page: Page, name: string) =>
@@ -235,8 +237,17 @@ test.describe("without geolocation", () => {
     await page.goto("/products/p1/sellers");
     await chip(page, "محدوده").click();
     const area = drawer(page, "محدوده");
-    await area.getByRole("button", { name: "مرکز: پاساژ علاالدین" }).click();
+    const center = area.getByRole("button", { name: /^مرکز/ });
+    await expect(center).toContainText("موقعیت من");
+    await center.click();
+    // the same search list now picks the center, one row per center
+    await expect(area.getByRole("listitem")).toHaveCount(2);
+    await expect(place(page, "فردوسی")).toContainText("محله");
+    await place(page, "علاالدین").click();
     await expect.poll(() => patches.at(-1)).toEqual({ brief: { origin: { lat: 35.6949, lon: 51.4113 } } });
+    await expect(center).toContainText("پاساژ علاالدین");
+    // back to picking places
+    await expect(place(page, "بهارستان")).toBeVisible();
 
     await area.getByRole("button", { name: "۱ کیلومتر از پاساژ علاالدین" }).click();
     await expect.poll(() => patches.at(-1)).toEqual({ brief: { area: { radius_m: 1000 } } });
@@ -244,4 +255,60 @@ test.describe("without geolocation", () => {
     await expect(page.getByText("۱ فروشنده", { exact: true })).toBeVisible();
     expect(await noOverflow(page)).toBe(0);
   });
+});
+
+test("the area sheet searches areas and pasajs as list rows, not one chip per place, at 360 px", async ({ page }) => {
+  const areas = ["شیخ هادی", "فردوسی", ...Array.from({ length: 28 }, (_, i) => `محله نمونه ${i}`)];
+  const pasajs = ["علاالدين", ...Array.from({ length: 599 }, (_, i) => `بازار ${i}`)];
+  const { patches } = await fakeSessions(page, { sellers }, {}, { areas, pasajs });
+  await page.goto("/products/p1/sellers");
+  await expect(page.getByText("۲ فروشنده")).toBeVisible();
+  await chip(page, "محدوده").click();
+  const area = drawer(page, "محدوده");
+  const rows = area.getByRole("listitem");
+
+  await expect(area.getByRole("button", { name: "همه مناطق" })).toBeVisible();
+  for (const r of ["۵۰۰ متر", "۱ کیلومتر", "۲ کیلومتر", "۵ کیلومتر"]) await expect(area.getByRole("button", { name: `نزدیک من، ${r}` })).toBeVisible();
+  const search = area.getByRole("searchbox", { name: "جستجوی محله یا پاساژ" });
+  await expect(rows).toHaveCount(8);
+  await expect(rows.first()).toContainText("شیخ هادی");
+  await expect(rows.first()).toContainText("محله");
+  expect(await area.getByRole("button").count()).toBeLessThanOrEqual(20);
+  expect(await noOverflow(page)).toBe(0);
+
+  // ی/ي, spaces and ZWNJ do not matter
+  await search.fill("شیخ‌هادي");
+  await expect(rows).toHaveCount(1);
+  await search.fill("علا الدین");
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText("پاساژ");
+  await search.fill("بازار");
+  await expect(rows).toHaveCount(8);
+  await search.fill("ناموجود");
+  await expect(rows).toHaveCount(0);
+  await expect(area.getByText("جایی با این نام پیدا نشد")).toBeVisible();
+
+  await search.fill("علاالدین");
+  await place(page, "علاالدين").click();
+  await expect(area).toBeHidden();
+  await expect.poll(() => patches.at(-1)).toEqual({ brief: { area: { pasaj: "علاالدين" } } });
+  await expect(chip(page, "محدوده")).toContainText("پاساژ علاالدين");
+
+  // the current pick shows as a pressed chip
+  await chip(page, "محدوده").click();
+  await expect(area.getByRole("button", { name: "پاساژ علاالدين" })).toHaveAttribute("aria-pressed", "true");
+  expect(await noOverflow(page)).toBe(0);
+});
+
+test("the filters sheet shows the area as one row that opens the area sheet", async ({ page }) => {
+  await sellersPage(page);
+  await chip(page, "فیلترها").click();
+  const all = drawer(page, "فیلترها");
+  await expect(all.getByRole("button", { name: "همه مناطق", exact: true })).toHaveCount(0);
+  await expect(all.getByRole("listitem")).toHaveCount(0);
+  const row = all.getByRole("button", { name: /^محدوده/ });
+  await expect(row).toContainText("همه مناطق");
+  await row.click();
+  await expect(drawer(page, "محدوده").getByRole("searchbox", { name: "جستجوی محله یا پاساژ" })).toBeVisible();
+  expect(await noOverflow(page)).toBe(0);
 });

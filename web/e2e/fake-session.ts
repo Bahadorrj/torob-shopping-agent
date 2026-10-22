@@ -35,8 +35,14 @@ export const centers = [
 ];
 
 // In-page stand-in for the /sessions API: keeps briefs, merges patches and re-runs the step through `results`.
-// `messages`: the session's checkpointed agent thread, as GET /sessions/{id}/messages returns it
-export async function fakeSessions(page: Page, results: Results, seed: Record<string, { brief?: Brief; step?: Step; messages?: object[] }> = {}) {
+// `messages`: the session's checkpointed agent thread, as GET /sessions/{id}/messages returns it.
+// `places`: the session's areas and pasajs
+export async function fakeSessions(
+  page: Page,
+  results: Results,
+  seed: Record<string, { brief?: Brief; step?: Step; messages?: object[] }> = {},
+  places = { areas: ["بهارستان", "شیخ هادی", "فردوسی"], pasajs: ["علاالدین"] },
+) {
   const sessions = new Map(Object.entries(seed).map(([id, s]) => [id, { brief: { ...emptyBrief(), ...s.brief }, step: s.step ?? null }]));
   const patches: { brief?: Brief; step?: Step }[] = [];
   let next = 1;
@@ -49,7 +55,7 @@ export async function fakeSessions(page: Page, results: Results, seed: Record<st
       s.step.title = (out as { title?: string } | null)?.title ?? null;
     }
     if (withResults && s.step?.kind === "compare") out = results.compare?.(s.brief, s.step.product_ids) ?? null;
-    return { session_id: id, brief: s.brief, step: s.step, areas: ["بهارستان", "شیخ هادی", "فردوسی"], pasajs: ["علاالدین"], centers, results: out };
+    return { session_id: id, brief: s.brief, step: s.step, ...places, centers, results: out };
   };
   await page.route("**/api/sessions**", async (route) => {
     const req = route.request();
