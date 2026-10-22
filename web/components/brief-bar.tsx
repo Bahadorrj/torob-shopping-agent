@@ -47,7 +47,7 @@ function areaValue(area: Brief["area"]) {
   return area.name !== null ? `area:${area.name}` : `pasaj:${area.pasaj}`;
 }
 
-function Choices<T extends string>({ label, options, value, onPick }: { label: string; options: Record<T, string>; value: T | null; onPick: (v: T) => void }) {
+export function Choices<T extends string>({ label, options, value, onPick }: { label: string; options: Record<T, string>; value: T | null; onPick: (v: T) => void }) {
   return (
     <div className="flex flex-wrap gap-2" role="group" aria-label={label}>
       {(Object.keys(options) as T[]).map((k) => (

@@ -81,6 +81,8 @@ export type SellerRow = {
   pasaj: string | null;
   floor: string | null;
   unit: string | null;
+  lat: number | null;
+  lon: number | null;
   distance_m: number | null;
   price_toman: number | null;
   per_meter: boolean;
