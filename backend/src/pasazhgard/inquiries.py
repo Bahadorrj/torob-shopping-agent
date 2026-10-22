@@ -6,7 +6,7 @@ from typing import Annotated, Literal, Protocol, Self
 from psycopg.types.json import Jsonb
 from pydantic import AfterValidator, BaseModel, Field, model_validator
 
-from pasazhgard.sellers import distinct
+from pasazhgard.normalize import distinct
 
 Status = Literal["draft", "sent", "replied", "confirmed", "unavailable"]
 Question = Literal["available", "price", "hold", "installments"]
@@ -52,6 +52,51 @@ class InquiryStatus(BaseModel):
     """The `inquiry_status` block: a session's inquiries, oldest first."""
 
     inquiries: list[Inquiry]
+
+
+class Outcome(BaseModel):
+    """A shop's latest sent inquiry as seller lists and compares use it."""
+
+    inquiry_id: int
+    status: Status
+    # "yes" only from a seller, so always with `replied_at`
+    available: Literal["yes", "no", "unknown"]
+    latest_price_toman: int | None
+    hold_until: dt.time | None
+    installments: bool | None
+    # the seller's last reply
+    replied_at: dt.datetime | None
+
+
+class LatestPrice(BaseModel):
+    """A price newer than the listing: one a seller confirmed in an inquiry."""
+
+    # shortcut: no website price until fetch_site_price exists
+    status: Literal["not_asked", "asked", "confirmed"] = "not_asked"
+    price_toman: int | None = None
+    trust_level: Literal["confirmed", "unknown"] = "unknown"
+    at: dt.datetime | None = None
+
+
+def latest_price(o: Outcome | None) -> LatestPrice:
+    if o is None:
+        return LatestPrice()
+    if o.latest_price_toman is None:
+        return LatestPrice(status="asked")
+    return LatestPrice(status="confirmed", price_toman=o.latest_price_toman, trust_level="confirmed", at=o.replied_at)
+
+
+def outcomes(conn, sid: str, product_id: str) -> dict[str, Outcome]:
+    """The latest sent inquiry per shop for one item of a session."""
+    rows = conn.execute(
+        "SELECT * FROM inquiries WHERE session_id = %s AND product_id = %s AND status <> 'draft' ORDER BY inquiry_id", [sid, product_id]
+    ).fetchall()
+    result = {}
+    for r in rows:
+        i = _inquiry(r)
+        replied = next((e.at for e in reversed(i.events) if e.reply), None)
+        result[i.shop_id] = Outcome(inquiry_id=i.inquiry_id, status=i.status, **i.reply.model_dump(exclude={"notes", "confidence"}), replied_at=replied)
+    return result
 
 
 class Compose(BaseModel):

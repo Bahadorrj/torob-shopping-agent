@@ -167,3 +167,61 @@ def test_console_updates_over_sse(client):
         assert next(updates)["inquiries"][0]["inquiry_id"] == mansa
         _, [newer] = sent(client, MANSA)
         assert next(updates)["inquiries"][0]["inquiry_id"] == newer
+
+
+def seller_compare(client, *offers, **params):
+    r = client.get(f"/products/{ANKER}/sellers/compare", params={"offer_id": list(offers), **params})
+    assert r.status_code == 200, r.text
+    return r.json()["sellers"]
+
+
+def test_confirmed_reply_shows_in_seller_compare(client, now):
+    sid, [mansa, _] = sent(client, MANSA, MAHIS)
+    for body in ({"latest_price_toman": 3_400_000}, {"available": "yes"}, {"hold_until": "17:00"}, {"installments": True}):
+        reply(client, mansa, **body)
+    a, b, c = seller_compare(client, MANSA, MAHIS, MANUSH, session_id=sid)
+    # the listed price stays beside the seller's price, which carries its source and time
+    assert a["price_toman"] == 3_500_000
+    assert a["latest_price"] == {"status": "confirmed", "price_toman": 3_400_000, "trust_level": "confirmed", "at": now.isoformat()}
+    assert a["inquiry"] == {
+        "inquiry_id": mansa,
+        "status": "confirmed",
+        "available": "yes",
+        "latest_price_toman": 3_400_000,
+        "hold_until": "17:00:00",
+        "installments": True,
+        "replied_at": now.isoformat(),
+    }
+    assert b["latest_price"]["status"] == "asked"
+    assert (b["inquiry"]["status"], b["inquiry"]["available"], b["inquiry"]["replied_at"]) == ("sent", "unknown", None)
+    assert (c["latest_price"]["status"], c["inquiry"]) == ("not_asked", None)
+    # another session asked nothing
+    assert seller_compare(client, MANSA, session_id=new_session(client))[0]["inquiry"] is None
+    assert seller_compare(client, MANSA)[0]["latest_price"]["status"] == "not_asked"
+
+
+def seller_list(client, sid, **brief):
+    r = client.patch(f"/sessions/{sid}", json={"brief": brief, "step": {"kind": "sellers", "product_id": ANKER}})
+    assert r.status_code == 200, r.text
+    return r.json()["results"]
+
+
+def names(rows):
+    return [s["shop_name"] for s in rows]
+
+
+def test_confirmed_price_and_installments_count_in_the_seller_list(client, now):
+    sid, [mansa] = sent(client, MANSA)
+    budget = {"max_per_item_toman": 3_450_000}
+    # listed at 3,500,000 and no payment recorded
+    assert "دیسیلا مانسا" not in names(seller_list(client, sid, budget=budget)["sellers"])
+    assert "دیسیلا مانسا" in names(seller_list(client, sid, budget={}, payment={"kind": "installment"})["ask_them"])
+    reply(client, mansa, latest_price_toman=3_400_000)
+    reply(client, mansa, installments=True)
+    result = seller_list(client, sid, budget=budget, payment={"kind": "installment"})
+    [row] = [s for s in result["sellers"] if s["shop_name"] == "دیسیلا مانسا"]
+    assert row["latest_price"] == {"status": "confirmed", "price_toman": 3_400_000, "trust_level": "confirmed", "at": now.isoformat()}
+    assert row["inquiry"]["installments"] is True
+    # a seller who says no installments is dropped
+    reply(client, mansa, installments=False)
+    assert "دیسیلا مانسا" not in names(seller_list(client, sid)["sellers"] + seller_list(client, sid)["ask_them"])
