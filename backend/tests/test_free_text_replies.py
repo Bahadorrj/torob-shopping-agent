@@ -85,3 +85,14 @@ def test_parsing_uses_the_small_model(monkeypatch):
     assert chat_model_from_env(small=True).model_name == "tiny"
     monkeypatch.delenv("LLM_API_KEY")
     assert chat_model_from_env(small=True) is None
+
+
+def test_a_failed_parse_keeps_the_text_unparsed(client, seller_parses):
+    _, [mansa, mahis] = sent(client, MANSA, MAHIS)
+    # an invalid parse, then no scripted answer at all (as a provider error)
+    seller_parses({"available": "yes", "confidence": 5})
+
+    for inquiry, text in ((mansa, "موجوده"), (mahis, "شاید فردا")):
+        after = reply(client, inquiry, text=text)
+        assert (after["status"], after["reply"]["available"]) == ("replied", "unknown")
+        assert after["events"][-1]["reply"] == {"text": text}

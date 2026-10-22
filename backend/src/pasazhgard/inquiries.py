@@ -1,6 +1,7 @@
 """Seller Liaison outside the graph (ADR-0002): the inquiry store, its state machine and the seller channel port."""
 
 import datetime as dt
+import logging
 import os
 from typing import Annotated, Literal, Protocol, Self
 
@@ -10,6 +11,8 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validat
 
 from pasazhgard.normalize import distinct
 from pasazhgard.shops import open_at
+
+log = logging.getLogger(__name__)
 
 # closed: the shop was closed when the user consented; queued: it goes out when the shop opens
 Status = Literal["draft", "closed", "queued", "sent", "replied", "confirmed", "unavailable", "no_reply"]
@@ -387,10 +390,16 @@ def record_reply(conn, inquiry_id: int, body: ConsoleReply, now: dt.datetime, mo
     question = None
     if body.text and model:
         # shortcut: the model call runs inside the row lock, which only delays other replies to this inquiry
-        parse = _parse(model, inquiry, body.text)
-        update |= {k: v for k, v in parse.model_dump(exclude={"follow_up"}).items() if v not in (None, "unknown")}
-        if not any(e.question for e in inquiry.events):
-            question = parse.follow_up
+        try:
+            parse = _parse(model, inquiry, body.text)
+        except Exception:
+            # the seller's words must not be lost: keep them unparsed, as without a model
+            log.warning("seller reply parse failed, keeping the text unparsed", exc_info=True)
+            parse = None
+        if parse:
+            update |= {k: v for k, v in parse.model_dump(exclude={"follow_up"}).items() if v not in (None, "unknown")}
+            if not any(e.question for e in inquiry.events):
+                question = parse.follow_up
     reply = inquiry.reply.model_copy(update=update)
     to = {"yes": "confirmed", "no": "unavailable"}.get(reply.available, "replied")
     _move(
