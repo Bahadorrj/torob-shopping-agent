@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useBrief } from "@/components/brief-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { Brief, PaymentKind, Priority, SessionPatch, TravelMode } from "@/lib/api";
+import type { Brief, MustHave, PaymentKind, Priority, SessionPatch, TravelMode } from "@/lib/api";
 import { distance, faDigits, faText, localDate, locate } from "@/lib/format";
 
 const RADII = [500, 1000, 2000, 5000];
@@ -14,7 +14,10 @@ const PRIORITIES: Record<Priority, string> = { cheapest: "ارزان‌ترین"
 const MODES: Record<TravelMode, string> = { walk: "پیاده", transit: "مترو و اتوبوس", car: "خودرو" };
 const PAYMENTS: Record<PaymentKind, string> = { any: "هر روشی", cash: "نقدی", torob_pay: "ترب‌پی حضوری", installment: "اقساطی" };
 
-type Field = "area" | "budget" | "visit" | "travel" | "payment" | "priority";
+const PROVIDERS = ["ترب‌پی", "اسنپ‌پی", "دیجی‌پی", "تارا", "ازکی‌وام"];
+const MUST_HAVE: Record<keyof MustHave, string> = { warranty: "گارانتی", test_in_presence: "تست در حضور مشتری", fast_delivery: "ارسال سریع" };
+
+type Field = "area" | "budget" | "visit" | "travel" | "payment" | "must_have" | "priority";
 
 export function areaLabel(area: Brief["area"]) {
   if (!area) return "همه مناطق";
@@ -85,7 +88,12 @@ export function BriefBar() {
     },
     { field: "visit", label: "زمان مراجعه", value: visitLabel(brief.visit_window) },
     { field: "travel", label: "نحوه رفتن", value: brief.travel_mode ? MODES[brief.travel_mode] : "انتخاب نشده" },
-    { field: "payment", label: "پرداخت", value: PAYMENTS[brief.payment.kind] },
+    { field: "payment", label: "پرداخت", value: [PAYMENTS[brief.payment.kind], brief.payment.provider].filter(Boolean).join(" ") },
+    {
+      field: "must_have",
+      label: "شرایط",
+      value: (Object.keys(MUST_HAVE) as (keyof MustHave)[]).filter((k) => brief.must_have[k]).map((k) => MUST_HAVE[k]).join("، ") || "هیچ",
+    },
     { field: "priority", label: "اولویت", value: PRIORITIES[brief.priority] },
   ];
 
@@ -185,6 +193,29 @@ export function BriefBar() {
         {open === "travel" && <Choices label="نحوه رفتن" options={MODES} value={brief.travel_mode} onPick={(v) => set({ travel_mode: v })} />}
         {open === "payment" && (
           <Choices label="پرداخت" options={PAYMENTS} value={brief.payment.kind} onPick={(v) => set({ payment: { kind: v, provider: null } })} />
+        )}
+        {open === "payment" && brief.payment.kind === "installment" && (
+          <Choices
+            label="ارائه‌دهنده اقساط"
+            options={Object.fromEntries([["", "هر کدام"], ...PROVIDERS.map((p) => [p, p])])}
+            value={brief.payment.provider ?? ""}
+            onPick={(v) => set({ payment: { kind: "installment", provider: v || null } })}
+          />
+        )}
+        {open === "must_have" && (
+          <div className="flex flex-wrap gap-2" role="group" aria-label="شرایط لازم">
+            {(Object.keys(MUST_HAVE) as (keyof MustHave)[]).map((k) => (
+              <Button
+                key={k}
+                size="sm"
+                variant={brief.must_have[k] ? "default" : "outline"}
+                aria-pressed={brief.must_have[k]}
+                onClick={() => set({ must_have: { ...brief.must_have, [k]: !brief.must_have[k] } })}
+              >
+                {MUST_HAVE[k]}
+              </Button>
+            ))}
+          </div>
         )}
         {open === "priority" && (
           <Choices

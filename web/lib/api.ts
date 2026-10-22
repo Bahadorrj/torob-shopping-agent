@@ -72,7 +72,13 @@ export type SellerQuery = {
   priority: Priority;
 };
 
-export type Reason = { kind: "closest" | "cheapest" | "warranty" | "fresh_price" | "declared_hours"; months: number | null };
+export type Reason = {
+  kind: "closest" | "cheapest" | "open_now" | "warranty" | "fresh_price" | "declared_hours" | "installments";
+  months: number | null;
+  provider: string | null;
+};
+
+export type Condition = "hours" | "payment" | "warranty" | "test_in_presence" | "fast_delivery";
 
 export type SellerRow = {
   offer_id: string;
@@ -90,7 +96,11 @@ export type SellerRow = {
   trust_level: "listed" | "unknown";
   warranty: { kind: "warranty" | "test_in_presence" | "none"; provider: string | null; months: number | null; description: string | null } | null;
   declared_hours: boolean;
+  open_now: boolean | null;
+  payment_options: { provider: string; channel: "in_person" | "unknown" }[];
   reasons: Reason[];
+  // active conditions with no recorded value; set only in ask_them
+  unknown: Condition[];
 };
 
 export type CategoryShop = {
@@ -107,6 +117,7 @@ export type SellerList = {
   title: string;
   count: number;
   sellers: SellerRow[];
+  ask_them: SellerRow[];
   category_only: CategoryShop[];
   nearest_covered: { area: string | null; pasaj: string | null; distance_m: number | null } | null;
   areas: string[];
@@ -128,6 +139,8 @@ export type Area = { radius_m: number | null; name: string | null; pasaj: string
 export type TravelMode = "walk" | "transit" | "car";
 export type PaymentKind = "any" | "cash" | "torob_pay" | "installment";
 
+export type MustHave = { warranty: boolean; test_in_presence: boolean; fast_delivery: boolean };
+
 export type Brief = {
   need: string | null;
   items: { product_id: string | null; category: string | null; quantity: number; unit: "piece" | "meter" }[];
@@ -137,7 +150,7 @@ export type Brief = {
   visit_window: { date: string | null; earliest_arrival: string | null; latest_departure: string | null };
   travel_mode: TravelMode | null;
   payment: { kind: PaymentKind; provider: string | null };
-  must_have: { warranty: boolean; test_in_presence: boolean; fast_delivery: boolean };
+  must_have: MustHave;
   priority: Priority;
   plan: unknown[];
   inquiries: unknown[];

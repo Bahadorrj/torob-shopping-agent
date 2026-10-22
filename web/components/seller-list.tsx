@@ -8,8 +8,16 @@ import { useBrief } from "@/components/brief-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import type { Reason, SellerRow } from "@/lib/api";
+import type { Condition, Reason, SellerRow } from "@/lib/api";
 import { distance, faDigits, faText, priceAge } from "@/lib/format";
+
+const UNKNOWN: Record<Condition, string> = {
+  hours: "ساعت کاری",
+  payment: "روش پرداخت",
+  warranty: "گارانتی",
+  test_in_presence: "تست در حضور مشتری",
+  fast_delivery: "ارسال سریع",
+};
 
 const COVERAGE = "داده‌ها بخشی از فروشگاه‌های تهران، بیشتر مرکز شهر، را پوشش می‌دهند.";
 
@@ -19,6 +27,10 @@ function reasonLabel(r: Reason) {
       return "نزدیک‌ترین";
     case "cheapest":
       return "ارزان‌ترین";
+    case "open_now":
+      return "الان باز است";
+    case "installments":
+      return `اقساط ${r.provider}`;
     case "warranty":
       return `گارانتی ${faDigits(r.months ?? 0)} ماهه`;
     case "fresh_price":
@@ -66,6 +78,12 @@ function Seller({ s }: { s: SellerRow }) {
           </Badge>
         )}
       </div>
+      {s.payment_options.length > 0 && (
+        <p className="text-xs">
+          اقساط: {s.payment_options.map((p) => `${p.provider} (${p.channel === "in_person" ? "حضوری" : "نحوه پرداخت نامشخص"})`).join("، ")}
+        </p>
+      )}
+      {s.unknown.length > 0 && <p className="text-xs text-muted-foreground">ثبت نشده: {s.unknown.map((c) => UNKNOWN[c]).join("، ")}</p>}
       {s.reasons.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {s.reasons.map((r) => (
@@ -106,7 +124,9 @@ export function SellerList({ productId }: { productId: string }) {
         {pending ? "در حال به‌روزرسانی..." : `${faDigits(list.count)} فروشنده`}
       </p>
 
-      {list.count === 0 ? (
+      {list.count === 0 && nearest === null ? (
+        <p className="rounded-lg border p-3 text-sm">فروشنده‌ای با همه شرایط شما پیدا نشد. شرایط را در نوار بالا تغییر دهید.</p>
+      ) : list.count === 0 ? (
         <div className="flex flex-col gap-2 rounded-lg border p-3 text-sm">
           <p>این محدوده پوشش داده نشده و فروشنده‌ای برای این کالا ندارد.</p>
           <p className="text-muted-foreground">{COVERAGE}</p>
@@ -129,6 +149,22 @@ export function SellerList({ productId }: { productId: string }) {
             </li>
           ))}
         </ul>
+      )}
+
+      {list.ask_them.length > 0 && (
+        <section aria-labelledby="ask-them" className="flex flex-col gap-2">
+          <h2 id="ask-them" className="text-sm font-semibold">
+            از فروشنده بپرسید
+          </h2>
+          <p className="text-xs text-muted-foreground">این فروشگاه‌ها بعضی از شرایط شما را ثبت نکرده‌اند.</p>
+          <ul className="flex flex-col gap-3">
+            {list.ask_them.map((s) => (
+              <li key={s.offer_id}>
+                <Seller s={s} />
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {list.category_only.length > 0 && (

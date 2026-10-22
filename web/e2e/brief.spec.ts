@@ -15,6 +15,7 @@ const sellers = (brief: Record<string, unknown>) => ({
   title: "کالای الف",
   count: brief.area ? 1 : 2,
   sellers: [],
+  ask_them: [],
   category_only: [],
   nearest_covered: null,
   areas: [],
@@ -59,6 +60,15 @@ test("brief bar chips edit every field in place and re-run results at 360 px", a
   await page.getByRole("button", { name: "اقساطی" }).click();
   await expect(chip(page, "پرداخت")).toContainText("اقساطی");
   expect(patches.at(-1)).toEqual({ brief: { payment: { kind: "installment", provider: null } } });
+  await bar(page).getByRole("button", { name: "اسنپ‌پی", exact: true }).click();
+  await expect(chip(page, "پرداخت")).toContainText("اقساطی اسنپ‌پی");
+  expect(patches.at(-1)).toEqual({ brief: { payment: { kind: "installment", provider: "اسنپ‌پی" } } });
+
+  await chip(page, "شرایط").click();
+  await bar(page).getByRole("button", { name: "گارانتی", exact: true }).click();
+  await expect(chip(page, "شرایط")).toContainText("گارانتی");
+  expect(patches.at(-1)).toEqual({ brief: { must_have: { warranty: true, test_in_presence: false, fast_delivery: false } } });
+  await expect(bar(page).getByRole("button", { name: "گارانتی", exact: true })).toHaveAttribute("aria-pressed", "true");
 
   await chip(page, "اولویت").click();
   await page.getByRole("button", { name: "معتبرترین" }).click();

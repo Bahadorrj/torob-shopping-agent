@@ -20,6 +20,9 @@ const row = {
   trust_level: "listed",
   warranty: { kind: "warranty", provider: null, months: 18, description: null },
   declared_hours: true,
+  open_now: true,
+  payment_options: [],
+  unknown: [],
   reasons: [
     { kind: "cheapest", months: null },
     { kind: "warranty", months: 18 },
@@ -48,6 +51,7 @@ const list = {
   title: "هندزفری انکر R50i",
   count: 2,
   sellers: [row, unpriced],
+  ask_them: [],
   category_only: [{ shop_id: "shop_c", shop_name: "رامیلا رامیرا", area: "شیخ هادی", pasaj: null, distance_m: null, trust_level: "category_only" }],
   nearest_covered: null,
   areas: ["بهارستان", "شیخ هادی", "فردوسی"],
@@ -128,6 +132,30 @@ test("an empty area explains coverage and suggests the nearest covered area", as
   await expect(page.getByText("۲ فروشنده")).toBeVisible();
   expect(patches.at(-1)?.brief?.area).toEqual({ name: "بهارستان" });
   expect(await noOverflow(page)).toBe(0);
+});
+
+test("condition chips, the declared installment channel and the ask-them group at 360 px", async ({ page }) => {
+  const installments = {
+    ...row,
+    payment_options: [{ provider: "اسنپ‌پی", channel: "in_person" }, { provider: "تارا", channel: "unknown" }],
+    reasons: [{ kind: "open_now", months: null, provider: null }, { kind: "installments", months: null, provider: "اسنپ‌پی" }],
+  };
+  await open(page, () => ({ ...list, count: 1, sellers: [installments], ask_them: [{ ...unpriced, unknown: ["hours", "payment"] }] }));
+  const first = page.getByRole("listitem").filter({ hasText: row.shop_name });
+  await expect(first).toContainText("الان باز است");
+  await expect(first).toContainText("اقساط اسنپ‌پی");
+  await expect(first).toContainText("اقساط: اسنپ‌پی (حضوری)، تارا (نحوه پرداخت نامشخص)");
+
+  const ask = page.getByRole("region", { name: "از فروشنده بپرسید" });
+  await expect(ask).toContainText(unpriced.shop_name);
+  await expect(ask).toContainText("ثبت نشده: ساعت کاری، روش پرداخت");
+  expect(await noOverflow(page)).toBe(0);
+});
+
+test("filters that leave no seller say so instead of suggesting another area", async ({ page }) => {
+  await open(page, () => ({ ...list, count: 0, sellers: [], category_only: [], nearest_covered: null }));
+  await expect(page.getByText("فروشنده‌ای با همه شرایط شما پیدا نشد")).toBeVisible();
+  await expect(page.getByText("این محدوده پوشش داده نشده")).toHaveCount(0);
 });
 
 test("product card links to its sellers", async ({ page }) => {
