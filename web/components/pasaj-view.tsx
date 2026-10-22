@@ -13,19 +13,19 @@ export const pasajHref = (pasaj: string, productId?: string) =>
   `/pasajs/${encodeURIComponent(pasaj)}${productId ? `?${new URLSearchParams({ product: productId })}` : ""}`;
 
 export function PasajView({ pasaj, productIds }: { pasaj: string; productIds: string[] }) {
-  const { session } = useBrief();
+  const { session, error } = useBrief();
   const sid = session?.session_id;
   const [state, setState] = useState<State>({ status: "loading" });
   const products = productIds.join(",");
 
-  // the session's brief picks the products beside the ones in the link
+  // the session's brief picks the products beside the ones in the link; without a session the link alone does
   useEffect(() => {
-    if (!sid) return;
+    if (!sid && !error) return;
     getPasaj(pasaj, products ? products.split(",") : [], sid).then(
       (view) => setState(view ? { status: "done", view } : { status: "missing" }),
       () => setState({ status: "error" }),
     );
-  }, [pasaj, products, sid]);
+  }, [pasaj, products, sid, error]);
 
   if (state.status === "loading") return <p className="text-sm text-muted-foreground">در حال بارگذاری...</p>;
   if (state.status === "error") return <p className="text-sm text-destructive">اطلاعات پاساژ دریافت نشد. دوباره تلاش کنید.</p>;

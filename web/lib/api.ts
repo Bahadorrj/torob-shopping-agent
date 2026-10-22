@@ -75,8 +75,8 @@ export type PasajShop = {
 // `floor` null groups the shops whose floor is not recorded
 export type PasajView = { pasaj: string; count: number; floors: { floor: string | null; level: number | null; shops: PasajShop[] }[] };
 
-export async function getPasaj(pasaj: string, productIds: string[], sessionId: string): Promise<PasajView | null> {
-  const q = new URLSearchParams([...productIds.map((id) => ["product_id", id]), ["session_id", sessionId]]);
+export async function getPasaj(pasaj: string, productIds: string[], sessionId?: string): Promise<PasajView | null> {
+  const q = new URLSearchParams([...productIds.map((id) => ["product_id", id]), ...(sessionId ? [["session_id", sessionId]] : [])]);
   const r = await fetch(`/api/pasajs/${encodeURIComponent(pasaj)}?${q}`);
   if (r.status === 404) return null;
   if (!r.ok) throw new Error(`pasaj failed: ${r.status}`);

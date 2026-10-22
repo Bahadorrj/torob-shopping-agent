@@ -87,3 +87,11 @@ test("a shop page links to its pasaj view", async ({ page }) => {
   await page.getByRole("link", { name: "همه فروشگاه‌های این پاساژ" }).click();
   await expect(page.getByRole("heading", { name: "پاساژ علاالدین ۲" })).toBeVisible();
 });
+
+test("pasaj view still shows when no session can be made", async ({ page }) => {
+  await page.route("**/api/sessions**", (route) => route.fulfill({ status: 500, json: {} }));
+  const asked = await fakePasaj(page);
+  await page.goto(`/pasajs/${encodeURIComponent("علاالدین 2")}?product=p1`);
+  await expect(page.getByRole("heading", { level: 2 })).toHaveText(["طبقه زیر همکف", "طبقه ۲", "طبقه ثبت نشده"]);
+  expect(asked.at(-1)!.searchParams.has("session_id")).toBe(false);
+});
