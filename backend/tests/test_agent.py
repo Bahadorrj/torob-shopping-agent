@@ -179,6 +179,8 @@ def test_a_price_from_tool_output_is_grounded(agent):
     [
         ("ارزان‌ترین ۱٬۵۰۰٬۰۰۰ تومان است.", "price 1500000"),
         ("حدود ۱.۲ میلیون تومان است.", "price 1200000"),
+        # the model code A3949 in the tool output is no price
+        ("ارزان‌ترین ۳۹۴۹ تومان است.", "price 3949"),
         (f"فروشگاه {CHEAPEST_SHOP[:-1]}0 ارزان‌تر است.", "shop shop_"),
         # no seller confirmed stock
         ("این هدفون موجود است.", "in stock"),
