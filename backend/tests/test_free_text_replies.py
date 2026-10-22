@@ -1,6 +1,9 @@
+import psycopg
+from conftest import Agent, ScriptedModel
 from test_inquiries import MANSA, MAHIS, inbox, reply, sent
 
 from pasazhgard.agent import chat_model_from_env
+from pasazhgard.api import get_small_model
 
 
 def test_free_text_parses_into_the_reply_shape(client, seller_parses):
@@ -96,3 +99,21 @@ def test_a_failed_parse_keeps_the_text_unparsed(client, seller_parses):
         after = reply(client, inquiry, text=text)
         assert (after["status"], after["reply"]["available"]) == ("replied", "unknown")
         assert after["events"][-1]["reply"] == {"text": text}
+
+
+def test_a_parse_holds_no_lock_on_the_inquiry(client, database_url):
+    _, [mansa] = sent(client, MANSA)
+
+    class Probe(ScriptedModel):
+        def _generate(self, *args, **kwargs):
+            # a reader ticking the inquiry past its deadline must not wait for the model
+            with psycopg.connect(database_url) as other:
+                other.execute("SELECT 1 FROM inquiries WHERE inquiry_id = %s FOR UPDATE NOWAIT", [mansa])
+            return super()._generate(*args, **kwargs)
+
+    model = Probe(messages=iter([Agent.call("ReplyParse", available="yes", confidence=0.9)]))
+    client.app.dependency_overrides[get_small_model] = lambda: model
+    try:
+        assert reply(client, mansa, text="موجوده")["status"] == "confirmed"
+    finally:
+        client.app.dependency_overrides[get_small_model] = lambda: None

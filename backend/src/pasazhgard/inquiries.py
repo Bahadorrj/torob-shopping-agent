@@ -380,26 +380,29 @@ def record_reply(conn, inquiry_id: int, body: ConsoleReply, now: dt.datetime, mo
     Free text is parsed by `model` (the small chat model); an ambiguous one gets one follow-up question per inquiry.
     Without a model free text is kept as-is and leaves the parse alone.
     """
-    row = conn.execute("SELECT * FROM inquiries WHERE inquiry_id = %s FOR UPDATE", [inquiry_id]).fetchone()
-    if row is None:
-        raise LookupError(inquiry_id)
-    inquiry = _inquiry(row)
-    sent = body.model_dump(exclude_none=True)
-    update = {k: v for k, v in sent.items() if k != "text"}
-    update |= {"confidence": 1.0} if update else {}
-    question = None
+    def read(lock: str = "") -> Inquiry:
+        row = conn.execute(f"SELECT * FROM inquiries WHERE inquiry_id = %s {lock}", [inquiry_id]).fetchone()
+        if row is None:
+            raise LookupError(inquiry_id)
+        return _inquiry(row)
+
+    parse = None
     if body.text and model:
-        # shortcut: the model call runs inside the row lock, which only delays other replies to this inquiry
+        # the model call takes up to a minute: hold no row lock, or every read that ticks this inquiry waits
+        unlocked = read()
         try:
-            parse = _parse(model, inquiry, body.text)
+            parse = _parse(model, unlocked, body.text)
         except Exception:
             # the seller's words must not be lost: keep them unparsed, as without a model
             log.warning("seller reply parse failed, keeping the text unparsed", exc_info=True)
-            parse = None
-        if parse:
-            update |= {k: v for k, v in parse.model_dump(exclude={"follow_up"}).items() if v not in (None, "unknown")}
-            if not any(e.question for e in inquiry.events):
-                question = parse.follow_up
+    inquiry = read("FOR UPDATE")
+    update = body.model_dump(exclude_none=True, exclude={"text"})
+    update |= {"confidence": 1.0} if update else {}
+    question = None
+    if parse:
+        update |= {k: v for k, v in parse.model_dump(exclude={"follow_up"}).items() if v not in (None, "unknown")}
+        if not any(e.question for e in inquiry.events):
+            question = parse.follow_up
     reply = inquiry.reply.model_copy(update=update)
     to = {"yes": "confirmed", "no": "unavailable"}.get(reply.available, "replied")
     _move(
