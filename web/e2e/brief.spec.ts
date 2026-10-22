@@ -192,7 +192,7 @@ test("a shared product link opens straight into its sellers", async ({ page }) =
   await expect(bar(page)).toBeVisible();
 });
 
-test("home offers examples, a near-me chip and recent sessions", async ({ page }) => {
+test("home offers recent sessions and near me from the area sheet", async ({ page }) => {
   const thread = [
     { id: "u1", role: "user", content: "شارژر اپل" },
     { id: "a1", role: "assistant", content: "", toolCalls: [{ id: "c1", type: "function", function: { name: "search_products", arguments: "{}" } }] },
@@ -205,13 +205,13 @@ test("home offers examples, a near-me chip and recent sessions", async ({ page }
   await page.addInitScript(() => localStorage.setItem("pasazhgard.sessions", JSON.stringify(["old1", "old2"])));
   await page.goto("/");
 
-  await expect(page.getByRole("button", { name: "یه هندزفری بلوتوثی برای باشگاه میخوام، حوالی جمهوری، ساعت ۵ عصر، قسطی" })).toBeVisible();
   const recent = page.getByRole("region", { name: "جلسه‌های اخیر" });
   await expect(recent.getByRole("button", { name: "شارژر اپل" })).toBeVisible();
   await expect(recent.getByRole("button", { name: "کالای الف" })).toBeVisible();
   expect(await noOverflow(page)).toBe(0);
 
-  await page.getByRole("button", { name: "نزدیک من", exact: true }).click();
+  await chip(page, "محدوده").click();
+  await drawer(page, "محدوده").getByRole("button", { name: "نزدیک من، ۱ کیلومتر" }).click();
   await expect.poll(() => patches.at(-1)?.brief?.area).toEqual({ radius_m: 1000 });
   expect(patches.at(-1)?.brief?.origin).toEqual({ lat: 35.6948, lon: 51.4115 });
   await expect(chip(page, "محدوده")).toContainText("نزدیک من");
