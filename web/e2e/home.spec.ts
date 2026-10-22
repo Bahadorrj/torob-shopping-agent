@@ -20,14 +20,14 @@ test("the home input asks the agent, the sheet opens on its chips and the brief 
     s.brief = { ...s.brief, area: { radius_m: null, name: "جمهوری", pasaj: null }, payment: { kind: "installment", provider: null } };
   });
   await page.goto("/");
-  await expect(chip(page, "محدوده")).toContainText("همه مناطق");
+  await expect(chip(page, "محدوده")).toHaveAccessibleName("محدوده: همه مناطق");
 
   await page.getByRole("main").getByRole("button", { name: SENTENCE }).click();
 
   await expect(sheet(page).getByText(SENTENCE)).toBeVisible();
   await expect(sheet(page).getByText("حداکثر بودجه‌تان چقدر است؟")).toBeVisible();
   await expect(chip(page, "محدوده")).toContainText("جمهوری");
-  await expect(chip(page, "پرداخت")).toContainText("اقساطی");
+  await expect(chip(page, "اقساطی")).toHaveAttribute("aria-pressed", "true");
   expect(await noOverflow(page)).toBe(0);
 
   await sheet(page).getByRole("button", { name: "تا ۱ میلیون تومان" }).click();
