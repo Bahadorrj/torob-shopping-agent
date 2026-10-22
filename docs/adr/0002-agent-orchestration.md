@@ -37,6 +37,11 @@ The orchestrator and the Seller Liaison run on LangGraph, with LangChain chat mo
   is the plain inquiry code below.
 - **State.** Conversation state and pending interrupts are kept by `langgraph-checkpoint-postgres` in the
   existing database.
+  *Amended (#39):* `GET /sessions/{id}/messages` reads the thread from the checkpointer as AG-UI messages, so the
+  sheet shows it again after a reload; CopilotKit's in-memory `agent/connect` replay is not used.
+- **Questions.** *Added (#39):* the agent node's reply text is held back (`emit-messages: False`) and emitted
+  whole once it is known not to be a question. A question in prose is asked again with `tool_choice="ask_user"`,
+  once per turn, so every clarifying question reaches the user as chips. Tool calls still stream.
 - **Outside the graph.** The inquiry store, its state machine (`sent -> no_reply` after N minutes, hours
   check, `closed`), the seller channel port, the Seller Console and the inquiry SSE endpoint are plain
   FastAPI and Postgres. Inquiry events reach the orchestrator on its next turn; it then calls

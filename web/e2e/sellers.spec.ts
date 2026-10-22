@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { fakeSessions } from "./fake-session";
+import { askHome, fakeAgent, fakeSessions } from "./fake-session";
 
 test.use({ geolocation: { latitude: 35.6948, longitude: 51.4115 }, permissions: ["geolocation"] });
 
@@ -163,15 +163,14 @@ test("product card links to its sellers", async ({ page }) => {
     trust_level: "listed", min_toman: 1000000, max_toman: 1000000, per_meter: false,
     last_price_changed_at: null, price_age_days: null, price_age_bucket: null,
   };
-  await fakeSessions(page, {
-    search: () => ({
-      query: "x",
-      items: [{ product_id: "p1", title: "کالای الف", brand: null, category: null, image_url: null, key_specs: [], offer_count: 2, price, price_flags: [], score_parts: [], meaning_match: false }],
-    }),
-  });
+  await fakeSessions(page, {});
+  await fakeAgent(page, [{
+    block: "product_cards",
+    query: "x",
+    items: [{ product_id: "p1", title: "کالای الف", brand: null, category: null, image_url: null, key_specs: [], offer_count: 2, price, price_flags: [], score_parts: [], meaning_match: false }],
+  }]);
   await page.goto("/");
-  await page.getByLabel("جستجوی کالا").fill("x");
-  await page.getByRole("button", { name: "جستجو" }).click();
+  await askHome(page, "x");
   await expect(page.getByRole("link", { name: "دیدن فروشنده‌ها" })).toHaveAttribute("href", "/products/p1/sellers");
 });
 
