@@ -129,6 +129,12 @@ buffering and compression on SSE routes through the Next.js proxy.
   credit for three months; per-minute and total limits surface as HTTP 482 / 481. On any error or a
   missing key, fall back to straight-line distance with an estimated time.
 - Deep links to Neshan, Balad and Google Maps for turn-by-turn navigation.
+- Amended (#18): the Direction API's `type` takes only `car` and `motorcycle`, so Neshan routes car trips;
+  walk and transit legs are straight-line at 4.5 and 15 km/h (car fallback 20 km/h). The visit plan orders
+  stops by straight-line distance and routes only the legs of the chosen order, so the Distance Matrix is
+  not used. Deep links: Neshan `https://nshn.ir/?origin=lat,lng&destination=lat,lng&vehicle=d` (its web
+  and Android links route by car only), Balad `https://balad.ir/location?latitude=..&longitude=..` (a point;
+  no documented route link), Google `https://www.google.com/maps/dir/?api=1&origin=..&destination=..&travelmode=..`.
 
 ## Environment variables
 

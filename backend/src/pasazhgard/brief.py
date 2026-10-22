@@ -9,8 +9,9 @@ from pydantic import AfterValidator, BaseModel, Field, field_validator, model_va
 
 from pasazhgard.compare import ProductCompare, compare_products
 from pasazhgard.embeddings import Embedder
+from pasazhgard.normalize import distinct
 from pasazhgard.search import SearchResult, search_products
-from pasazhgard.sellers import SellerList, SellerQuery, area_options, distinct, find_sellers
+from pasazhgard.sellers import SellerList, SellerQuery, area_options, find_sellers
 from pasazhgard.shops import TEHRAN
 
 
@@ -202,7 +203,8 @@ def patch_session(conn, sid: str, change: SessionPatch, now: dt.datetime, embedd
         session.step = change.step
     step = session.step
     if isinstance(step, SellersStep):
-        session.results = find_sellers(conn, step.product_id, seller_query(session.brief, step.product_id, now), now)
+        q = seller_query(session.brief, step.product_id, now).model_copy(update={"session_id": sid})
+        session.results = find_sellers(conn, step.product_id, q, now)
         if session.results is None:
             raise LookupError(step.product_id)
         step.title = session.results.title

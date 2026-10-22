@@ -767,6 +767,7 @@ source = { editable = "." }
 dependencies = [
     { name = "ag-ui-langgraph" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "langchain-openai" },
     { name = "langgraph" },
     { name = "langgraph-checkpoint-postgres" },
@@ -784,6 +785,7 @@ dev = [
 requires-dist = [
     { name = "ag-ui-langgraph", specifier = "==0.0.47" },
     { name = "fastapi", specifier = ">=0.158.1" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "langchain-openai", specifier = "==1.7.2" },
     { name = "langgraph", specifier = "==1.2.16" },
     { name = "langgraph-checkpoint-postgres", specifier = "==3.2.0" },

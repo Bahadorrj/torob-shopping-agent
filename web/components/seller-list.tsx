@@ -251,10 +251,11 @@ export function SellerList({ productId }: { productId: string }) {
         </section>
       )}
 
+      {/* bottom-18: above the collapsed agent sheet */}
       {compareIds.length >= 2 && (
         <Link
           href={`/products/${productId}/sellers/compare?${new URLSearchParams(compareIds.map((id) => ["offer", id]))}`}
-          className={buttonVariants({ size: "lg", className: "sticky bottom-4 self-center shadow-md" })}
+          className={buttonVariants({ size: "lg", className: "sticky bottom-18 self-center shadow-md" })}
         >
           مقایسه فروشنده‌ها ({faDigits(compareIds.length)})
         </Link>

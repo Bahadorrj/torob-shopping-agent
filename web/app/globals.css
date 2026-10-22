@@ -128,3 +128,7 @@
     @apply font-sans;
   }
 }
+/* the Seller Console is the seller's page, not the buyer's */
+body:has([data-seller-console]) [data-brief-bar] {
+  display: none;
+}

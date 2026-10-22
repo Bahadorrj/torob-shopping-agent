@@ -10,7 +10,8 @@ import { faDigits, faText } from "@/lib/format";
 
 const TILES = process.env.NEXT_PUBLIC_MAP_TILE_URL || "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 
-export type Pin = { key: string; label: string; lat: number; lon: number; rows: SellerRow[] };
+// `text` is drawn on the pin instead of the row count
+export type Pin<T = SellerRow> = { key: string; label: string; lat: number; lon: number; rows: T[]; text?: string };
 
 // shops in one pasaj share one pin; a shop outside a pasaj gets its own
 export const pinKey = (s: SellerRow) => (s.pasaj ? `pasaj:${s.pasaj}` : `shop:${s.shop_id}`);
@@ -33,7 +34,7 @@ export function pins(rows: SellerRow[]): Pin[] {
 
 type Leaflet = { L: typeof import("leaflet"); map: LeafletMap; layer: LayerGroup };
 
-export function SellerMap({ pins, selected, onSelect }: { pins: Pin[]; selected: string | null; onSelect: (key: string) => void }) {
+export function SellerMap<T>({ pins, selected, onSelect }: { pins: Pin<T>[]; selected: string | null; onSelect: (key: string) => void }) {
   const el = useRef<HTMLDivElement>(null);
   const [leaflet, setLeaflet] = useState<Leaflet | null>(null);
 
@@ -70,7 +71,7 @@ export function SellerMap({ pins, selected, onSelect }: { pins: Pin[]; selected:
       const icon = L.divIcon({
         className: "",
         iconSize: [32, 32],
-        html: `<span class="flex size-8 items-center justify-center rounded-full border-2 border-white text-sm font-bold shadow ${on ? "bg-amber-500 text-black" : "bg-primary text-primary-foreground"}">${faDigits(p.rows.length)}</span>`,
+        html: `<span class="flex size-8 items-center justify-center rounded-full border-2 border-white text-sm font-bold shadow ${on ? "bg-amber-500 text-black" : "bg-primary text-primary-foreground"}">${p.text ?? faDigits(p.rows.length)}</span>`,
       });
       const marker = L.marker([p.lat, p.lon], { icon, zIndexOffset: on ? 1000 : 0 }).on("click", () => onSelect(p.key)).addTo(layer);
       const pin = marker.getElement()!;

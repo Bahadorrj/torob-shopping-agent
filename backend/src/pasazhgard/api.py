@@ -1,27 +1,47 @@
 import os
+from collections.abc import AsyncIterable, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
 from functools import cache
 from typing import Annotated
 
+import anyio
 import psycopg
 from ag_ui_langgraph import LangGraphAgent, add_langgraph_fastapi_endpoint
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.exceptions import RequestValidationError
+from fastapi.sse import EventSourceResponse
 from langchain_core.language_models import BaseChatModel
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from pasazhgard.agent import Ports, build_graph, chat_model_from_env
 from pasazhgard.brief import Session, SessionPatch, create_session, get_session, patch_session
 from pasazhgard.compare import Product, ProductCompare, ProductCompareQuery, compare_products, get_product
 from pasazhgard.embeddings import Embedder, embedder_from_env
+from pasazhgard.inquiries import (
+    Compose,
+    Confirm,
+    ConsoleInbox,
+    ConsoleReply,
+    Inquiry,
+    InquiryStatus,
+    SellerChannel,
+    SellerConsole,
+    confirm_inquiries,
+    console_inbox,
+    contact_seller,
+    get_inquiries,
+    record_reply,
+)
+from pasazhgard.routing import Router, router_from_env
 from pasazhgard.search import SearchResult, search_products
 from pasazhgard.seller_compare import CompareQuery, SellerCompare, compare_sellers
 from pasazhgard.sellers import SellerList, SellerQuery, find_sellers
 from pasazhgard.shops import TEHRAN, ShopDetails, shop_details
+from pasazhgard.visit import Directions, DirectionsQuery, PlanQuery, VisitPlan, get_directions, plan_visit
 
 
 @asynccontextmanager
@@ -75,6 +95,17 @@ def get_embedder() -> Embedder | None:
 def get_chat_model() -> BaseChatModel | None:
     """The chat model port; None without a key, and /agent answers in degraded mode."""
     return chat_model_from_env()
+
+
+def get_channel() -> SellerChannel:
+    """The seller channel port; the Seller Console is the only adapter."""
+    return SellerConsole()
+
+
+@cache
+def get_router() -> Router:
+    """The routing port; straight-line estimates without a key."""
+    return router_from_env()
 
 
 @app.get("/health")
@@ -154,6 +185,29 @@ def shops_detail(shop_id: str, conn=Depends(get_conn), now: datetime = Depends(g
     return shop
 
 
+@app.get("/shops/{shop_id}/directions")
+def shops_directions(
+    shop_id: str, q: Annotated[DirectionsQuery, Query()], conn=Depends(get_conn), router: Router = Depends(get_router)
+) -> Directions:
+    directions = get_directions(conn, shop_id, q, router)
+    if directions is None:
+        raise HTTPException(404, "shop not found")
+    return directions
+
+
+@app.get("/visit-plan")
+def visit_plan(
+    q: Annotated[PlanQuery, Query()],
+    conn=Depends(get_conn),
+    now: datetime = Depends(get_now),
+    router: Router = Depends(get_router),
+) -> VisitPlan:
+    plan = plan_visit(conn, q, now, router)
+    if plan is None:
+        raise HTTPException(404, "shop not found")
+    return plan
+
+
 @app.post("/sessions", status_code=201)
 def sessions_create(conn=Depends(get_conn)) -> Session:
     return get_session(conn, create_session(conn))
@@ -184,3 +238,89 @@ def sessions_patch(
     if session is None:
         raise HTTPException(404, "session not found")
     return session
+
+
+@app.post("/sessions/{session_id}/inquiries", status_code=201)
+def inquiries_compose(session_id: str, change: Compose, conn=Depends(get_conn), now: datetime = Depends(get_now)) -> InquiryStatus:
+    try:
+        drafts = contact_seller(conn, session_id, change, now)
+    except LookupError:
+        raise HTTPException(404, "offer not found") from None
+    except ValueError:
+        raise HTTPException(409, "at most 3 open inquiries per item") from None
+    if drafts is None:
+        raise HTTPException(404, "session not found")
+    return drafts
+
+
+@app.post("/sessions/{session_id}/inquiries/confirm")
+def inquiries_confirm(
+    session_id: str,
+    change: Confirm,
+    conn=Depends(get_conn),
+    now: datetime = Depends(get_now),
+    channel: SellerChannel = Depends(get_channel),
+) -> InquiryStatus:
+    try:
+        status = confirm_inquiries(conn, session_id, change, channel, now)
+    except LookupError:
+        raise HTTPException(404, "inquiry not found") from None
+    if status is None:
+        raise HTTPException(404, "session not found")
+    return status
+
+
+@app.get("/sessions/{session_id}/inquiries")
+def inquiries_read(session_id: str, conn=Depends(get_conn)) -> InquiryStatus:
+    status = get_inquiries(conn, session_id)
+    if status is None:
+        raise HTTPException(404, "session not found")
+    return status
+
+
+@app.get("/console/shops/{shop_id}/inquiries")
+def console_read(shop_id: str, conn=Depends(get_conn)) -> ConsoleInbox:
+    inbox = console_inbox(conn, shop_id)
+    if inbox is None:
+        raise HTTPException(404, "shop not found")
+    return inbox
+
+
+@app.post("/console/inquiries/{inquiry_id}/replies")
+def console_reply(inquiry_id: int, body: ConsoleReply, conn=Depends(get_conn), now: datetime = Depends(get_now)) -> Inquiry:
+    try:
+        return record_reply(conn, inquiry_id, body, now)
+    except LookupError:
+        raise HTTPException(404, "inquiry not found") from None
+    except ValueError:
+        raise HTTPException(409, "inquiry not sent") from None
+
+
+async def _changes[T: BaseModel](load: Callable[[psycopg.Connection], T]) -> AsyncIterable[T]:
+    """`load(conn)` now and again each time its result changes."""
+    last = None
+    # shortcut: polls the store twice a second; move to LISTEN/NOTIFY if many trackers stay open
+    with _connect(row_factory=dict_row, autocommit=True) as conn:
+        while True:
+            current = await anyio.to_thread.run_sync(load, conn)
+            if current != last:
+                yield current
+                last = current
+            await anyio.sleep(0.5)
+
+
+def _no_transform(response: Response) -> None:
+    # the Next.js proxy gzips, and so buffers, any response whose Cache-Control lacks no-transform
+    response.headers["Cache-Control"] = "no-cache, no-transform"
+
+
+@app.get("/sessions/{session_id}/inquiries/stream", response_class=EventSourceResponse, dependencies=[Depends(_no_transform)])
+async def inquiries_stream(session_id: str, _=Depends(inquiries_read)) -> AsyncIterable[InquiryStatus]:
+    async for status in _changes(lambda conn: get_inquiries(conn, session_id)):
+        yield status
+
+
+@app.get("/console/shops/{shop_id}/inquiries/stream", response_class=EventSourceResponse, dependencies=[Depends(_no_transform)])
+async def console_stream(shop_id: str, _=Depends(console_read)) -> AsyncIterable[ConsoleInbox]:
+    async for inbox in _changes(lambda conn: console_inbox(conn, shop_id)):
+        yield inbox

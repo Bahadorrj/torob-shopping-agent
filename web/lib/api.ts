@@ -96,6 +96,9 @@ export type SellerRow = {
   open_now: boolean | null;
   payment_options: { provider: string; channel: "in_person" | "unknown" }[];
   reasons: Reason[];
+  latest_price: LatestPrice;
+  // the session's latest sent inquiry to this shop about this product
+  inquiry: Outcome | null;
   // active conditions with no recorded value; set only in ask_them
   unknown: Condition[];
 };
@@ -207,8 +210,6 @@ export async function patchSession(id: string, change: SessionPatch): Promise<Se
 
 // Mirrors SellerCompare in backend/src/pasazhgard/seller_compare.py.
 export type SellerColumn = SellerRow & {
-  // only not_asked until inquiries and website fetch exist
-  latest_price: { status: "not_asked"; price_toman: number | null; trust_level: "unknown"; at: string | null };
   travel_min: number | null;
   arrival_at: string;
   open_at_arrival: boolean | null;
@@ -223,7 +224,7 @@ export type SellerCompare = {
   sellers: SellerColumn[];
 };
 
-export type CompareParams = { lat?: number; lon?: number; mode?: TravelMode; arrival?: string };
+export type CompareParams = { lat?: number; lon?: number; mode?: TravelMode; arrival?: string; session_id?: string };
 
 export async function compareSellers(productId: string, offerIds: string[], p: CompareParams): Promise<SellerCompare | null> {
   const q = new URLSearchParams(offerIds.map((id) => ["offer_id", id]));
@@ -231,5 +232,110 @@ export async function compareSellers(productId: string, offerIds: string[], p: C
   const r = await fetch(`/api/products/${encodeURIComponent(productId)}/sellers/compare?${q}`);
   if (r.status === 404) return null;
   if (!r.ok) throw new Error(`compare failed: ${r.status}`);
+  return r.json();
+}
+
+// Mirrors backend/src/pasazhgard/inquiries.py.
+export type InquiryState = "draft" | "sent" | "replied" | "confirmed" | "unavailable";
+
+export type Reply = {
+  available: "yes" | "no" | "unknown";
+  latest_price_toman: number | null;
+  hold_until: string | null;
+  installments: boolean | null;
+  notes: string | null;
+  confidence: number | null;
+};
+
+// what the seller sends from the Seller Console: one quick reply field, or free text
+export type ConsoleReply = {
+  available?: "yes" | "no";
+  latest_price_toman?: number;
+  hold_until?: string;
+  installments?: boolean;
+  text?: string;
+};
+
+export type Inquiry = {
+  inquiry_id: number;
+  offer_id: string;
+  product_id: string;
+  product_title: string;
+  shop_id: string;
+  shop_name: string;
+  status: InquiryState;
+  message: string;
+  channel: string | null;
+  simulated: boolean;
+  reply: Reply;
+  events: { at: string; status: InquiryState; reply: ConsoleReply | null }[];
+};
+
+export type InquiryStatus = { inquiries: Inquiry[] };
+
+export type ConsoleInbox = { shop_id: string; shop_name: string; inquiries: Inquiry[] };
+
+export type LatestPrice = {
+  status: "not_asked" | "asked" | "confirmed";
+  price_toman: number | null;
+  trust_level: "confirmed" | "unknown";
+  at: string | null;
+};
+
+export type Outcome = {
+  inquiry_id: number;
+  status: InquiryState;
+  // "yes" only from a seller, so always with replied_at
+  available: Reply["available"];
+  latest_price_toman: number | null;
+  hold_until: string | null;
+  installments: boolean | null;
+  replied_at: string | null;
+};
+
+async function post<T>(url: string, body: unknown): Promise<T> {
+  const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error(`${url} failed: ${r.status}`);
+  return r.json();
+}
+
+const inquiriesUrl = (sessionId: string) => `/api/sessions/${encodeURIComponent(sessionId)}/inquiries`;
+
+export const inquiriesStreamUrl = (sessionId: string) => `${inquiriesUrl(sessionId)}/stream`;
+
+export const consoleStreamUrl = (shopId: string) => `/api/console/shops/${encodeURIComponent(shopId)}/inquiries/stream`;
+
+// drafts only: nothing reaches a seller before confirmInquiries
+export const composeInquiries = (sessionId: string, offerIds: string[]) =>
+  post<InquiryStatus>(inquiriesUrl(sessionId), { offer_ids: offerIds });
+
+export const confirmInquiries = (sessionId: string, inquiryIds: number[]) =>
+  post<InquiryStatus>(`${inquiriesUrl(sessionId)}/confirm`, { inquiry_ids: inquiryIds });
+
+export const sendReply = (inquiryId: number, reply: ConsoleReply) => post<Inquiry>(`/api/console/inquiries/${inquiryId}/replies`, reply);
+
+// Mirrors Directions and VisitPlan in backend/src/pasazhgard/visit.py and Route in routing.py.
+export type Route = { distance_m: number; duration_min: number; source: "neshan" | "straight_line" };
+
+export type Directions = {
+  shop_id: string;
+  shop_name: string;
+  lat: number;
+  lon: number;
+  route: Route;
+  links: { neshan: string; balad: string; google: string };
+  last_leg: { pasaj: string | null; landmark: string | null; floor: string | null; unit: string | null };
+};
+
+// `route` is the leg from the previous stop, or from the origin for the first one
+export type Stop = Directions & { eta: string; open_at_eta: boolean | null };
+
+export type VisitPlan = { origin: { lat: number; lon: number }; depart_at: string; mode: TravelMode; stops: Stop[] };
+
+// `query` is the plan page's own query string, so a shared link asks for the same plan
+export async function getVisitPlan(query: string): Promise<VisitPlan | null> {
+  const r = await fetch(`/api/visit-plan?${query}`);
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`plan failed: ${r.status}`);
   return r.json();
 }

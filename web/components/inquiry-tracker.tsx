@@ -1,0 +1,125 @@
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import type { ConsoleReply, Inquiry, InquiryState } from "@/lib/api";
+import { faDigits, faText } from "@/lib/format";
+
+export const STATUS: Record<InquiryState, string> = {
+  draft: "پیش‌نویس",
+  sent: "ارسال شد، منتظر پاسخ",
+  replied: "پاسخ داد",
+  confirmed: "موجودی تأیید شد",
+  unavailable: "موجود نیست",
+};
+
+// an ISO time from the API, in Tehran time, as HH:MM
+export const clock = (at: string) => faText(at.slice(11, 16));
+
+// what the seller sent, in the seller's words
+export function replyText(r: ConsoleReply) {
+  const parts = [];
+  if (r.available) parts.push(r.available === "yes" ? "موجود است" : "موجود نیست");
+  if (r.latest_price_toman) parts.push(`قیمت امروز: ${faDigits(r.latest_price_toman)} تومان`);
+  if (r.hold_until) parts.push(`تا ساعت ${faText(r.hold_until.slice(0, 5))} نگه می‌دارم`);
+  if (r.installments !== undefined) parts.push(r.installments ? "اقساط و ترب‌پی قبول می‌کنم" : "اقساط ندارم");
+  if (r.text) parts.push(r.text);
+  return parts.join("، ");
+}
+
+function Sent({ inquiry: i }: { inquiry: Inquiry }) {
+  const { reply } = i;
+  const repliedAt = i.events.findLast((e) => e.reply)?.at;
+  return (
+    <li className="flex flex-col gap-1.5 rounded-lg border p-3 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-semibold">{i.shop_name}</span>
+        <Badge variant={i.status === "confirmed" ? "default" : i.status === "unavailable" ? "destructive" : "secondary"}>
+          {STATUS[i.status]}
+        </Badge>
+        {i.simulated && <Badge variant="outline">شبیه‌سازی</Badge>}
+      </div>
+      {reply.latest_price_toman !== null && repliedAt && (
+        <p>
+          قیمت تأییدشده توسط فروشنده: <span className="font-bold">{faDigits(reply.latest_price_toman)} تومان</span> - ساعت{" "}
+          {clock(repliedAt)}
+        </p>
+      )}
+      {reply.hold_until && <p>نگه می‌دارد تا ساعت {faText(reply.hold_until.slice(0, 5))}</p>}
+      {reply.installments !== null && <p>{reply.installments ? "اقساط یا ترب‌پی: دارد (تأیید فروشنده)" : "اقساط ندارد"}</p>}
+      <ol className="flex flex-col gap-0.5 border-s-2 ps-2 text-xs text-muted-foreground">
+        {i.events
+          .filter((e) => e.status !== "draft")
+          .map((e, n) => (
+            <li key={n}>
+              {clock(e.at)} - {e.reply ? `فروشنده: ${replyText(e.reply)}` : e.status === "sent" ? "پیام ارسال شد" : STATUS[e.status]}
+            </li>
+          ))}
+      </ol>
+      {i.simulated && (
+        <Link href={`/console/${i.shop_id}`} target="_blank" className="text-xs text-primary underline-offset-4 hover:underline">
+          کنسول فروشنده (شبیه‌سازی)
+        </Link>
+      )}
+    </li>
+  );
+}
+
+// The inquiry_status block: drafts waiting for consent, then a timeline per shop.
+export function InquiryTracker({ inquiries, onConfirm }: { inquiries: Inquiry[]; onConfirm: (ids: number[]) => Promise<unknown> }) {
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(false);
+  const drafts = inquiries.filter((i) => i.status === "draft");
+  const sent = inquiries.filter((i) => i.status !== "draft");
+
+  async function confirm() {
+    setSending(true);
+    try {
+      await onConfirm(drafts.map((d) => d.inquiry_id));
+      setError(false);
+    } catch {
+      setError(true);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <section className="flex flex-col gap-3" aria-label="استعلام‌ها">
+      {drafts.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-lg bg-muted p-3 text-sm">
+          <h2 className="font-bold">پیش‌نویس پیام‌ها</h2>
+          <p className="text-xs text-muted-foreground">تا وقتی تأیید نکنید، پیامی برای فروشنده فرستاده نمی‌شود.</p>
+          <ul className="flex flex-col gap-2">
+            {drafts.map((d) => (
+              <li key={d.inquiry_id} className="flex flex-col gap-0.5">
+                <span className="font-semibold">{d.shop_name}</span>
+                <span>{d.message}</span>
+              </li>
+            ))}
+          </ul>
+          <Button onClick={confirm} disabled={sending} className="h-auto py-1.5 whitespace-normal">
+            ارسال به {faDigits(drafts.length)} فروشنده
+          </Button>
+          {error && <p className="text-xs text-destructive">ارسال نشد. دوباره تلاش کنید.</p>}
+        </div>
+      )}
+      {sent.length > 0 && (
+        <>
+          <h2 className="font-bold">پیگیری استعلام‌ها</h2>
+          <ul className="flex flex-col gap-2">
+            {sent.map((i) => (
+              <Sent key={i.inquiry_id} inquiry={i} />
+            ))}
+          </ul>
+          {sent.some((i) => i.simulated) && (
+            <p className="text-xs text-muted-foreground">پاسخ‌ها در این دمو از کنسول فروشنده می‌آیند و شبیه‌سازی هستند.</p>
+          )}
+        </>
+      )}
+    </section>
+  );
+}

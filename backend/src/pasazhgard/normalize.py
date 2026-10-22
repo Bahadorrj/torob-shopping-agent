@@ -30,3 +30,10 @@ _SPACES = re.compile(r"[\s​-‏‪-‮⁦-⁩﻿]+")
 
 def normalize(text: str) -> str:
     return _SPACES.sub(" ", text.translate(_TABLE)).strip().lower()
+
+
+def distinct(ids: list) -> list:
+    """Pydantic validator for an id list: the same id twice is one pick, not two."""
+    if len(set(ids)) != len(ids):
+        raise ValueError("an id repeats")
+    return ids
