@@ -54,3 +54,18 @@ def ungrounded(claims: str, sources: list[str]) -> list[str]:
     if _OUT_OF_STOCK.search(text) and not re.search(r'"available":\s*"no"', source):
         missing.append("out of stock")
     return missing
+
+
+def ungrounded_turn(messages: list[dict]) -> list[str]:
+    """Ungrounded claims in the last turn of an AG-UI thread: the assistant's text and the questions it asks,
+    against that turn's tool output and the user's words."""
+    turn = messages[max(i for i, m in enumerate(messages) if m["role"] == "user") :]
+    claims = [m.get("content") or "" for m in turn if m["role"] == "assistant"]
+    sources = [m["content"] for m in turn if m["role"] in ("tool", "user")]
+    for m in turn:
+        if m["role"] == "tool":
+            try:
+                claims.append(json.loads(m["content"]).get("question", ""))
+            except (ValueError, AttributeError):
+                pass
+    return ungrounded(" ".join(claims), sources)
