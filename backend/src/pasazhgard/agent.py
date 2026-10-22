@@ -25,6 +25,7 @@ from langgraph.prebuilt import InjectedState, ToolNode
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field
 
+from pasazhgard.alternatives import find_alternatives as _find_alternatives
 from pasazhgard.brief import Area, Brief, Budget, Item, Payment, VisitWindow, seller_query
 from pasazhgard.compare import compare_products as _compare_products
 from pasazhgard.embeddings import Embedder
@@ -118,7 +119,8 @@ Now: {now} (Asia/Tehran). Shopping Brief: {brief}
   the UI shows tool results as cards, so refer to them instead of repeating numbers.
 - If a missing brief field would change the answer, call ask_user for that one field and stop.
   Ask one question per turn, and none when the answer would not change the result.
-- Never say an item is in stock unless a seller confirmed it."""
+- Never say an item is in stock unless a seller confirmed it.
+- When an inquiry turns unavailable, no_reply or closed, call find_alternatives for it."""
 
 CHIP_FIELDS = Literal["area", "budget", "visit_window", "payment", "quantity", "need"]
 
@@ -206,6 +208,16 @@ def build_graph(ports: Ports) -> StateGraph:
         return block("directions", result) if result else error("shop not found")
 
     @tool
+    def find_alternatives(inquiry_id: int, config: RunnableConfig) -> str:
+        """The top 2 places to ask instead when a seller inquiry is unavailable, no_reply or closed. Shows them with trade-offs."""
+        with ports.connect() as conn:
+            try:
+                result = _find_alternatives(conn, _session(config), inquiry_id, ports.now())
+            except ValueError:
+                return error("that inquiry has not fallen through")
+        return block("alternatives", result) if result else error("inquiry not found")
+
+    @tool
     def ask_user(
         field: CHIP_FIELDS,
         question: str,
@@ -239,7 +251,7 @@ def build_graph(ports: Ports) -> StateGraph:
             options = ["همین الان", "امروز عصر", "فردا"]
         return block("chips", {"field": field, "question": question, "options": options})
 
-    tools = [search_products, compare_products, find_sellers, compare_sellers, plan_visit, get_directions, ask_user]
+    tools = [search_products, compare_products, find_sellers, compare_sellers, plan_visit, get_directions, find_alternatives, ask_user]
 
     def patch_brief(state: MessagesState, config: RunnableConfig) -> dict:
         sid, brief = _session(config), brief_of(config)

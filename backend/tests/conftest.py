@@ -168,3 +168,12 @@ class Agent:
 def agent(client):
     yield Agent(client)
     client.app.dependency_overrides[get_chat_model] = lambda: None
+
+
+@pytest.fixture
+def clock(client, now):
+    """Moves the API clock for one test: `clock(at)`."""
+    from pasazhgard.api import app, get_now
+
+    yield lambda at: app.dependency_overrides.__setitem__(get_now, lambda: at)
+    app.dependency_overrides[get_now] = lambda: now
