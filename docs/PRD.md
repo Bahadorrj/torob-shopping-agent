@@ -235,7 +235,7 @@ this as simulated.
 
 - **Input:** chosen shops, origin (GPS or picked on map), departure time, travel mode.
 - **Per stop:** ETA, open-at-ETA from parsed hours (multi-shift days, midday breaks, Thursday early
-  close, Friday closures). Unknown hours -> "ساعت کاری ثبت نشده", not hidden.
+  close, Friday closures). Unknown hours -> "ساعت کاری: نامشخص", not hidden.
 - **Getting there:** route preview from the origin to the shop's coordinates with distance and time
   (routing API; straight-line estimate if unavailable), and one-tap "open in Neshan / Balad / Google
   Maps" for turn-by-turn.
@@ -337,7 +337,7 @@ Per the transparency requirements in 1.1, every offer and shop field carries one
 | Website price | Price read from the seller's site; stock not confirmed | قیمت سایت فروشنده - ساعت ۱۱:۳۰ - موجودی تأیید نشده | blue badge |
 | Listed | Shop listed this exact product with a price in the dataset | قیمت ثبت‌شده | neutral badge + price age |
 | Category only | Shop's activity category matches; product not listed | فقط دسته فعالیت - موجودی نامشخص | outline badge, never in "has product" lists |
-| Unknown | Field not recorded | ثبت نشده | grey text, never blank |
+| Unknown | Field not recorded | نامشخص (e.g. "قیمت: نامشخص") | grey text, never blank |
 
 Inquiry outcomes are shown too: "پاسخ نداد" (no reply) and "الان بسته است" (closed), each with the
 alternatives next to it.
@@ -347,7 +347,7 @@ Rules:
 - **Price age.** `last_price_changed_at` is when the price last *changed*, not when it was last checked.
   Label it "آخرین تغییر قیمت: ۸ روز پیش", never "به‌روز شده". Age buckets: <= 7 days, 8-30 days,
   > 30 days (shown as "قیمت قدیمی، استعلام بگیرید").
-- **Missing price.** "قیمت ثبت نشده" with an "ask the seller" action.
+- **Missing price.** "قیمت: نامشخص" with an "ask the seller" action.
 - **Units.** If the seller title says per meter ("متری") show "قیمت هر متر" and multiply by quantity in
   baskets.
 - **Payment info.** Show the channel the seller declared (in person vs unknown). "Installments
