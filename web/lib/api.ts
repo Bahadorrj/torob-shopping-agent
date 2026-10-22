@@ -324,7 +324,8 @@ const inquiriesUrl = (sessionId: string) => `/api/sessions/${encodeURIComponent(
 
 export const inquiriesStreamUrl = (sessionId: string) => `${inquiriesUrl(sessionId)}/stream`;
 
-export const consoleStreamUrl = (shopId: string) => `/api/console/shops/${encodeURIComponent(shopId)}/inquiries/stream`;
+export const consoleStreamUrl = (shopId: string, token: string) =>
+  `/api/console/shops/${encodeURIComponent(shopId)}/inquiries/stream?token=${encodeURIComponent(token)}`;
 
 export type Ask = { product_id: string; shop_id: string };
 
@@ -373,7 +374,8 @@ export async function askAlternative(sessionId: string, a: Alternative, insteadO
   return confirmInquiries(sessionId, inquiries.map((i) => i.inquiry_id));
 }
 
-export const sendReply = (inquiryId: number, reply: ConsoleReply) => post<Inquiry>(`/api/console/inquiries/${inquiryId}/replies`, reply);
+export const sendReply = (inquiryId: number, reply: ConsoleReply, token: string) =>
+  post<Inquiry>(`/api/console/inquiries/${inquiryId}/replies?token=${encodeURIComponent(token)}`, reply);
 
 // Mirrors Directions and VisitPlan in backend/src/pasazhgard/visit.py and Route in routing.py.
 export type Route = { distance_m: number; duration_min: number; source: "neshan" | "straight_line" };

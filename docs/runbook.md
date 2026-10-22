@@ -61,6 +61,8 @@ another ID and change it in `backend/liara.json` / `web/liara.json` (`app`, and 
      `pasazhgard`. Copy host and port; do not guess them.
    - Optional: `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_SMALL_MODEL`, `EMBEDDING_MODEL`,
      `EMBEDDING_DIMENSIONS`, `NESHAN_API_KEY` (ADR-0001 table).
+   - `CONSOLE_SECRET`: a long random string, e.g. from
+     `python -c "import secrets; print(secrets.token_urlsafe(32))"`. Without it the Seller Console is closed.
    Never put env vars in `liara.json` (`envs` replaces all of an app's variables). `torob-web` needs none:
    `API_URL` is a build arg in `web/liara.json`.
 7. Deploy both apps (next section) and load the data (section after).
@@ -136,6 +138,22 @@ If a load is killed mid-run, its server session can live on and hold locks, so t
 'pasazhgard'` and end it with `SELECT pg_terminate_backend(<pid>)`.
 5. Optional quality check: `uv run python eval/search.py` against the same `DATABASE_URL` prints the top-5
    hit rate over `backend/eval/search_queries.json` (hybrid with `LLM_API_KEY`, lexical without).
+
+## Seller Console links
+
+Each shop's console is `/console/<shop_id>?token=<token>`. The token is derived from `CONSOLE_SECRET` and the
+shop ID, so it survives a reload; inbox and replies return 403 without it, and a token works only for its
+own shop. The buyer's pages never show it. Print every shop's link (tab-separated: shop ID, name, path)
+with the same `CONSOLE_SECRET` as the app and the public database URI:
+
+```
+cd backend
+$env:DATABASE_URL = "<database URI>"; $env:CONSOLE_SECRET = "<the app's CONSOLE_SECRET>"
+uv run python -m pasazhgard.console_links
+```
+
+Prefix the path with the site's domain and hand each seller (or the demo presenter) their own line. Changing
+`CONSOLE_SECRET` revokes every link at once.
 
 ## Back up and restore a snapshot
 
