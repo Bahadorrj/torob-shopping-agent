@@ -15,6 +15,15 @@ cd backend; $env:DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/p
 uv run python -m pasazhgard.ingest ../dataset    # first time, or after the CSVs change
 ```
 
+Or run the API and web on the host, with only the database in Docker:
+
+```
+docker compose up -d db
+cd backend; $env:DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/pasazhgard"
+uv run --env-file ../.env python -m pasazhgard   # http://localhost:8000
+cd web; pnpm build; pnpm start                   # second shell, http://localhost:3000 (proxies /api to :8000)
+```
+
 Optional keys (`LLM_API_KEY`, `NESHAN_API_KEY`, ... see ADR-0001) go in a gitignored `.env` at the repo
 root. Without them the app runs degraded and search still works.
 
