@@ -12,9 +12,6 @@ from pasazhgard.shops import TEHRAN, open_at
 
 TravelMode = Literal["walk", "transit", "car"]
 
-# straight-line speeds until the routing port exists
-KMH: dict[str, float] = {"walk": 4.5, "transit": 15, "car": 20}
-
 
 class CompareQuery(BaseModel):
     offer_id: Annotated[list[str], Field(min_length=1, max_length=3), AfterValidator(distinct)]
@@ -60,6 +57,9 @@ class SellerCompare(BaseModel):
 
 def compare_sellers(conn, product_id: str, q: CompareQuery, now: datetime) -> SellerCompare | None:
     """None when the product is missing or an offer is not one of its offers."""
+    # shortcut: straight-line distance at a flat speed per mode ignores streets and traffic,
+    # replace with the routing port when travel times drive the visit plan
+    kmh = {"walk": 4.5, "transit": 15, "car": 20}
     product = get_product(conn, product_id)
     if product is None:
         return None
@@ -70,7 +70,7 @@ def compare_sellers(conn, product_id: str, q: CompareQuery, now: datetime) -> Se
     for oid in q.offer_id:
         o = by_id[oid]
         d = _distance(q, o)
-        travel = None if d is None else ceil(d / (KMH[q.mode] * 1000 / 60))
+        travel = None if d is None else ceil(d / (kmh[q.mode] * 1000 / 60))
         at = (q.arrival or now + timedelta(minutes=travel or 0)).astimezone(TEHRAN)
         cols.append(
             SellerColumn(

@@ -22,8 +22,6 @@ const UNKNOWN: Record<Condition, string> = {
   fast_delivery: "ارسال سریع",
 };
 
-const COMPARE_MAX = 3;
-
 const COVERAGE = "داده‌ها بخشی از فروشگاه‌های تهران، بیشتر مرکز شهر، را پوشش می‌دهند.";
 
 function reasonLabel(r: Reason) {
@@ -106,11 +104,12 @@ function Seller({ s, children }: { s: SellerRow; children?: ReactNode }) {
 export function SellerList({ productId }: { productId: string }) {
   const { session, pending, error, patch } = useBrief();
   // offers picked for the seller compare
+  const compareMax = 3;
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const compareToggle = (id: string) => (
     <CompareToggle
       on={compareIds.includes(id)}
-      full={compareIds.length >= COMPARE_MAX}
+      full={compareIds.length >= compareMax}
       onToggle={() => setCompareIds((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))}
     />
   );
@@ -133,7 +132,7 @@ export function SellerList({ productId }: { productId: string }) {
   const showMap = view === "map" && rows.length > 0;
   const unplaced = rows.length - mapPins.reduce((t, p) => t + p.rows.length, 0);
   // rows of the pin picked on the map
-  const PICKED = "rounded-xl aria-[current=true]:ring-2 aria-[current=true]:ring-primary";
+  const pickedClass = "rounded-xl aria-[current=true]:ring-2 aria-[current=true]:ring-primary";
 
   if (list === null) {
     if (error && !pending) return <p className="text-sm text-destructive">فهرست فروشنده‌ها دریافت نشد. دوباره تلاش کنید.</p>;
@@ -203,7 +202,7 @@ export function SellerList({ productId }: { productId: string }) {
       ) : (
         <ul className="flex flex-col gap-3">
           {list.sellers.map((s) => (
-            <li key={s.offer_id} aria-current={pinKey(s) === selected || undefined} className={PICKED}>
+            <li key={s.offer_id} aria-current={pinKey(s) === selected || undefined} className={pickedClass}>
               <Seller s={s}>
                 {compareToggle(s.offer_id)}
               </Seller>
@@ -220,7 +219,7 @@ export function SellerList({ productId }: { productId: string }) {
           <p className="text-xs text-muted-foreground">این فروشگاه‌ها بعضی از شرایط شما را ثبت نکرده‌اند.</p>
           <ul className="flex flex-col gap-3">
             {list.ask_them.map((s) => (
-              <li key={s.offer_id} aria-current={pinKey(s) === selected || undefined} className={PICKED}>
+              <li key={s.offer_id} aria-current={pinKey(s) === selected || undefined} className={pickedClass}>
                 <Seller s={s}>
                   {compareToggle(s.offer_id)}
                 </Seller>

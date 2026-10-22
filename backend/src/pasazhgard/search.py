@@ -159,7 +159,8 @@ def _query_vector(embedder: Embedder, query: str) -> list[float]:
 def _semantic(conn, query: str, embedder: Embedder | None, pool: int) -> list[str]:
     if embedder is None:
         return []
-    # text-embedding-3-small puts related products above about 0.3 cosine similarity, unrelated ones below
+    # shortcut: cosine distance cutoff tuned for text-embedding-3-small (related products sit above about 0.3
+    # similarity); retune against eval/search.py when EMBEDDING_MODEL changes
     max_distance = 0.7
     try:
         vector = _query_vector(embedder, query)
