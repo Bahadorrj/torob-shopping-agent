@@ -2,7 +2,7 @@
 
 import json
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime
 from enum import StrEnum
 from statistics import median
@@ -84,6 +84,7 @@ def clean_offer(row: dict) -> dict:
         "price_toman": price,
         "last_price_changed_at": datetime.fromisoformat(changed) if changed else None,
         "price_flags": flags,
+        "warranty": clean_warranty(row["warranty"]),
     }
 
 
@@ -114,4 +115,141 @@ def clean_product(row: dict) -> dict:
         "image_urls": _json_list(row["image_urls"]),
         "specs": [{"key": s["key"], "value": s["value"]} for s in _json_list(row["specs"])],
         "search_text": normalize(" ".join(filter(None, [title, brand, model]))),
+        # the names a query can call the brand by, for the brand boost
+        "brand_terms": [normalize(brand)] if brand else [],
+    }
+
+
+def add_brand_aliases(products: list[dict]) -> None:
+    """Make every product of a brand findable by the Latin name its brand specs use, so "anker" finds "انکر".
+
+    A brand's alias is its most used Latin word, when that word leads the brand's other Latin words (in most of
+    its products, or twice the runner-up) and the brand writes most uses of it. So "sigma" on a few Sony lenses
+    or "brand" in "Anker Brand" is no brand's alias.
+    """
+    votes = defaultdict(Counter)  # brand -> Latin word -> products
+    latin = Counter()  # brand -> products whose brand spec has a Latin word
+    uses = Counter()  # Latin word -> products of any brand
+    for p in products:
+        words = {w for s in p["specs"] if s["key"] == "برند" for w in re.findall(r"[a-z]{3,}", s["value"].lower())}
+        if p["brand"] and words:
+            votes[p["brand"]].update(words)
+            latin[p["brand"]] += 1
+            uses.update(words)
+    alias = {}
+    for brand, words in votes.items():
+        # ties go to the word the brand owns more of: "geeon" over "tech" in "Geeon Tech"
+        (word, n), *rest = sorted(words.items(), key=lambda x: (-x[1], -x[1] / uses[x[0]], x[0]))
+        runner_up = rest[0][1] if rest else 0
+        if n > uses[word] / 2 and (n > latin[brand] / 2 or n >= 2 * runner_up):
+            alias[brand] = word
+    for p in products:
+        if p["brand"] in alias:
+            p["search_text"] += " " + alias[p["brand"]]
+            p["brand_terms"].append(alias[p["brand"]])
+
+
+WEEK = ["sat", "sun", "mon", "tue", "wed", "thu", "fri"]
+
+
+def weekday_key(at: datetime) -> str:
+    """The WEEK key of a local datetime; datetime.weekday() of sat is 5."""
+    return WEEK[(at.weekday() + 2) % 7]
+
+
+def clean_hours(raw: str) -> dict:
+    """Weekly hours, sat..fri, in Asia/Tehran local time. A shop without hours is `unknown` every day."""
+    days = json.loads(raw) if _null(raw) else {}
+    hours = {}
+    for key in WEEK:
+        day = days.get(key)
+        if not day:
+            hours[key] = {"status": "unknown", "shifts": []}
+            continue
+        shifts = [
+            {"start": s["start_time"][:5], "end": s["end_time"][:5]}
+            for s in day["shifts"]
+            if not s["start_time"] == s["end_time"] == "00:00:00"
+        ]
+        status = day["status"]
+        # a declared day with only padding shifts says nothing, so it is unknown and the shop gets asked
+        if status == "declared" and not shifts:
+            status = "unknown"
+        # closed and unsupported days only carry placeholder shifts
+        hours[key] = {"status": status, "shifts": shifts if status == "declared" else []}
+    return hours
+
+
+def parse_address(address: str) -> dict:
+    """Pasaj, floor, unit and the landmark nearest the shop. Display strings keep their raw spelling."""
+    landmark_words = re.compile(r"^(نبش|روبروی|روبه روی|رو به روی|جنب|کنار|مقابل|پشت|نرسیده|بعد از|قبل از|بین|سر کوچه|بالاتر از|پایین تر از)(?!\w)")
+    # "پاساژ" is often glued to the name ("پاساژعلاالدین")
+    pasaj_re = re.compile(r"(?:پاسا[ژز]|(?:مجتمع(?:\s*تجاری)?|بازار|سرای|ساختمان)(?!\w))\s*(.+?)(?=\s*(?:طبقه|پلاک|واحد|$))")
+    floor_re = re.compile(r"طبقه(?:\s*ی)?\s*(.+?)(?=\s*(?:پلاک|واحد|$))")
+    unit_re = re.compile(r"واحد\s*(.+?)(?=\s*(?:پلاک|طبقه|$))")
+    plate_re = re.compile(r"پلاک\s*(.+?)(?=\s*(?:واحد|طبقه|$))")
+    # spellings of one pasaj name; normalize already folds علاءالدین into علاالدین
+    variants = {"علالدین": "علاالدین", "علایدین": "علاالدین", "چهارسو": "چارسو"}
+    pasaj = floor = unit = plate = landmark = None
+    for segment in (s.strip() for s in re.split(r"[،,٬]", address or "")):
+        if landmark_words.search(normalize(segment)):
+            landmark = segment
+            continue
+        if pasaj is None and (m := pasaj_re.search(segment)):
+            pasaj = " ".join(variants.get(w, w) for w in normalize(m[1]).split())
+        floor = floor or ((m := floor_re.search(segment)) and m[1])
+        unit = unit or ((m := unit_re.search(segment)) and m[1])
+        plate = plate or ((m := plate_re.search(segment)) and m[1])
+    # a plate outside a pasaj or floor is a street number, not a unit
+    if unit is None and (pasaj or floor):
+        unit = plate
+    return {"pasaj": pasaj, "floor": floor, "unit": unit, "landmark": landmark}
+
+
+def clean_payment_options(raw: str) -> list[dict]:
+    return [
+        {"provider": p["provider_name"], "channel": "in_person" if p["channel"] == "in_person" else "unknown"}
+        for p in _json_list(raw)
+    ]
+
+
+def fast_delivery(raw: str) -> str:
+    return {"true": "yes", "false": "no"}.get(raw, "unknown")
+
+
+def clean_warranty(raw: str) -> dict | None:
+    """An offer's warranty, or None when the offer does not say."""
+    w = json.loads(raw) if _null(raw) else {}
+    provider, months = w.get("provider"), w.get("period_months")
+    # the source writes a missing description as the string "None"
+    description = None if w.get("description") == "None" else w.get("description")
+    if not (provider or description or months):
+        return None
+    text = normalize(f"{provider or ''} {description or ''}")
+    if "بدون گارانتی" in text or re.match(r"ندارد(?!\w)", text):
+        return {"kind": "none", "provider": provider, "months": None, "description": description}
+    if "تست و تحویل در حضور مشتری" in text:
+        return {"kind": "test_in_presence", "provider": provider, "months": None, "description": description}
+    # else the first period in months or years, e.g. "7 روز مهلت تست و 6 ماه گارانتی" is 6 months
+    if months is None and (m := re.search(r"(\d+)\s*(ماه|سال)", text)):
+        months = int(m[1]) * (12 if m[2] == "سال" else 1)
+    return {"kind": "warranty", "provider": provider, "months": months, "description": description}
+
+
+def clean_shop(row: dict) -> dict:
+    instagram = json.loads(row["instagram"]) if _null(row["instagram"]) else {}
+    return {
+        "shop_id": row["shop_id"],
+        "name": row["name"],
+        "address": _null(row["address"]),
+        "location_label": _null(row["location_label"]),
+        "lat": float(row["lat"]) if _null(row["lat"]) else None,
+        "lon": float(row["lon"]) if _null(row["lon"]) else None,
+        "categories": _json_list(row["category_names"]),
+        **parse_address(_null(row["address"]) or ""),
+        "hours": clean_hours(row["weekly_hours"]),
+        "payment_options": clean_payment_options(row["payment_options"]),
+        "fast_delivery": fast_delivery(row["supports_fast_delivery"]),
+        "website_url": _null(row["website_url"]),
+        "instagram_url": instagram.get("profile_url"),
     }

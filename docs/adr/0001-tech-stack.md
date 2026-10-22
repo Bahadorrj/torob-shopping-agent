@@ -47,6 +47,9 @@ As in the spec. Python 3.12+, Pydantic models for every tool's input and output.
 As in the spec. On Liara, PostGIS and pgvector are enabled in the console; `pg_trgm` and `unaccent` are
 contrib extensions enabled with `CREATE EXTENSION` (docs: `dbaas/postgresql/extensions`).
 
+Amended: seller distance and radius filtering are haversine in Python (`sellers.distance_m`): a product has a
+handful of sellers, so there is nothing for a spatial index to win. PostGIS stays enabled for when that changes.
+
 The vector index is HNSW. Liara's docs do not state the pgvector version; check
 `SELECT * FROM pg_available_extensions WHERE name = 'vector'` on the new instance. If HNSW is not available
 (pgvector < 0.5), use IVFFlat (`lists` about 475, sqrt of row count); at 512 dimensions an exact scan is

@@ -1,13 +1,23 @@
-"""search_products: lexical product search over normalized titles."""
+"""search_products: hybrid product search, lexical over normalized titles merged with semantic neighbours."""
 
+import logging
+import re
 from datetime import UTC, datetime
+from functools import lru_cache
 from typing import Literal
 from zoneinfo import ZoneInfo
 
+import psycopg
 from pydantic import BaseModel
 
 from pasazhgard.clean import BAD_PRICE_FLAGS, PriceFlag
+from pasazhgard.embeddings import Embedder
 from pasazhgard.normalize import normalize
+
+log = logging.getLogger(__name__)
+
+# word_similarity at which a query word counts as present in a product's search text
+WORD_MATCH = 0.6
 
 PriceAgeBucket = Literal["<=7", "8-30", ">30"]
 
@@ -29,6 +39,13 @@ class PriceRange(BaseModel):
     price_age_bucket: PriceAgeBucket | None
 
 
+class ScorePart(BaseModel):
+    """One query word of the match score, and whether the product's title, brand, model or brand alias contains it."""
+
+    word: str
+    matched: bool
+
+
 class ProductCard(BaseModel):
     product_id: str
     title: str
@@ -39,6 +56,10 @@ class ProductCard(BaseModel):
     offer_count: int
     price: PriceRange
     price_flags: list[PriceFlag]
+    # why this product was found: shown behind "why this?"
+    score_parts: list[ScorePart]
+    # found by meaning (embedding similarity), whether or not any query word matched
+    meaning_match: bool
 
 
 class SearchResult(BaseModel):
@@ -92,19 +113,17 @@ def _price_range(offers: list[dict], now: datetime) -> PriceRange:
     )
 
 
-def search_products(conn, query: str, now: datetime, limit: int = 20) -> SearchResult:
-    # punctuation-only tokens like "-" carry no signal
-    tokens = [t for t in normalize(query).split() if any(ch.isalnum() for ch in t)]
+def _lexical(conn, tokens: list[str], pool: int) -> list[str]:
     # short words like "20" match most rows, so they only rank and do not select
     selective = [t for t in tokens if len(t) >= 3] or tokens
     # each query word is matched on its own, so word order and words in between do not matter.
     # A word weighs more the fewer candidates contain it, so common words like "برای" cannot
     # outvote the product words; a word no candidate contains weighs nothing.
-    # shortcut: common words still scan many rows (1-2 s on the full data), revisit with hybrid search
-    products = conn.execute(
+    # shortcut: common words still scan many rows (1-2 s on the full data), revisit if search latency suffers
+    rows = conn.execute(
         """
         WITH cand AS (
-            SELECT product_id, title, brand, category, image_urls, specs,
+            SELECT product_id,
                    ARRAY(SELECT word_similarity(t, search_text)
                          FROM unnest(%(tokens)s::text[]) WITH ORDINALITY u(t, i) ORDER BY i) AS sims
             FROM products
@@ -120,13 +139,83 @@ def search_products(conn, query: str, now: datetime, limit: int = 20) -> SearchR
         scored AS (
             SELECT *, (SELECT sum(w * sims[i]) / nullif(sum(w), 0) FROM weight) AS score FROM cand
         )
-        SELECT * FROM scored
+        SELECT product_id FROM scored
         WHERE score >= %(min_score)s
         ORDER BY score DESC, product_id
         LIMIT %(limit)s
         """,
-        {"tokens": tokens, "selective": selective, "n": len(tokens), "word_match": 0.6, "min_score": 0.5, "limit": limit},
+        {"tokens": tokens, "selective": selective, "n": len(tokens), "word_match": WORD_MATCH, "min_score": 0.5, "limit": pool},
     ).fetchall()
+    return [r["product_id"] for r in rows]
+
+
+# shortcut: per-process cache, so a brief chip edit re-running the same need makes no provider call;
+# move to a shared store (or key it by session) when the API runs in several processes
+@lru_cache(maxsize=1024)
+def _query_vector(embedder: Embedder, query: str) -> list[float]:
+    return embedder.embed([query])[0]
+
+
+def _semantic(conn, query: str, embedder: Embedder | None, pool: int) -> list[str]:
+    if embedder is None:
+        return []
+    # shortcut: cosine distance cutoff tuned for text-embedding-3-small (related products sit above about 0.3
+    # similarity); retune against eval/search.py when EMBEDDING_MODEL changes
+    max_distance = 0.7
+    try:
+        vector = _query_vector(embedder, query)
+    except Exception:
+        # degraded mode: any provider failure leaves the lexical results
+        log.warning("query embedding failed, searching lexically", exc_info=True)
+        return []
+    try:
+        # a savepoint, so a failed vector query leaves the request's transaction usable
+        with conn.transaction():
+            rows = conn.execute(
+                "SELECT product_id, embedding <=> %s::vector AS distance FROM products ORDER BY distance LIMIT %s",
+                [str(vector), pool],
+            ).fetchall()
+    except psycopg.Error:
+        # e.g. EMBEDDING_DIMENSIONS no longer matches the stored vectors
+        log.warning("vector query failed, searching lexically", exc_info=True)
+        return []
+    return [r["product_id"] for r in rows if r["distance"] is not None and r["distance"] <= max_distance]
+
+
+def search_products(conn, query: str, now: datetime, limit: int = 20, embedder: Embedder | None = None) -> SearchResult:
+    # candidates per source; also the most an HNSW scan returns at its default ef_search
+    pool = 40
+    # reciprocal rank fusion: a product high in either list ranks high, one in both ranks higher
+    rrf_k = 10
+    # a product of the brand the query names beats a few ranks; one in the named category, fewer
+    brand_boost, category_boost = 0.05, 0.025
+    # punctuation-only tokens like "-" carry no signal
+    tokens = [t for t in normalize(query).split() if any(ch.isalnum() for ch in t)]
+    semantic = _semantic(conn, query, embedder, pool)
+    score: dict[str, float] = {}
+    for ranked in (_lexical(conn, tokens, pool), semantic):
+        for rank, product_id in enumerate(ranked, 1):
+            score[product_id] = score.get(product_id, 0) + 1 / (rrf_k + rank)
+    found = {
+        p["product_id"]: p
+        for p in conn.execute(
+            """
+            SELECT product_id, title, brand, category, image_urls, specs, brand_terms,
+                   ARRAY(SELECT word_similarity(t, search_text)
+                         FROM unnest(%s::text[]) WITH ORDINALITY u(t, i) ORDER BY i) AS sims
+            FROM products WHERE product_id = ANY(%s)
+            """,
+            [tokens, list(score)],
+        )
+    }
+    padded = f" {normalize(query)} "
+    words = {w for w in padded.split() if len(w) >= 3}
+    for product_id, p in found.items():
+        if any(f" {term} " in padded for term in p["brand_terms"]):
+            score[product_id] += brand_boost
+        if words & set(re.findall(r"\w+", normalize(p["category"] or ""))):
+            score[product_id] += category_boost
+    products = [found[p] for p in sorted(score, key=lambda p: (-score[p], p))[:limit]]
     offers = conn.execute(
         "SELECT product_id, price_toman, last_price_changed_at, price_flags FROM offers WHERE product_id = ANY(%s)",
         [[p["product_id"] for p in products]],
@@ -152,6 +241,8 @@ def search_products(conn, query: str, now: datetime, limit: int = 20) -> SearchR
                 offer_count=len(own),
                 price=_price_range(own, now),
                 price_flags=_product_flags(own),
+                score_parts=[ScorePart(word=t, matched=sim >= WORD_MATCH) for t, sim in zip(tokens, p["sims"])],
+                meaning_match=p["product_id"] in semantic,
             )
         )
     return SearchResult(query=query, items=items)

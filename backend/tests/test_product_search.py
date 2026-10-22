@@ -61,6 +61,18 @@ def card(client, query, product_id):
     return next(c for c in search(client, query) if c["product_id"] == product_id)
 
 
+def test_score_parts_show_which_query_words_matched(client):
+    c = card(client, "هدفون انکر R50i برای ورزش", R50I)
+    # query words are normalized; "برای" and "ورزش" are not in the title
+    assert c["score_parts"] == [
+        {"word": "هدفون", "matched": True},
+        {"word": "انکر", "matched": True},
+        {"word": "r50i", "matched": True},
+        {"word": "برای", "matched": False},
+        {"word": "ورزش", "matched": False},
+    ]
+
+
 def test_missing_price(client):
     c = card(client, "کلید اتوماتیک 160 آمپر زیمنس", "product_c2f4d0a4d9df317cc19b3115")
     assert c["offer_count"] == 3
@@ -123,13 +135,13 @@ def test_price_age_bucket_follows_the_clock(client, now, today, days, bucket):
     assert (price["price_age_days"], price["price_age_bucket"]) == (days, bucket)
 
 
-def test_ingest_is_idempotent(client, database_url, fixture_dir):
+def test_ingest_is_idempotent(client, database_url, fixture_dir, embedder):
     before = search(client, "انکر")
-    ingest(fixture_dir, database_url)
+    ingest(fixture_dir, database_url, embedder)
     assert search(client, "انکر") == before
 
 
-def test_reload_does_not_block_reads_during_build(monkeypatch, database_url, fixture_dir):
+def test_reload_does_not_block_reads_during_build(monkeypatch, database_url, fixture_dir, embedder):
     from pasazhgard import ingest as ingest_module
 
     real_copy = ingest_module._copy
@@ -141,7 +153,7 @@ def test_reload_does_not_block_reads_during_build(monkeypatch, database_url, fix
             reads.append(other.execute("SELECT count(*) FROM public.products").fetchone()[0])
 
     monkeypatch.setattr(ingest_module, "_copy", copy_then_read)
-    ingest(fixture_dir, database_url)
+    ingest(fixture_dir, database_url, embedder)
     assert len(reads) == 3 and reads[0] > 0
 
 

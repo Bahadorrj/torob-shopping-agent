@@ -1,13 +1,58 @@
+import Link from "next/link";
+
+import { TrayToggle } from "@/components/compare-tray";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import type { PriceFlag, ProductCard as Product } from "@/lib/api";
-import { faDigits, priceAge, toman } from "@/lib/format";
+import type { PriceFlag, PriceRange, ProductCard as Product } from "@/lib/api";
+import { faDigits, faText, priceAge, toman } from "@/lib/format";
 
 const FLAG_LABELS: Partial<Record<PriceFlag, string>> = {
   placeholder: "قیمت صوری کنار گذاشته شد",
   invalid: "قیمت نامعتبر کنار گذاشته شد",
   far_from_median: "قیمت دور از میانه کنار گذاشته شد",
 };
+
+function joinFa(words: string[]) {
+  return words.length < 2 ? words.join("") : `${words.slice(0, -1).join("، ")} و ${words.at(-1)}`;
+}
+
+// one sentence from the card's own data, so it claims nothing the search did not return
+function whySentence(p: Product) {
+  const words = p.score_parts.filter((s) => s.matched).map((s) => `«${faText(s.word)}»`);
+  const found =
+    words.length > 0
+      ? `${joinFa(words)} در نام، برند یا مدل این کالا آمده و `
+      : p.meaning_match
+        ? "این کالا از نظر معنا به جستجوی شما نزدیک است و "
+        : "";
+  if (p.offer_count === 0) return `${found}فروشنده‌ای آن را ثبت نکرده است.`;
+  const { price } = p;
+  const priced =
+    price.trust_level === "listed" && price.min_toman !== null && price.max_toman !== null
+      ? `با قیمت ${toman(price.min_toman, price.max_toman)}${price.per_meter ? " برای هر متر" : ""}`
+      : "بدون قیمت";
+  return `${found}${faDigits(p.offer_count)} فروشنده آن را ${priced} ثبت کرده‌اند.`;
+}
+
+// a listed price range with its trust level and age, else "not recorded"
+export function ListedPrice({ price }: { price: PriceRange }) {
+  if (price.trust_level !== "listed" || price.min_toman === null || price.max_toman === null) {
+    return <span className="text-sm text-muted-foreground">قیمت ثبت نشده</span>;
+  }
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-sm font-bold">{toman(price.min_toman, price.max_toman)}</span>
+        {price.per_meter && <Badge variant="outline">قیمت هر متر</Badge>}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+        <Badge variant="secondary">قیمت ثبت‌شده</Badge>
+        <span>{priceAge(price.price_age_days)}</span>
+        {price.price_age_bucket === ">30" && <span className="text-amber-700">قیمت قدیمی، استعلام بگیرید</span>}
+      </div>
+    </>
+  );
+}
 
 export function ProductCard({ product }: { product: Product }) {
   const { price } = product;
@@ -30,21 +75,7 @@ export function ProductCard({ product }: { product: Product }) {
             {product.key_specs.map((s) => `${s.key}: ${s.value}`).join(" · ")}
           </p>
         )}
-        {price.trust_level === "listed" && price.min_toman !== null && price.max_toman !== null ? (
-          <>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-sm font-bold">{toman(price.min_toman, price.max_toman)}</span>
-              {price.per_meter && <Badge variant="outline">قیمت هر متر</Badge>}
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-              <Badge variant="secondary">قیمت ثبت‌شده</Badge>
-              <span>{priceAge(price.price_age_days)}</span>
-              {price.price_age_bucket === ">30" && <span className="text-amber-700">قیمت قدیمی، استعلام بگیرید</span>}
-            </div>
-          </>
-        ) : (
-          <span className="text-sm text-muted-foreground">قیمت ثبت نشده</span>
-        )}
+        <ListedPrice price={price} />
         <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           <span>{faDigits(product.offer_count)} فروشنده</span>
           {notes.map((n) => (
@@ -52,6 +83,32 @@ export function ProductCard({ product }: { product: Product }) {
               {n}
             </Badge>
           ))}
+        </div>
+        <details className="text-xs">
+          <summary className="cursor-pointer font-medium text-primary">چرا این؟</summary>
+          <div className="mt-1.5 flex flex-col gap-1.5">
+            <div className="flex flex-wrap gap-1.5">
+              {product.meaning_match && <Badge variant="secondary">هم‌معنا با جستجو</Badge>}
+              {product.score_parts.map((s) =>
+                s.matched ? (
+                  <Badge key={s.word} variant="secondary">مطابق: {faText(s.word)}</Badge>
+                ) : (
+                  <Badge key={s.word} variant="outline" className="text-muted-foreground">
+                    نیامده: {faText(s.word)}
+                  </Badge>
+                ),
+              )}
+            </div>
+            <p className="leading-6">{whySentence(product)}</p>
+          </div>
+        </details>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <TrayToggle item={{ product_id: product.product_id, title: product.title }} />
+          {product.offer_count > 0 && (
+            <Link href={`/products/${product.product_id}/sellers`} className="font-medium text-primary underline-offset-4 hover:underline">
+              دیدن فروشنده‌ها
+            </Link>
+          )}
         </div>
       </CardContent>
     </Card>
