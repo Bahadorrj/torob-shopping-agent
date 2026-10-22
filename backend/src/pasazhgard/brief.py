@@ -65,6 +65,9 @@ class MustHave(BaseModel):
 
 class Brief(BaseModel):
     need: str | None = None
+    # guided discovery: what the need is for and the product features it must have
+    use: str | None = None
+    features: list[str] = []
     items: list[Item] = []
     budget: Budget = Budget()
     origin: Point | None = None
