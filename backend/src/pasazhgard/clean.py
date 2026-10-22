@@ -136,8 +136,12 @@ def clean_hours(raw: str) -> dict:
             for s in day["shifts"]
             if not s["start_time"] == s["end_time"] == "00:00:00"
         ]
+        status = day["status"]
+        # a declared day with only padding shifts says nothing, so it is unknown and the shop gets asked
+        if status == "declared" and not shifts:
+            status = "unknown"
         # closed and unsupported days only carry placeholder shifts
-        hours[key] = {"status": day["status"], "shifts": shifts if day["status"] == "declared" else []}
+        hours[key] = {"status": status, "shifts": shifts if status == "declared" else []}
     return hours
 
 
@@ -188,9 +192,9 @@ def clean_warranty(raw: str) -> dict | None:
         return None
     text = normalize(f"{provider or ''} {description or ''}")
     if "بدون گارانتی" in text or re.match(r"ندارد(?!\w)", text):
-        return {"kind": "none", "provider": None, "months": None, "description": None}
+        return {"kind": "none", "provider": provider, "months": None, "description": description}
     if "تست و تحویل در حضور مشتری" in text:
-        return {"kind": "test_in_presence", "provider": None, "months": None, "description": None}
+        return {"kind": "test_in_presence", "provider": provider, "months": None, "description": description}
     # else the first period in months or years, e.g. "7 روز مهلت تست و 6 ماه گارانتی" is 6 months
     if months is None and (m := re.search(r"(\d+)\s*(ماه|سال)", text)):
         months = int(m[1]) * (12 if m[2] == "سال" else 1)

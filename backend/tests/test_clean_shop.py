@@ -28,6 +28,8 @@ def test_hours_keys_run_sat_to_fri():
             {"status": "declared", "shifts": [{"start": "09:30", "end": "13:00"}, {"start": "16:00", "end": "20:00"}]},
         ),
         (day("closed", ("00:00", "00:00"), ("00:00", "00:00")), {"status": "closed", "shifts": []}),
+        # declared with only padding shifts says nothing about the day
+        (day("declared", ("00:00", "00:00")), {"status": "unknown", "shifts": []}),
         # unsupported days carry placeholder shifts such as 08:00-08:00
         (day("unsupported", ("08:00", "08:00")), {"status": "unsupported", "shifts": []}),
     ],
@@ -104,8 +106,11 @@ def warranty(provider=None, months=None, description=None):
         ("null", None),
         ("", None),
         (warranty("شرکتی", 18), {"kind": "warranty", "provider": "شرکتی", "months": 18, "description": None}),
-        (warranty("تست و تحویل در حضور مشتری"), {"kind": "test_in_presence", "provider": None, "months": None, "description": None}),
-        (warranty("بدون گارانتی"), {"kind": "none", "provider": None, "months": None, "description": None}),
+        (
+            warranty("تست و تحویل در حضور مشتری"),
+            {"kind": "test_in_presence", "provider": "تست و تحویل در حضور مشتری", "months": None, "description": None},
+        ),
+        (warranty("بدون گارانتی"), {"kind": "none", "provider": "بدون گارانتی", "months": None, "description": None}),
         (
             warranty(description="گارانتی اصالت و سلامت فیزیکی کالا"),
             {"kind": "warranty", "provider": None, "months": None, "description": "گارانتی اصالت و سلامت فیزیکی کالا"},
@@ -118,7 +123,7 @@ def warranty(provider=None, months=None, description=None):
             {"kind": "warranty", "provider": None, "months": 6, "description": "7 روز مهلت تست و 6 ماه گارانتی"},
         ),
         # "ندارد" is "none", not a warranty without a term
-        (warranty(description="ندارد - کالای مشابه اصل ©"), {"kind": "none", "provider": None, "months": None, "description": None}),
+        (warranty(description="ندارد - کالای مشابه اصل ©"), {"kind": "none", "provider": None, "months": None, "description": "ندارد - کالای مشابه اصل ©"}),
         (warranty(description="دارد"), {"kind": "warranty", "provider": None, "months": None, "description": "دارد"}),
         # the source writes a missing description as the string "None"
         (warranty(description="None"), None),
