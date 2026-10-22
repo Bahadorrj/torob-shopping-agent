@@ -93,7 +93,7 @@ test("area and budget open a bottom drawer; a preset closes it and the chip show
   await chip(page, "محدوده").click();
   await drawer(page, "محدوده").getByRole("button", { name: "فردوسی", exact: true }).click();
   await expect(drawer(page, "محدوده")).toBeHidden();
-  await expect(page.getByText("۱ فروشنده")).toBeVisible();
+  await expect(page.getByText("۱ فروشنده", { exact: true })).toBeVisible();
   await expect(chip(page, "محدوده")).toContainText("فردوسی");
   expect(await border(page, "محدوده")).toEqual(INK);
   expect(patches.at(-1)).toEqual({ brief: { area: { name: "فردوسی" } } });
@@ -174,7 +174,7 @@ test("a product link opens its sellers with the brief kept, and back keeps it to
   await sheet(page).getByRole("link", { name: "دیدن فروشنده‌ها" }).click();
 
   await expect(page).toHaveURL(/\/products\/p1\/sellers$/);
-  await expect(page.getByText("۱ فروشنده")).toBeVisible();
+  await expect(page.getByText("۱ فروشنده", { exact: true })).toBeVisible();
   await expect(chip(page, "محدوده")).toContainText("فردوسی");
   expect(patches.at(-1)).toEqual({ step: { kind: "sellers", product_id: "p1" } });
 
@@ -241,7 +241,7 @@ test.describe("without geolocation", () => {
     await area.getByRole("button", { name: "۱ کیلومتر از پاساژ علاالدین" }).click();
     await expect.poll(() => patches.at(-1)).toEqual({ brief: { area: { radius_m: 1000 } } });
     await expect(chip(page, "محدوده")).toContainText("۱ کیلومتر از پاساژ علاالدین");
-    await expect(page.getByText("۱ فروشنده")).toBeVisible();
+    await expect(page.getByText("۱ فروشنده", { exact: true })).toBeVisible();
     expect(await noOverflow(page)).toBe(0);
   });
 });
