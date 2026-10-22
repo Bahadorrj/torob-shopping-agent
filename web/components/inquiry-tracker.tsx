@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import { Alternatives } from "@/components/alternatives";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { askAlternative, composeInquiries, confirmInquiries, getAlternatives, type SitePrice, type Alternatives as Block, type ConsoleReply, type Inquiry, type InquiryState } from "@/lib/api";
 import { faDigits, faText } from "@/lib/format";
 
@@ -85,6 +85,30 @@ function Sent({ sessionId, inquiry: i }: { sessionId: string; inquiry: Inquiry }
   );
 }
 
+// the user sends the message themselves; no recipient, since the dataset's numbers are not real
+function SendYourself({ message }: { message: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    await navigator.clipboard.writeText(message);
+    setCopied(true);
+  };
+  // Bale has no documented prefill link; the system share sheet hands it the text where installed
+  const share = () => (navigator.share ? navigator.share({ text: message }).catch(() => {}) : copy());
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <Button size="xs" variant="outline" onClick={copy}>
+        {copied ? "کپی شد" : "کپی پیام"}
+      </Button>
+      <a href={`https://wa.me/?text=${encodeURIComponent(message)}`} target="_blank" rel="noreferrer" className={buttonVariants({ size: "xs", variant: "outline" })}>
+        واتس‌اپ
+      </a>
+      <Button size="xs" variant="outline" onClick={share}>
+        بله و دیگر برنامه‌ها
+      </Button>
+    </div>
+  );
+}
+
 // a failed fetch offers the inquiry instead; the shop is asked about the item as an ask, whatever it lists
 function Site({ sessionId, price: p }: { sessionId: string; price: SitePrice }) {
   return (
@@ -151,9 +175,13 @@ export function InquiryTracker({
               <li key={d.inquiry_id} className="flex flex-col gap-0.5">
                 <span className="font-semibold">{d.shop_name}</span>
                 <span>{d.message}</span>
+                <SendYourself message={d.message} />
               </li>
             ))}
           </ul>
+          <p className="text-xs text-muted-foreground">
+            می‌توانید پیام را خودتان هم بفرستید. شماره‌های تماس فروشگاه‌ها در داده‌های این دمو واقعی نیستند.
+          </p>
           <Button onClick={confirm} disabled={sending} className="h-auto py-1.5 whitespace-normal">
             ارسال به {faDigits(drafts.length)} فروشنده
           </Button>

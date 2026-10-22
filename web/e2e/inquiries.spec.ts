@@ -191,3 +191,33 @@ test("seller console: simulated label, incoming message and quick replies at 360
   expect(new Set(tokens)).toEqual(new Set(["t0k"]));
   expect(await noOverflow(page)).toBe(0);
 });
+
+test("each drafted message can be copied or opened in WhatsApp or Bale, with a note that the numbers are not real", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await fakeSessions(page, {}, { s9: {} });
+  await page.addInitScript(() => {
+    localStorage.setItem("pasazhgard.session", "s9");
+    // the system share sheet is where Bale picks up the text
+    Object.assign(navigator, { share: (d: ShareData) => ((window as unknown as { shared: ShareData[] }).shared ??= []).push(d) });
+  });
+  await page.route("**/api/products/p1/sellers/compare**", (route) =>
+    route.fulfill({ json: { product_id: "p1", title: "هندزفری انکر R50i", travel_mode: "walk", travel_estimate: "straight_line", sellers: shops.map(([o, s, n]) => column(o, s, n)) } }),
+  );
+  await fakeInquiries(page);
+  await page.goto("/products/p1/sellers/compare?offer=o1&offer=o2&offer=o3");
+  await page.getByRole("button", { name: "استعلام از ۳ فروشنده" }).click();
+
+  const message = inquiry(0).message;
+  const draft = page.getByRole("listitem").filter({ hasText: "دیسیلا مانسا" });
+  await draft.getByRole("button", { name: "کپی پیام" }).click();
+  await expect(draft.getByRole("button", { name: "کپی شد" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(message);
+
+  await expect(page.getByRole("link", { name: "واتس‌اپ" })).toHaveCount(3);
+  await expect(draft.getByRole("link", { name: "واتس‌اپ" })).toHaveAttribute("href", `https://wa.me/?text=${encodeURIComponent(message)}`);
+  await draft.getByRole("button", { name: "بله و دیگر برنامه‌ها" }).click();
+  expect(await page.evaluate(() => (window as unknown as { shared: ShareData[] }).shared)).toEqual([{ text: message }]);
+
+  await expect(page.getByText("شماره‌های تماس فروشگاه‌ها در داده‌های این دمو واقعی نیستند.", { exact: false })).toBeVisible();
+  expect(await noOverflow(page)).toBe(0);
+});

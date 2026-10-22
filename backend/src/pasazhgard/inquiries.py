@@ -413,11 +413,11 @@ def _parse(model, inquiry: Inquiry, text: str) -> ReplyParse:
     return structured.invoke([SystemMessage(prompt.format(message=inquiry.message, asked=asked)), HumanMessage(text)])
 
 
-def record_reply(conn, inquiry_id: int, body: ConsoleReply, now: dt.datetime, model=None) -> Inquiry:
+def record_reply(conn, inquiry_id: int, body: ConsoleReply, now: dt.datetime, model=None, auto: bool = False) -> Inquiry:
     """Merge a seller reply into the inquiry. LookupError for an unknown inquiry, ValueError for one not sent yet.
 
     Free text is parsed by `model` (the small chat model); an ambiguous one gets one follow-up question per inquiry.
-    Without a model free text is kept as-is and leaves the parse alone.
+    Without a model free text is kept as-is and leaves the parse alone. `auto` marks a reply from the auto-responder.
     """
     def read(lock: str = "") -> Inquiry:
         row = conn.execute(f"SELECT * FROM inquiries WHERE inquiry_id = %s {lock}", [inquiry_id]).fetchone()
@@ -447,7 +447,7 @@ def record_reply(conn, inquiry_id: int, body: ConsoleReply, now: dt.datetime, mo
     _move(
         conn, inquiry, to, now,
         reply=Jsonb(reply.model_dump(mode="json")),
-        event_reply=body.model_dump(mode="json", exclude_none=True),
+        event_reply=body.model_dump(mode="json", exclude_none=True) | ({"auto": True} if auto else {}),
         event_question=question,
     )
     return _inquiry(conn.execute("SELECT * FROM inquiries WHERE inquiry_id = %s", [inquiry_id]).fetchone())
