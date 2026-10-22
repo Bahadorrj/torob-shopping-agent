@@ -359,8 +359,8 @@ def test_a_question_in_prose_is_asked_again_as_chips(agent):
     assert turn.text == ""
 
 
-def test_a_prose_question_after_a_rejected_ask_ends_the_turn(agent):
-    # the brief has the area, so ask_user refuses it; the turn must still end instead of looping
+def test_a_prose_question_after_a_rejected_ask_is_replaced_by_a_statement(agent):
+    # the brief has the area, so ask_user refuses it; the turn ends without a chip-less question
     agent.script(
         agent.brief(area={"name": "فردوسی"}),
         "کجا می‌روید؟",
@@ -370,7 +370,8 @@ def test_a_prose_question_after_a_rejected_ask_ends_the_turn(agent):
 
     turn = agent.turn("هندزفری توی فردوسی")
 
-    assert turn.text == "کجا می‌روید؟"
+    assert turn.text
+    assert "؟" not in turn.text and "?" not in turn.text
 
 
 def test_the_thread_reads_back_after_a_reload(agent, client):

@@ -372,6 +372,9 @@ def build_graph(ports: Ports) -> StateGraph:
         # a question in prose is asked again as chips, once per turn so a refused ask cannot loop
         if in_prose and not asked:
             reply = ports.model().bind_tools(tools, tool_choice="ask_user").invoke(messages, config=held)
+        elif in_prose:
+            # the forced ask was refused: a prose question must not reach the user without chips
+            reply = AIMessage("برای ادامه، بگویید دقیقاً دنبال چه چیزی هستید.", id=reply.id)
         if reply.content:
             dispatch_custom_event("manually_emit_message", {"message_id": reply.id, "message": reply.content}, config=config)
         return {"messages": [reply]}
