@@ -193,3 +193,42 @@ def test_the_quantity_the_user_states_applies_to_the_total_budget(agent):
 
     # 2 x 1,690,000 is over budget
     assert CHEAPEST_SHOP not in [s["shop_id"] for s in turn.blocks[0]["sellers"]]
+
+
+ALADDIN = {"lat": 35.69483032610498, "lon": 51.41152782573596}
+VIVAN = "shop_c060bc5ea37b78e00ece4bdb"  # علاالدین, زیر همکف
+PAKYAR = "shop_4934392f0e4fefe1526308c6"  # علاالدین, floor 5
+DISIS = "shop_81c53acd00d779578fff4a40"  # آذرنوش دیسیس: علاالدین, floor ۲, unit ۲۱۶
+
+
+def test_plan_visit_shows_the_plan_from_the_briefs_origin(agent, client):
+    client.patch(f"/sessions/{agent.session_id}", json={"brief": {"origin": ALADDIN, "travel_mode": "car"}})
+    agent.script(agent.brief(), agent.call("plan_visit", shop_ids=[PAKYAR, VIVAN]), "برنامهٔ مراجعه آماده است.")
+
+    turn = agent.turn("برنامهٔ رفتن به این دو فروشگاه رو بچین")
+
+    plan = turn.blocks[0]
+    assert plan["block"] == "visit_plan"
+    assert (plan["origin"], plan["mode"]) == (ALADDIN, "car")
+    # one pasaj, bottom floor first
+    assert [s["shop_id"] for s in plan["stops"]] == [VIVAN, PAKYAR]
+
+
+def test_plan_visit_without_an_origin_is_no_block(agent):
+    agent.script(agent.brief(), agent.call("plan_visit", shop_ids=[VIVAN]), "موقعیت شما را ندارم.")
+
+    turn = agent.turn("برنامهٔ رفتن")
+
+    assert "block" not in turn.blocks[0]
+
+
+def test_get_directions_shows_the_route_and_last_leg(agent, client):
+    client.patch(f"/sessions/{agent.session_id}", json={"brief": {"origin": ALADDIN}})
+    agent.script(agent.brief(), agent.call("get_directions", shop_id=DISIS), "مسیر آذرنوش دیسیس.")
+
+    turn = agent.turn("چطور برم آذرنوش دیسیس؟")
+
+    d = turn.blocks[0]
+    assert (d["block"], d["shop_id"]) == ("directions", DISIS)
+    assert d["route"]["source"] == "straight_line"
+    assert d["last_leg"] == {"pasaj": "علاالدین", "landmark": "رو‌به‌روی پاساژ چهارسو", "floor": "۲", "unit": "۲۱۶"}
