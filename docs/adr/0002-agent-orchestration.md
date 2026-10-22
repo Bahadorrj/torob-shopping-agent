@@ -20,6 +20,7 @@ The orchestrator and the Seller Liaison run on LangGraph, with LangChain chat mo
 - **Model.** `ChatOpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY, model=LLM_MODEL)` from
   `langchain-openai`; the small model is a second instance with `LLM_SMALL_MODEL`. Env variables are
   unchanged from ADR-0001.
+- **Embeddings.** `OpenAIEmbeddings` from the same package, with `check_embedding_ctx_length=False` (raw text).
 - **Structured output.** Brief patches (#13) and seller-reply parses (#17) use
   `with_structured_output(<Pydantic model>, method="json_schema")`.
 - **Tools.** The PRD tools stay plain typed functions shared with the REST endpoints; the graph wraps them

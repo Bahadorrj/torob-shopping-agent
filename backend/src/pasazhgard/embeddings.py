@@ -1,9 +1,9 @@
 """The embedding provider port. Without LLM_API_KEY there is no provider and search stays lexical."""
 
-import json
 import os
-import urllib.request
 from typing import Protocol
+
+from langchain_openai import OpenAIEmbeddings
 
 
 class Embedder(Protocol):
@@ -15,25 +15,28 @@ class Embedder(Protocol):
 
 
 class OpenAIEmbedder:
-    """OpenAI-compatible `/embeddings` endpoint (BoxAPI by default, ADR-0001)."""
+    """OpenAI-compatible `/embeddings` endpoint through LangChain (BoxAPI by default, ADR-0001, ADR-0002)."""
 
-    def __init__(self, base_url: str, api_key: str, model: str, dimensions: int):
-        self.base_url, self.api_key, self.model, self.dimensions = base_url.rstrip("/"), api_key, model, dimensions
+    def __init__(self, base_url: str, api_key: str, model: str, dimensions: int, timeout: float, max_retries: int):
+        self.dimensions = dimensions
         self.name = f"{model}/{dimensions}"
+        self._client = OpenAIEmbeddings(
+            base_url=base_url,
+            api_key=api_key,
+            model=model,
+            dimensions=dimensions,
+            # send raw text: the gateway is not OpenAI, and tiktoken fetches its encodings at runtime
+            check_embedding_ctx_length=False,
+            timeout=timeout,
+            max_retries=max_retries,
+        )
 
     def embed(self, texts: list[str]) -> list[list[float]]:
-        request = urllib.request.Request(
-            f"{self.base_url}/embeddings",
-            data=json.dumps({"model": self.model, "input": texts, "dimensions": self.dimensions}).encode(),
-            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-        )
-        # a search embeds one query and must fail fast; ingest batches get more time
-        with urllib.request.urlopen(request, timeout=5 + len(texts) / 50) as response:
-            data = json.load(response)["data"]
-        return [d["embedding"] for d in sorted(data, key=lambda d: d["index"])]
+        return self._client.embed_documents(texts)
 
 
-def embedder_from_env() -> Embedder | None:
+def embedder_from_env(timeout: float = 5, max_retries: int = 0) -> Embedder | None:
+    """The defaults suit a search, which embeds one query and must fail fast; ingest batches pass more."""
     key = os.environ.get("LLM_API_KEY")
     if not key:
         return None
@@ -42,4 +45,6 @@ def embedder_from_env() -> Embedder | None:
         key,
         os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small"),
         int(os.environ.get("EMBEDDING_DIMENSIONS", "512")),
+        timeout,
+        max_retries,
     )

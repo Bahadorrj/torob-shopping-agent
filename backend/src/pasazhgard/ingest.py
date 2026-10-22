@@ -186,4 +186,5 @@ def ingest(data_dir: Path, database_url: str, embedder: Embedder | None = None) 
 
 
 if __name__ == "__main__":
-    ingest(Path(sys.argv[1]), os.environ["DATABASE_URL"], embedder_from_env())
+    # a batch of 1000 texts takes longer than one query, and a retry is cheaper than rerunning the ingest
+    ingest(Path(sys.argv[1]), os.environ["DATABASE_URL"], embedder_from_env(timeout=60, max_retries=2))
