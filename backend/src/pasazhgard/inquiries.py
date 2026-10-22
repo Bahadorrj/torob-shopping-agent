@@ -179,7 +179,7 @@ def contact_seller(conn, sid: str, change: Compose, now: dt.datetime) -> Inquiry
     conn.execute("DELETE FROM inquiries WHERE session_id = %s AND status = 'draft' AND product_id = ANY(%s)", [sid, products])
     for p in set(products):
         open_ = conn.execute(
-            "SELECT count(*) AS n FROM inquiries WHERE session_id = %s AND product_id = %s AND status IN ('sent', 'replied')", [sid, p]
+            "SELECT count(*) AS n FROM inquiries WHERE session_id = %s AND product_id = %s AND status IN ('queued', 'sent', 'replied')", [sid, p]
         ).fetchone()["n"]
         if open_ + products.count(p) > 3:
             raise ValueError(f"{p} has {open_} open inquiries")
@@ -202,6 +202,8 @@ def contact_seller(conn, sid: str, change: Compose, now: dt.datetime) -> Inquiry
 
 class Confirm(BaseModel):
     inquiry_ids: Annotated[list[int], Field(min_length=1, max_length=3), AfterValidator(distinct)]
+    # a shop closed now gets the message when it opens, instead of not at all
+    queue: bool = False
 
 
 def _move(conn, inquiry: Inquiry, to: Status, now: dt.datetime, **changes) -> None:
@@ -230,6 +232,9 @@ def _move(conn, inquiry: Inquiry, to: Status, now: dt.datetime, **changes) -> No
 def confirm_inquiries(conn, sid: str, change: Confirm, channel: "SellerChannel", now: dt.datetime) -> InquiryStatus | None:
     """The user's consent: send these drafts through the channel. Already sent ones stay as they are.
 
+    The shop's hours are checked first: a shop closed now is not sent to, its inquiry turns `closed`, or `queued` with
+    `change.queue`. Unknown hours are not closed.
+
     None when the session does not exist; LookupError for an inquiry of another session.
     """
     status = get_inquiries(conn, sid, now)
@@ -238,10 +243,20 @@ def confirm_inquiries(conn, sid: str, change: Confirm, channel: "SellerChannel",
     mine = {i.inquiry_id: i for i in status.inquiries}
     if missing := set(change.inquiry_ids) - set(mine):
         raise LookupError(missing)
+    hours = {
+        r["shop_id"]: r["hours"]
+        for r in conn.execute("SELECT shop_id, hours FROM shops WHERE shop_id = ANY(%s)", [[i.shop_id for i in mine.values()]])
+    }
     for iid in change.inquiry_ids:
-        if mine[iid].status == "draft":
-            channel.send(conn, mine[iid])
-            _move(conn, mine[iid], "sent", now, channel=channel.name)
+        i = mine[iid]
+        if i.status not in ("draft", "closed"):
+            continue
+        if i.shop_id in hours and open_at(hours[i.shop_id], now) is False:
+            if change.queue or i.status == "draft":
+                _move(conn, i, "queued" if change.queue else "closed", now)
+            continue
+        channel.send(conn, i)
+        _move(conn, i, "sent", now, channel=channel.name)
     return get_inquiries(conn, sid, now)
 
 
