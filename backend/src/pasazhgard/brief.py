@@ -210,7 +210,7 @@ def patch_session(conn, sid: str, change: SessionPatch, now: dt.datetime) -> Ses
             raise LookupError(step.product_id)
         step.title = session.results.title
     elif isinstance(step, CompareStep):
-        session.results = compare_products(conn, step.product_ids)
+        session.results = compare_products(conn, step.product_ids, seller_query(session.brief, step.product_ids[0], now), now)
         if session.results is None:
             raise LookupError(step.product_ids)
     elif isinstance(step, SearchStep) and session.brief.need:

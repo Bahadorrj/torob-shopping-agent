@@ -63,3 +63,36 @@ def test_compare_holds_two_to_three_products(client):
     # the same product twice is one product
     compare(client, [R50I, R50I], status=422)
     compare(client, [R50I, "product_missing"], status=404)
+
+
+def test_nearby_price_sellers_and_warranty_carry_trust_levels(client):
+    r50i, nc = compare(client, [R50I, R50I_NC])["products"]
+    # with no area, nearby is every covered shop
+    assert r50i["price"] == {
+        "trust_level": "listed",
+        "min_toman": 1690000,
+        "max_toman": 3500000,
+        "per_meter": False,
+        "last_price_changed_at": "2026-10-08T15:04:48.906406Z",
+        "price_age_days": 13,
+        "price_age_bucket": "8-30",
+    }
+    assert r50i["seller_count"] == 8
+    # 18 months at دیسیلا مانسا and نیکسا مانوش ("18ماه" in the text); "تایید اصالت" has no term and does not count
+    assert r50i["warranty"] == {"trust_level": "listed", "sellers": 2, "max_months": 18}
+    assert nc["warranty"]["max_months"] == 36
+
+
+def test_nearby_follows_the_brief_area(client):
+    r50i, nc = compare(client, [R50I, R50I_NC], brief={"area": {"name": "فردوسی"}})["products"]
+    # نیین ماهیس at 3,044,000 and دیسآرا مانوش without a price
+    assert (r50i["seller_count"], r50i["price"]["min_toman"], r50i["price"]["max_toman"]) == (2, 3044000, 3044000)
+    assert r50i["warranty"] == {"trust_level": "unknown", "sellers": 0, "max_months": None}
+    assert nc["seller_count"] == 1
+
+
+def test_no_seller_in_the_area_is_unknown_not_blank(client):
+    r50i, _ = compare(client, [R50I, R50I_NC], brief={"area": {"name": "بهارستان"}})["products"]
+    assert r50i["seller_count"] == 0
+    assert (r50i["price"]["trust_level"], r50i["price"]["min_toman"]) == ("unknown", None)
+    assert r50i["warranty"]["trust_level"] == "unknown"
