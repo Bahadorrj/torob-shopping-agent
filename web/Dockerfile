@@ -6,7 +6,7 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 # Next.js bakes rewrites into the build, so API_URL must be known here
 ARG API_URL=http://app:8000
-ENV API_URL=$API_URL NEXT_TELEMETRY_DISABLED=1
+ENV API_URL=$API_URL NEXT_TELEMETRY_DISABLED=1 COPILOTKIT_TELEMETRY_DISABLED=true
 RUN pnpm build
 EXPOSE 3000
 CMD ["node_modules/.bin/next", "start"]

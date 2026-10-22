@@ -1,4 +1,8 @@
+import asyncio
+import json
 import os
+import uuid
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -6,7 +10,12 @@ from zoneinfo import ZoneInfo
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage, AIMessageChunk
+from langchain_core.outputs import ChatGenerationChunk
 
+from pasazhgard.api import get_chat_model
+from pasazhgard.grounding import ungrounded
 from pasazhgard.normalize import normalize
 
 ADMIN_URL = os.environ.get("TEST_ADMIN_DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/postgres")
@@ -66,8 +75,99 @@ def client(database_url, now):
     # lexical unless a test plugs in the fake; never the real provider from the developer's env
     app.dependency_overrides[get_embedder] = lambda: None
     app.dependency_overrides[get_router] = lambda: StraightLine()
-    with TestClient(app) as c:
+    # degraded unless a test scripts the model
+    app.dependency_overrides[get_chat_model] = lambda: None
+    # the async checkpointer's psycopg cannot run on Windows' default Proactor loop
+    with TestClient(app, backend_options={"loop_factory": asyncio.SelectorEventLoop}) as c:
         yield c
+
+
+class ScriptedModel(GenericFakeChatModel):
+    """The chat model port in tests: answers each call with the next scripted message, streamed like a provider."""
+
+    def bind_tools(self, tools, **kwargs):
+        return self
+
+    def _stream(self, messages, stop=None, run_manager=None, **kwargs):
+        m = next(self.messages)
+        if m.content:
+            yield ChatGenerationChunk(message=AIMessageChunk(content=m.content, id=m.id))
+        # as OpenAI streams a call: name and id first, then the arguments
+        for i, c in enumerate(m.tool_calls):
+            yield ChatGenerationChunk(message=AIMessageChunk("", id=m.id, tool_call_chunks=[{"name": c["name"], "args": "", "id": c["id"], "index": i}]))
+            args = json.dumps(c["args"], ensure_ascii=False)
+            yield ChatGenerationChunk(message=AIMessageChunk("", id=m.id, tool_call_chunks=[{"name": None, "args": args, "id": None, "index": i}]))
+
+
+@dataclass
+class Turn:
+    events: list[dict]
+    # the assistant text of the turn and the tool results it streamed, parsed
+    text: str
+    blocks: list[dict]
+
+
+class Agent:
+    """Drives /agent as CopilotKit does: one AG-UI run per user message on the session's thread."""
+
+    def __init__(self, client):
+        self.client = client
+        self.session_id = client.post("/sessions").json()["session_id"]
+        # CopilotKit sends the whole thread every run, as the last MESSAGES_SNAPSHOT left it
+        self.history: list[dict] = []
+
+    def script(self, *replies: AIMessage | str):
+        """The model's replies, in call order. Each turn starts with one `brief(...)` reply."""
+        model = ScriptedModel(messages=iter(AIMessage(r) if isinstance(r, str) else r for r in replies))
+        self.client.app.dependency_overrides[get_chat_model] = lambda: model
+
+    @staticmethod
+    def brief(**patch) -> AIMessage:
+        """The structured brief patch of a turn; fields the user did not state stay out."""
+        return Agent.call("BriefPatch", **patch)
+
+    @staticmethod
+    def call(name: str, **args) -> AIMessage:
+        return AIMessage("", tool_calls=[{"name": name, "args": args, "id": uuid.uuid4().hex}], id=uuid.uuid4().hex)
+
+    def turn(self, text: str) -> Turn:
+        r = self.client.post(
+            "/agent",
+            json={
+                "threadId": self.session_id,
+                "runId": uuid.uuid4().hex,
+                "state": {},
+                "messages": [*self.history, {"id": uuid.uuid4().hex, "role": "user", "content": text}],
+                "tools": [],
+                "context": [],
+                "forwardedProps": {},
+            },
+            headers={"accept": "text/event-stream"},
+        )
+        assert r.status_code == 200, r.text
+        events = [json.loads(line[6:]) for line in r.text.splitlines() if line.startswith("data: ")]
+        assert events[-1]["type"] == "RUN_FINISHED", events[-1]
+        turn = Turn(
+            events,
+            "".join(e["delta"] for e in events if e["type"] == "TEXT_MESSAGE_CONTENT"),
+            [json.loads(e["content"]) for e in events if e["type"] == "TOOL_CALL_RESULT"],
+        )
+        # every turn of every test is checked against what its tools returned
+        snapshot = self.history = [e for e in events if e["type"] == "MESSAGES_SNAPSHOT"][-1]["messages"]
+        last_user = max(i for i, m in enumerate(snapshot) if m["role"] == "user")
+        this_turn = snapshot[last_user:]
+        claims = [m.get("content") or "" for m in this_turn if m["role"] == "assistant"]
+        claims += [b.get("question", "") for b in turn.blocks]
+        sources = [m["content"] for m in this_turn if m["role"] in ("tool", "user")]
+        missing = ungrounded(" ".join(claims), sources)
+        assert not missing, missing
+        return turn
+
+
+@pytest.fixture
+def agent(client):
+    yield Agent(client)
+    client.app.dependency_overrides[get_chat_model] = lambda: None
 
 
 @pytest.fixture

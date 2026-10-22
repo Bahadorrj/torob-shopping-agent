@@ -1,18 +1,24 @@
 import os
 import time
 from collections.abc import AsyncIterable, Callable
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from functools import cache
 from typing import Annotated
 
 import anyio
 import psycopg
+from ag_ui_langgraph import LangGraphAgent, add_langgraph_fastapi_endpoint
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.sse import EventSourceResponse
+from langchain_core.language_models import BaseChatModel
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg.rows import dict_row
+from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel, ValidationError
 
+from pasazhgard.agent import Ports, build_graph, chat_model_from_env
 from pasazhgard.alternatives import Alternatives, find_alternatives
 from pasazhgard.brief import Session, SessionPatch, create_session, get_session, patch_session
 from pasazhgard.compare import Product, ProductCompare, ProductCompareQuery, compare_products, get_product
@@ -39,7 +45,32 @@ from pasazhgard.sellers import SellerList, SellerQuery, find_sellers
 from pasazhgard.shops import TEHRAN, ShopDetails, shop_details
 from pasazhgard.visit import Directions, DirectionsQuery, PlanQuery, VisitPlan, get_directions, plan_visit
 
-app = FastAPI(title="Pasazhgard")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Serves the agent graph at /agent with its Postgres checkpointer (ADR-0002)."""
+    kwargs = {"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row}
+    async with AsyncConnectionPool(os.environ["DATABASE_URL"], kwargs=kwargs, max_size=5, open=False) as pool:
+        checkpointer = AsyncPostgresSaver(pool)
+        await checkpointer.setup()
+        ports = Ports(
+            model=lambda: _resolve(get_chat_model),
+            now=lambda: _resolve(get_now),
+            embedder=lambda: _resolve(get_embedder),
+            router=lambda: _resolve(get_router),
+            connect=lambda: _connect(row_factory=dict_row),
+        )
+        graph = build_graph(ports).compile(checkpointer=checkpointer)
+        add_langgraph_fastapi_endpoint(app, LangGraphAgent(name="pasazhgard", graph=graph, emit_raw_events=False), "/agent")
+        yield
+
+
+app = FastAPI(title="Pasazhgard", lifespan=lifespan)
+
+
+def _resolve(port):
+    """A port as the graph sees it: the graph runs outside FastAPI's Depends, but honours its overrides."""
+    return app.dependency_overrides.get(port, port)()
 
 
 def _connect(**kwargs) -> psycopg.Connection:
@@ -61,6 +92,12 @@ def get_now() -> datetime:
 def get_embedder() -> Embedder | None:
     """The embedding port; None without a key, and search stays lexical."""
     return embedder_from_env()
+
+
+@cache
+def get_chat_model() -> BaseChatModel | None:
+    """The chat model port; None without a key, and /agent answers in degraded mode."""
+    return chat_model_from_env()
 
 
 def get_channel() -> SellerChannel:
