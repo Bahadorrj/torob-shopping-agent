@@ -19,7 +19,12 @@ function joinFa(words: string[]) {
 // one sentence from the card's own data, so it claims nothing the search did not return
 function whySentence(p: Product) {
   const words = p.score_parts.filter((s) => s.matched).map((s) => `«${faText(s.word)}»`);
-  const found = words.length > 0 ? `${joinFa(words)} در عنوان این کالا آمده و ` : "";
+  const found =
+    words.length > 0
+      ? `${joinFa(words)} در عنوان این کالا آمده و `
+      : p.meaning_match
+        ? "این کالا از نظر معنا به جستجوی شما نزدیک است و "
+        : "";
   if (p.offer_count === 0) return `${found}فروشنده‌ای آن را ثبت نکرده است.`;
   const { price } = p;
   const priced =
@@ -77,6 +82,7 @@ export function ProductCard({ product }: { product: Product }) {
           <summary className="cursor-pointer font-medium text-primary">چرا این؟</summary>
           <div className="mt-1.5 flex flex-col gap-1.5">
             <div className="flex flex-wrap gap-1.5">
+              {product.meaning_match && <Badge variant="secondary">هم‌معنا با جستجو</Badge>}
               {product.score_parts.map((s) =>
                 s.matched ? (
                   <Badge key={s.word} variant="secondary">مطابق: {faText(s.word)}</Badge>

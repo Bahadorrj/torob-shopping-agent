@@ -15,7 +15,7 @@ test("a price without a change date is not also called old", async ({ page }) =>
     trust_level: "listed", min_toman: 1000000, max_toman: 1000000, per_meter: false,
     last_price_changed_at: null, price_age_days: null, price_age_bucket: null,
   };
-  const item = { brand: null, category: null, image_url: null, key_specs: [], offer_count: 1, price_flags: [], score_parts: [] };
+  const item = { brand: null, category: null, image_url: null, key_specs: [], offer_count: 1, price_flags: [], score_parts: [], meaning_match: false };
   await fakeSessions(page, {
     search: () => ({
       query: "x",

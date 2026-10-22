@@ -13,7 +13,7 @@ const parts = [
   { word: "ورزش", matched: false },
 ];
 const card = (id: string, title: string) => ({
-  product_id: id, title, brand: null, category: null, image_url: null, key_specs: [], offer_count: 8, price, price_flags: [], score_parts: parts,
+  product_id: id, title, brand: null, category: null, image_url: null, key_specs: [], offer_count: 8, price, price_flags: [], score_parts: parts, meaning_match: false,
 });
 const items = [card("p1", "کالای الف"), card("p2", "کالای ب"), card("p3", "کالای ج"), card("p4", "کالای د")];
 
@@ -53,6 +53,17 @@ test("why this shows score parts as chips and one sentence from the card data", 
   await expect(first.getByText("مطابق: هدفون")).toBeVisible();
   await expect(first.getByText("نیامده: ورزش")).toBeVisible();
   await expect(first.getByText("«هدفون» و «انکر» در عنوان این کالا آمده و ۸ فروشنده آن را با قیمت ۱٬۰۰۰٬۰۰۰ تا ۲٬۰۰۰٬۰۰۰ تومان ثبت کرده‌اند.")).toBeVisible();
+  expect(await noOverflow(page)).toBe(0);
+});
+
+test("why this says when a product matched by meaning, not by title words", async ({ page }) => {
+  const byMeaning = { ...card("p5", "کالای ه"), score_parts: parts.map((p) => ({ ...p, matched: false })), meaning_match: true };
+  await fakeSessions(page, { search: () => ({ query: "هدفون", items: [byMeaning] }) });
+  await searchAll(page);
+  const first = result(page, "کالای ه");
+  await first.getByText("چرا این؟").click();
+  await expect(first.getByText("هم‌معنا با جستجو")).toBeVisible();
+  await expect(first.getByText("این کالا از نظر معنا به جستجوی شما نزدیک است و ۸ فروشنده آن را با قیمت ۱٬۰۰۰٬۰۰۰ تا ۲٬۰۰۰٬۰۰۰ تومان ثبت کرده‌اند.")).toBeVisible();
   expect(await noOverflow(page)).toBe(0);
 });
 

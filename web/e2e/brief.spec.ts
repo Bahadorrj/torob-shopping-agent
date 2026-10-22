@@ -8,7 +8,7 @@ const price = {
   trust_level: "listed", min_toman: 1000000, max_toman: 1000000, per_meter: false,
   last_price_changed_at: null, price_age_days: null, price_age_bucket: null,
 };
-const product = { product_id: "p1", title: "کالای الف", brand: null, category: null, image_url: null, key_specs: [], offer_count: 2, price, price_flags: [], score_parts: [] };
+const product = { product_id: "p1", title: "کالای الف", brand: null, category: null, image_url: null, key_specs: [], offer_count: 2, price, price_flags: [], score_parts: [], meaning_match: false };
 const search = () => ({ query: "x", items: [product] });
 const sellers = (brief: Record<string, unknown>) => ({
   product_id: "p1",

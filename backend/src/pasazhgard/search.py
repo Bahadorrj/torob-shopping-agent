@@ -56,6 +56,8 @@ class ProductCard(BaseModel):
     price_flags: list[PriceFlag]
     # why this product was found: shown behind "why this?"
     score_parts: list[ScorePart]
+    # found by meaning (embedding similarity), whether or not any query word is in the title
+    meaning_match: bool
 
 
 class SearchResult(BaseModel):
@@ -223,6 +225,7 @@ def search_products(conn, query: str, now: datetime, limit: int = 20, embedder: 
                 price=_price_range(own, now),
                 price_flags=_product_flags(own),
                 score_parts=[ScorePart(word=t, matched=sim >= WORD_MATCH) for t, sim in zip(tokens, p["sims"])],
+                meaning_match=p["product_id"] in semantic,
             )
         )
     return SearchResult(query=query, items=items)

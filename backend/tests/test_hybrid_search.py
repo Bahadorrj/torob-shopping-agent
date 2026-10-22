@@ -78,3 +78,12 @@ def test_search_is_lexical_when_the_provider_is_down(client):
         assert ids(client, "هندزفری ورزشی") == lexical
     finally:
         app.dependency_overrides[get_embedder] = lambda: None
+
+
+def test_cards_say_when_they_match_by_meaning(client, hybrid):
+    card = next(c for c in hybrid.get("/products/search", params={"q": "هندزفری ورزشی"}).json()["items"] if c["product_id"] == R50I)
+    # no query word is in the title, so the meaning match is the reason it is listed
+    assert card["meaning_match"] is True
+    assert not any(p["matched"] for p in card["score_parts"])
+    app.dependency_overrides[get_embedder] = lambda: None
+    assert not any(c["meaning_match"] for c in client.get("/products/search", params={"q": "هندزفری ورزشی"}).json()["items"])

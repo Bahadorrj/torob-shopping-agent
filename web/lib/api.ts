@@ -23,6 +23,8 @@ export type ProductCard = {
   price_flags: PriceFlag[];
   // query words of the match score, and whether the title has each
   score_parts: { word: string; matched: boolean }[];
+  // found by meaning (semantic search), whether or not a query word is in the title
+  meaning_match: boolean;
 };
 
 export async function searchProducts(q: string): Promise<ProductCard[]> {
