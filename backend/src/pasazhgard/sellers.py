@@ -6,16 +6,10 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, Field, model_validator
 
+from pasazhgard.inquiries import LatestPrice, Outcome, latest_price, outcomes
 from pasazhgard.normalize import normalize
 from pasazhgard.search import PriceAgeBucket, _price_range, _usable
 from pasazhgard.shops import PaymentOption, open_at
-
-
-def distinct(ids: list[str]) -> list[str]:
-    """Pydantic validator for an id list: the same id twice is one pick, not two."""
-    if len(set(ids)) != len(ids):
-        raise ValueError("an id repeats")
-    return ids
 
 
 class SellerQuery(BaseModel):
@@ -38,6 +32,8 @@ class SellerQuery(BaseModel):
     warranty: bool = False
     test_in_presence: bool = False
     fast_delivery: bool = False
+    # the session whose inquiries count: a seller's price for the budget, a seller's installment answer
+    session_id: str | None = None
 
     @model_validator(mode="after")
     def _one_area(self) -> Self:
@@ -89,6 +85,9 @@ class SellerRow(BaseModel):
     # installment providers the shop declared, with the channel it declared
     payment_options: list[PaymentOption]
     reasons: list[Reason]
+    latest_price: LatestPrice = LatestPrice()
+    # the session's latest sent inquiry to this shop about this product
+    inquiry: Outcome | None = None
     # active conditions this shop has no recorded value for; set only in `ask_them`
     unknown: list[Literal["hours", "payment", "warranty", "test_in_presence", "fast_delivery"]] = []
 
@@ -146,7 +145,7 @@ def _in_area(q: SellerQuery, shop: dict, distance: int | None) -> bool:
     return True
 
 
-def _row(offer: dict, distance: int | None, now: datetime) -> SellerRow:
+def _row(offer: dict, distance: int | None, now: datetime, inquiry: Outcome | None = None) -> SellerRow:
     price = _price_range([offer], now)
     return SellerRow(
         offer_id=offer["offer_id"],
@@ -165,10 +164,12 @@ def _row(offer: dict, distance: int | None, now: datetime) -> SellerRow:
         open_now=open_at(offer["hours"], now),
         payment_options=offer["payment_options"],
         reasons=[],
+        latest_price=latest_price(inquiry),
+        inquiry=inquiry,
     )
 
 
-def _conditions(q: SellerQuery, offer: dict) -> dict[str, bool | None]:
+def _conditions(q: SellerQuery, offer: dict, inquiry: Outcome | None) -> dict[str, bool | None]:
     """The active conditions: True met, False not met, None not recorded."""
     met = {}
     if q.arrival:
@@ -179,6 +180,10 @@ def _conditions(q: SellerQuery, offer: dict) -> dict[str, bool | None]:
         met["payment"] = any(_same_provider(p["provider"], q.provider) for p in options) or None
     elif q.payment == "torob_pay":
         met["payment"] = any(_same_provider(p["provider"], "ترب‌پی") and p["channel"] == "in_person" for p in options) or None
+    # the inquiry asks "installments or Torob Pay?", so the seller's answer settles either
+    # shortcut: a yes counts for any provider; ask the provider when the brief names one and sellers differ
+    if q.payment in ("installment", "torob_pay") and inquiry and inquiry.installments is not None:
+        met["payment"] = inquiry.installments
     w = offer["warranty"] or {}
     if q.warranty:
         # a warranty without a term is often noise ("تایید اصالت"), so only a term counts as one
@@ -288,6 +293,7 @@ def find_sellers(conn, product_id: str, q: SellerQuery, now: datetime) -> Seller
     if product is None:
         return None
     offers = seller_offers(conn, product_id)
+    asked = outcomes(conn, q.session_id, product_id, now) if q.session_id else {}
     # one row per shop: its cheapest usable offer, else any offer
     best = {}
     for o in sorted(offers, key=lambda o: (not _usable([o]), o["price_toman"] or 0, o["offer_id"])):
@@ -298,11 +304,12 @@ def find_sellers(conn, product_id: str, q: SellerQuery, now: datetime) -> Seller
         if not _in_area(q, o, d):
             continue
         in_area = True
-        row = _row(o, d, now)
-        met = _conditions(q, o)
+        row = _row(o, d, now, asked.get(o["shop_id"]))
+        met = _conditions(q, o, row.inquiry)
         if False in met.values():
             continue
-        if _over_budget(q, row.price_toman):
+        # a seller's price replaces the listed one
+        if _over_budget(q, row.latest_price.price_toman or row.price_toman):
             continue
         row.unknown = [k for k, v in met.items() if v is None]
         (ask_them if row.unknown else rows).append(row)

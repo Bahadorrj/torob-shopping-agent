@@ -133,6 +133,25 @@ def ingest(data_dir: Path, database_url: str, embedder: Embedder | None = None) 
         created_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now()
     );
+    -- no foreign key to offers or shops: an inquiry is a record of what was asked, and outlives a re-ingest
+    CREATE TABLE IF NOT EXISTS inquiries (
+        inquiry_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        session_id text NOT NULL REFERENCES sessions ON DELETE CASCADE,
+        offer_id text,
+        product_id text NOT NULL,
+        product_title text NOT NULL,
+        shop_id text NOT NULL,
+        shop_name text NOT NULL,
+        status text NOT NULL,
+        message text NOT NULL,
+        channel text,
+        reply jsonb NOT NULL,
+        events jsonb NOT NULL
+    );
+    -- a shop that does not list the item can be asked too (tables made before that had offer_id NOT NULL)
+    ALTER TABLE inquiries ALTER COLUMN offer_id DROP NOT NULL;
+    CREATE INDEX IF NOT EXISTS inquiries_session_id ON inquiries (session_id);
+    CREATE INDEX IF NOT EXISTS inquiries_shop_id ON inquiries (shop_id);
     """
     offers = [clean_offer(r) for r in _rows(data_dir / "offers.csv")]
     flag_far_from_median(offers)

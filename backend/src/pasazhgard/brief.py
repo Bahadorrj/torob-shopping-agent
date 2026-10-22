@@ -9,8 +9,9 @@ from pydantic import AfterValidator, BaseModel, Field, field_validator, model_va
 
 from pasazhgard.compare import ProductCompare, compare_products
 from pasazhgard.embeddings import Embedder
+from pasazhgard.normalize import distinct
 from pasazhgard.search import SearchResult, search_products
-from pasazhgard.sellers import SellerList, SellerQuery, area_options, distinct, find_sellers
+from pasazhgard.sellers import SellerList, SellerQuery, area_options, find_sellers
 from pasazhgard.shops import TEHRAN
 
 
@@ -64,6 +65,9 @@ class MustHave(BaseModel):
 
 class Brief(BaseModel):
     need: str | None = None
+    # guided discovery: what the need is for and the product features it must have
+    use: str | None = None
+    features: list[str] = []
     items: list[Item] = []
     budget: Budget = Budget()
     origin: Point | None = None
@@ -166,7 +170,8 @@ class SessionPatch(BaseModel):
 
 def seller_query(brief: Brief, product_id: str, now: dt.datetime) -> SellerQuery:
     area, origin, visit = brief.area, brief.origin, brief.visit_window
-    quantity = next((i.quantity for i in brief.items if i.product_id == product_id), 1)
+    # an item not yet bound to a product (the agent heard "two of these") counts too
+    quantity = next((i.quantity for i in brief.items if i.product_id in (product_id, None)), 1)
     arrival = None
     if visit.earliest_arrival:
         arrival = dt.datetime.combine(visit.date or now.astimezone(TEHRAN).date(), visit.earliest_arrival, TEHRAN)
@@ -201,7 +206,8 @@ def patch_session(conn, sid: str, change: SessionPatch, now: dt.datetime, embedd
         session.step = change.step
     step = session.step
     if isinstance(step, SellersStep):
-        session.results = find_sellers(conn, step.product_id, seller_query(session.brief, step.product_id, now), now)
+        q = seller_query(session.brief, step.product_id, now).model_copy(update={"session_id": sid})
+        session.results = find_sellers(conn, step.product_id, q, now)
         if session.results is None:
             raise LookupError(step.product_id)
         step.title = session.results.title

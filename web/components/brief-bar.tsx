@@ -122,7 +122,7 @@ export function BriefBar() {
   ];
 
   return (
-    <section aria-label="خلاصه خرید" className="sticky top-0 z-10 border-b bg-background">
+    <section aria-label="خلاصه خرید" data-brief-bar className="sticky top-0 z-10 border-b bg-background">
       <div className="mx-auto flex w-full max-w-xl flex-col gap-2 px-4 py-2">
         <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
           {chips.map((c) => (

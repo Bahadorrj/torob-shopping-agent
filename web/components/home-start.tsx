@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { AGENT_SEND, HELP_CHOOSE } from "@/components/agent-sheet";
 import { recentSessionIds, useBrief } from "@/components/brief-provider";
 import { Button } from "@/components/ui/button";
 import { getSession, type Session } from "@/lib/api";
@@ -12,6 +13,14 @@ const NEAR_ME_M = 1000;
 
 function label(s: Session) {
   return s.brief.need ?? (s.step?.kind === "sellers" ? s.step.title : null) ?? null;
+}
+
+export function HelpChoose() {
+  return (
+    <Button size="sm" className="self-start" onClick={() => window.dispatchEvent(new CustomEvent(AGENT_SEND, { detail: HELP_CHOOSE }))}>
+      {HELP_CHOOSE}
+    </Button>
+  );
 }
 
 export function NearMe() {

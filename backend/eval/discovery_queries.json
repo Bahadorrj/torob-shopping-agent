@@ -1,0 +1,10 @@
+[
+ {"need": "هندزفری بلوتوثی ورزشی", "pasaj": "علاالدین", "kind": "anchor", "category": "هدفون، هدست و هندزفری"},
+ {"need": "یه هندزفری بی‌سیم برای باشگاه", "area": "شیخ هادی", "kind": "vague need", "category": "هدفون، هدست و هندزفری"},
+ {"need": "هدفون با حذف نویز", "area": "شیخ هادی", "max_per_item_toman": 5000000, "kind": "vague need with budget", "category": "هدفون، هدست و هندزفری"},
+ {"need": "اسپیکر بلوتوثی کوچک", "area": "شیخ هادی", "kind": "vague need", "category": "اسپیکر و سیستم صوتی"},
+ {"need": "دوربین مداربسته برای مغازه", "area": "شیخ هادی", "kind": "vague need", "category": "دوربین مدار بسته"},
+ {"need": "چراغ سقفی ال ای دی", "area": "فردوسی", "kind": "vague need", "category": "چراغ پنلی و سقفی"},
+ {"need": "پمپ آب خانگی", "area": "بهارستان", "kind": "vague need", "category": "پمپ خانگی و صنعتی"},
+ {"need": "کلید مینیاتوری برای تابلو برق خانه", "area": "فردوسی", "kind": "vague need", "category": "کلید و فیوز مینیاتوری"}
+]

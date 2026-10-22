@@ -5,9 +5,9 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, Field
 
-from pasazhgard.normalize import normalize
+from pasazhgard.normalize import distinct, normalize
 from pasazhgard.search import PriceRange, Spec, _price_range
-from pasazhgard.sellers import SellerQuery, _distance, _in_area, distinct
+from pasazhgard.sellers import SellerQuery, _distance, _in_area
 
 
 class Product(BaseModel):

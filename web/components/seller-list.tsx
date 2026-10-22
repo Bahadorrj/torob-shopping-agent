@@ -53,7 +53,7 @@ function place(s: { area: string | null; pasaj: string | null; floor?: string | 
   return s.distance_m === null ? text : `${text} · ${distance(s.distance_m)}`;
 }
 
-function Seller({ s, children }: { s: SellerRow; children?: ReactNode }) {
+export function Seller({ s, children }: { s: SellerRow; children?: ReactNode }) {
   return (
     <Card className="gap-1.5 p-3">
       <div className="flex items-start justify-between gap-2">
@@ -251,10 +251,11 @@ export function SellerList({ productId }: { productId: string }) {
         </section>
       )}
 
+      {/* bottom-18: above the collapsed agent sheet */}
       {compareIds.length >= 2 && (
         <Link
           href={`/products/${productId}/sellers/compare?${new URLSearchParams(compareIds.map((id) => ["offer", id]))}`}
-          className={buttonVariants({ size: "lg", className: "sticky bottom-4 self-center shadow-md" })}
+          className={buttonVariants({ size: "lg", className: "sticky bottom-18 self-center shadow-md" })}
         >
           مقایسه فروشنده‌ها ({faDigits(compareIds.length)})
         </Link>

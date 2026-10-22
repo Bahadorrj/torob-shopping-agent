@@ -132,7 +132,7 @@ test("compare table shows every row, unknown values and next actions at 360 px",
   }
   await expect(page.getByText("زمان رسیدن با فرض خط مستقیم و خودرو تخمین زده شده است.")).toBeVisible();
 
-  await expect(page.getByRole("button", { name: "پرسیدن از فروشنده" })).toHaveCount(3);
+  await expect(page.getByRole("button", { name: "استعلام از ۳ فروشنده" })).toBeVisible();
   await expect(page.getByRole("link", { name: "دیدن فروشگاه" }).first()).toHaveAttribute("href", "/shops/shop_a");
   expect(await noOverflow(page)).toBe(0);
 
