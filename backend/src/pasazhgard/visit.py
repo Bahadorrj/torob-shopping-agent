@@ -3,10 +3,11 @@
 import re
 from datetime import datetime, timedelta
 from itertools import permutations
-from typing import Annotated
+from typing import Annotated, get_args
 
 from pydantic import AfterValidator, AwareDatetime, BaseModel, Field
 
+from pasazhgard.alternatives import Reason
 from pasazhgard.brief import Brief, Point, seller_query
 from pasazhgard.inquiries import Outcome, get_inquiries, outcome
 from pasazhgard.normalize import distinct, normalize
@@ -187,7 +188,7 @@ def plan_visit(conn, q: PlanQuery, now: datetime, router: Router) -> VisitPlan |
 
     def stand_in(shop_id: str) -> str:
         # each step moves to a newer inquiry, so the walk ends
-        while (i := asked.get(shop_id)) and i.status in ("unavailable", "no_reply", "closed") and i.inquiry_id in instead:
+        while (i := asked.get(shop_id)) and i.status in get_args(Reason) and i.inquiry_id in instead:
             shop_id = instead[i.inquiry_id].shop_id
         return shop_id
 

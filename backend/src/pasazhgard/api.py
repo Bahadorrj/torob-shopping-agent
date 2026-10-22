@@ -4,7 +4,6 @@ from collections.abc import AsyncIterable, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from functools import cache
-from types import SimpleNamespace
 from typing import Annotated
 
 import anyio
@@ -217,9 +216,14 @@ def shops_directions(
     return directions
 
 
+class _RouteOnce:
+    def __init__(self, router: Router):
+        self.route = cache(router.route)
+
+
 def get_plan_router(router: Router = Depends(get_router)) -> Router:
     """The routing port, each leg routed once per request: the plan stream recomputes the plan twice a second."""
-    return SimpleNamespace(route=cache(router.route))
+    return _RouteOnce(router)
 
 
 @app.get("/visit-plan")
@@ -368,10 +372,20 @@ async def inquiries_stream(
         yield status
 
 
-@app.get("/visit-plan/stream", response_class=EventSourceResponse, dependencies=[Depends(_no_transform)])
+class PlanStreamQuery(PlanQuery):
+    # without a session the plan never changes
+    session_id: str
+
+
+def _plan_found(q: Annotated[PlanStreamQuery, Query()], now: datetime = Depends(get_now), router: Router = Depends(get_plan_router)) -> None:
+    # its own connection, closed before the stream opens the one it polls on
+    with _connect(row_factory=dict_row) as conn:
+        visit_plan(q, conn, now, router)
+
+
+@app.get("/visit-plan/stream", response_class=EventSourceResponse, dependencies=[Depends(_no_transform), Depends(_plan_found)])
 async def visit_plan_stream(
-    q: Annotated[PlanQuery, Query()],
-    _=Depends(visit_plan),
+    q: Annotated[PlanStreamQuery, Query()],
     now: datetime = Depends(get_now),
     router: Router = Depends(get_plan_router),
 ) -> AsyncIterable[VisitPlan]:

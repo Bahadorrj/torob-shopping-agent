@@ -110,37 +110,66 @@ def test_a_confirmed_price_shows_its_difference_and_is_checked_against_the_budge
 
 class CountingRouter:
     def __init__(self):
-        self.calls = 0
+        self.legs = []
 
     def route(self, a, b, mode):
-        self.calls += 1
+        self.legs.append((a, b, mode))
         return Route(distance_m=1000, duration_min=10, source="neshan")
 
 
-def test_the_plan_is_pushed_over_sse_as_replies_come_in(client):
+TUESDAY_15 = dt.datetime(2026, 10, 20, 15, 0, tzinfo=ZoneInfo("Asia/Tehran"))
+
+
+def test_the_plan_is_pushed_over_sse_on_replies_no_reply_closed_and_alternatives(client, clock):
     from pasazhgard.api import app, get_router
 
     router, saved = CountingRouter(), app.dependency_overrides[get_router]
     app.dependency_overrides[get_router] = lambda: router
     try:
+        clock(TUESDAY_15)
         sid = new_session(client)
-        mansa, mahis = ids(confirm(client, sid, *ids(compose(client, sid, MANSA, MAHIS))))
-        params = {"shop_id": [MAHIS_SHOP, MANSA_SHOP], "session_id": sid, **ALADDIN}
+        mahis, mansa, vivan = ids(compose(client, sid, R50I_NC_MAHIS, R50I_NC_MANSA, R50I_NC_VIVAN))
+        confirm(client, sid, mansa)
+        clock(TUESDAY_15 + dt.timedelta(seconds=90))
+        confirm(client, sid, mahis)
+        # a second before the silent shop turns no_reply
+        clock(TUESDAY_15 + dt.timedelta(seconds=119))
+        params = {"shop_id": [MAHIS_SHOP, MANSA_SHOP, VIVAN_SHOP], "session_id": sid, **ALADDIN}
         with client.stream("GET", "/visit-plan/stream", params=params) as r:
             assert "no-transform" in r.headers["cache-control"]
             updates = events(r)
             first = next(updates)
-            assert order(first) == [MANSA_SHOP, MAHIS_SHOP]
+            assert statuses(first) == {MAHIS_SHOP: "sent", MANSA_SHOP: "sent", VIVAN_SHOP: None}
+            assert statuses(next(updates))[MANSA_SHOP] == "no_reply"
             reply(client, mahis, available="yes")
-            second = next(updates)
-            assert order(second) == [MAHIS_SHOP, MANSA_SHOP]
+            confirmed = next(updates)
+            assert (order(confirmed)[0], statuses(confirmed)[MAHIS_SHOP]) == (MAHIS_SHOP, "confirmed")
+            # نیکورا ویوان opens at 16:00 on Tuesdays
+            confirm(client, sid, vivan)
+            assert statuses(next(updates))[VIVAN_SHOP] == "closed"
+            clock(TUESDAY_15 + dt.timedelta(minutes=3))
+            alternative = alternatives(client, sid, mansa)["alternatives"][0]
+            confirm(client, sid, *ids(compose(client, sid, alternative["offer_id"], instead_of=mansa)))
+            swapped = next(updates)
+            assert statuses(swapped) == {MAHIS_SHOP: "confirmed", AZAR_SHOP: "sent", VIVAN_SHOP: "closed"}
             # the trip leaves when the stream opened, so a ticking clock pushes nothing
-            assert second["depart_at"] == first["depart_at"]
-        # each leg is routed once per stream, not on every poll: two orders of two legs, and the origin is at MANSA_SHOP
-        assert router.calls == 3
+            assert swapped["depart_at"] == first["depart_at"]
+        # each leg is routed once per stream, not on every poll
+        assert len(router.legs) == len(set(router.legs))
     finally:
         app.dependency_overrides[get_router] = saved
-    assert client.get("/visit-plan/stream", params={**params, "session_id": "nope"}).status_code == 404
+
+
+def statuses(p):
+    return {s["shop_id"]: s["inquiry"] and s["inquiry"]["status"] for s in p["stops"]}
+
+
+def test_the_plan_stream_needs_a_session(client):
+    params = {"shop_id": [MAHIS_SHOP], **ALADDIN}
+    # without one the plan never changes; streaming it would poll for nothing
+    for query, status in ((params, 422), ({**params, "session_id": "nope"}, 404)):
+        with client.stream("GET", "/visit-plan/stream", params=query) as r:
+            assert r.status_code == status
 
 
 def test_anchor_scenario_a(client, clock, embedder):
