@@ -80,7 +80,7 @@ async def lifespan(app: FastAPI):
 
 
 async def _auto_respond(config: Responder) -> None:
-    """The auto-responder's loop (#22): every few seconds the waiting Seller Console inquiries get their replies."""
+    """The auto-responder's loop: every few seconds the waiting Seller Console inquiries get their replies."""
     while True:
         try:
             await anyio.to_thread.run_sync(_respond_once, config)
