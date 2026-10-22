@@ -178,6 +178,14 @@ def get_inquiries(conn, sid: str, now: dt.datetime) -> InquiryStatus | None:
     return InquiryStatus(inquiries=[_inquiry(r) for r in rows])
 
 
+def _open(conn, sid: str, product_id: str) -> int:
+    """How many of the session's inquiries about the item are open; at most 3 may be."""
+    return conn.execute(
+        "SELECT count(*) AS n FROM inquiries WHERE session_id = %s AND product_id = %s AND status IN ('queued', 'sent', 'replied')",
+        [sid, product_id],
+    ).fetchone()["n"]
+
+
 def contact_seller(conn, sid: str, change: Compose, now: dt.datetime) -> InquiryStatus | None:
     """Compose one draft per offer. Nothing is sent: `confirm_inquiries` sends after the user consents.
 
@@ -216,10 +224,7 @@ def contact_seller(conn, sid: str, change: Compose, now: dt.datetime) -> Inquiry
     # a new compose replaces the item's unsent drafts
     conn.execute("DELETE FROM inquiries WHERE session_id = %s AND status = 'draft' AND product_id = ANY(%s)", [sid, products])
     for p in set(products):
-        open_ = conn.execute(
-            "SELECT count(*) AS n FROM inquiries WHERE session_id = %s AND product_id = %s AND status IN ('queued', 'sent', 'replied')", [sid, p]
-        ).fetchone()["n"]
-        if open_ + products.count(p) > 3:
+        if (open_ := _open(conn, sid, p)) + products.count(p) > 3:
             raise ValueError(f"{p} has {open_} open inquiries")
     drafts = []
     for o in targets:
@@ -272,7 +277,8 @@ def confirm_inquiries(conn, sid: str, change: Confirm, channel: "SellerChannel",
     The shop's hours are checked first: a shop closed now is not sent to, its inquiry turns `closed`, or `queued` with
     `change.queue`. Unknown hours are not closed.
 
-    None when the session does not exist; LookupError for an inquiry of another session.
+    None when the session does not exist; LookupError for an inquiry of another session; ValueError when an item
+    would have more than 3 open inquiries.
     """
     status = get_inquiries(conn, sid, now)
     if status is None:
@@ -288,9 +294,16 @@ def confirm_inquiries(conn, sid: str, change: Confirm, channel: "SellerChannel",
         i = mine[iid]
         if i.status not in ("draft", "closed"):
             continue
-        if i.shop_id in hours and open_at(hours[i.shop_id], now) is False:
-            if change.queue or i.status == "draft":
-                _move(conn, i, "queued" if change.queue else "closed", now)
+        closed = i.shop_id in hours and open_at(hours[i.shop_id], now) is False
+        if closed and not change.queue:
+            if i.status == "draft":
+                _move(conn, i, "closed", now)
+            continue
+        # a closed inquiry was not open when composed, so the cap is checked again on the way out
+        if _open(conn, sid, i.product_id) >= 3:
+            raise ValueError(f"{i.product_id} has 3 open inquiries")
+        if closed:
+            _move(conn, i, "queued", now)
             continue
         channel.send(conn, i)
         _move(conn, i, "sent", now, channel=channel.name)

@@ -258,6 +258,19 @@ def test_unanswered_inquiries_turn_no_reply_after_n_minutes(client, clock, now):
     assert reply(client, mansa, available="yes")["status"] == "confirmed"
 
 
+def test_a_closed_inquiry_sent_again_counts_among_the_three(client, clock, now):
+    clock(now.replace(hour=19))
+    sid = new_session(client)
+    [azar] = ids(confirm(client, sid, *ids(compose(client, sid, AZAR))))
+    confirm(client, sid, *ids(compose(client, sid, MANSA, MAHIS, PAKYAR)))
+
+    r = client.post(f"/sessions/{sid}/inquiries/confirm", json={"inquiry_ids": [azar], "queue": True})
+
+    assert r.status_code == 409, r.text
+    [still] = [i for i in client.get(f"/sessions/{sid}/inquiries").json()["inquiries"] if i["inquiry_id"] == azar]
+    assert still["status"] == "closed"
+
+
 def test_closed_shops_are_not_sent_unless_queued_for_opening(client, clock, now):
     evening = now.replace(hour=19)
     clock(evening)
