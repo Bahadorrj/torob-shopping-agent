@@ -69,7 +69,8 @@ cd backend; liara deploy
 cd ../web; liara deploy
 ```
 
-Each directory has its own `liara.json` (app ID, port, health check) and `.liaraignore`. Liara builds the
+The resources live in a Liara team, so run `liara team use --team <name>` once after `liara login`.
+Each directory has its own `liara.json` (app ID, port) and `.liaraignore`. Liara builds the
 `Dockerfile` in that directory. Check the result:
 
 ```
@@ -78,9 +79,13 @@ curl https://<domain>/api/health
 ```
 
 `/health` returns `{"status": "ok", "db": "ok", "llm": ..., "maps": ...}`. It returns 503 with
-`"db": "unreachable"` when the database cannot be reached; Liara then keeps the previous release on deploy,
-and restarts a running release that keeps failing. `llm` / `maps` false means the key is not set and the
-app is in degraded mode.
+`"db": "unreachable"` when the database cannot be reached. `llm` / `maps` false means the key is not set and
+the app is in degraded mode.
+
+Neither app has a Liara `healthCheck`. Liara reads its timings in milliseconds (`timeout` <= 10000,
+`startPeriod` <= 3000), but even with valid timings the probe never reached `/health` (no access-log
+line) and every release was marked unhealthy, whether the command was a quoted `python -c "..."` or a
+plain `python -m` module. Find out how Liara runs the command before adding one back.
 
 If the build fails downloading base images or packages, add `"build": {"location": "germany"}` to that
 app's `liara.json` (slower image push, unrestricted downloads).
@@ -107,6 +112,10 @@ app's.
    ```
 3. Turn public access off.
 4. Check: `curl "https://<domain>/api/products/search?q=%D9%87%D8%AF%D9%81%D9%88%D9%86"` (هدفون) returns items.
+
+If a load is killed mid-run, its server session can live on and hold locks, so the next load hangs on
+`DROP SCHEMA staging`. Find it with `SELECT pid, state, query FROM pg_stat_activity WHERE datname =
+'pasazhgard'` and end it with `SELECT pg_terminate_backend(<pid>)`.
 5. Optional quality check: `uv run python eval/search.py` against the same `DATABASE_URL` prints the top-5
    hit rate over `backend/eval/search_queries.json` (hybrid with `LLM_API_KEY`, lexical without).
 
@@ -129,9 +138,8 @@ Liara backups need the Silver package or higher on `torob-db`. There is no CLI c
 
 ## To confirm on the first real deploy
 
-Liara's docs leave these open:
+Confirmed on 2026-10-22: `healthCheck` timings are milliseconds (see Deploy), and the DB user can create all
+four extensions in step 4 (PostgreSQL 18.4, pgvector 0.8.1, so HNSW works). Still open:
 
-- Whether `healthCheck` `interval` / `timeout` / `startPeriod` are seconds (assumed) or milliseconds.
-- Whether the Liara DB user may run `CREATE EXTENSION` for every extension in step 4.
 - How to download a Liara backup file for `pg_restore` (the console fast path does not need it).
 - Whether a private-only `torob-api` (default subdomain off) still resolves from `torob-web`.
