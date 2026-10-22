@@ -168,3 +168,14 @@ def test_a_single_model_still_gets_trade_off_lines(client):
     assert "تنها مدل نزدیک برای این نیاز" in airpods["tradeoffs"]
     assert "فقط یک فروشنده در این محدوده" in airpods["tradeoffs"]
     assert any(t.startswith("جنس بدنه: ") for t in airpods["tradeoffs"])
+
+
+def test_discovery_asks_at_most_three_questions_before_showing_results(agent):
+    for field, answer in (("use", "ورزش"), ("features", "ضد آب"), ("budget", "سه میلیون")):
+        agent.script(agent.brief(), agent.call("ask_user", field=field, question="؟", options=["الف", "ب"]))
+        assert agent.turn(answer).blocks[0]["block"] == "chips"
+    agent.script(agent.brief(), agent.call("ask_user", field="area", question="کجا؟"), "مدل‌ها را نشان می‌دهم.")
+
+    turn = agent.turn("علاالدین")
+
+    assert turn.blocks == [{"error": "at most 3 questions before results: show them now"}]

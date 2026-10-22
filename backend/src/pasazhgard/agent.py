@@ -11,6 +11,7 @@ import uuid
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
+from itertools import takewhile
 from datetime import datetime
 from typing import Annotated, Literal
 
@@ -280,11 +281,13 @@ def build_graph(ports: Ports) -> StateGraph:
         }
         if answered[field]:
             return error(f"the brief already has {field}")
-        asked = {
-            _result(m).get("field") for m in state["messages"] if isinstance(m, ToolMessage) and _result(m).get("block") == "chips"
-        }
-        if field in asked:
+        results = [_result(m) for m in state["messages"] if isinstance(m, ToolMessage)]
+        if field in {r.get("field") for r in results if r.get("block") == "chips"}:
             return error(f"already asked about {field}")
+        # questions since the user last saw a result; errors show nothing
+        waiting = takewhile(lambda r: r.get("block") in ("chips", None), reversed(results))
+        if sum(r.get("block") == "chips" for r in waiting) >= 3:
+            return error("at most 3 questions before results: show them now")
         # the model writes the chips only for use and features
         options = (options or []) if field in ("use", "features") else []
         if field == "area":
