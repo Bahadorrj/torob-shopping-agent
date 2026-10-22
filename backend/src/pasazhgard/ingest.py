@@ -134,7 +134,8 @@ def ingest(data_dir: Path, database_url: str) -> None:
             "offers",
             offer_cols,
             ["text", "text", "text", "text", "int8", "timestamptz", "text[]", "jsonb"],
-            ([*(o[k] for k in offer_cols[:-1]), Jsonb(o["warranty"]) if o["warranty"] else None] for o in offers),
+            # an unknown warranty is SQL NULL, not a JSON null
+            (tuple((Jsonb(o[k]) if o[k] else None) if k == "warranty" else o[k] for k in offer_cols) for o in offers),
         )
         cur.execute(indexes)
         cur.execute(swap)

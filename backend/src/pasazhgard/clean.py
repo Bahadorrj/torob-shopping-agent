@@ -118,8 +118,12 @@ def clean_product(row: dict) -> dict:
     }
 
 
-# Iranian week order; datetime.weekday() of sat is 5, hence WEEK[(weekday + 2) % 7]
 WEEK = ["sat", "sun", "mon", "tue", "wed", "thu", "fri"]
+
+
+def weekday_key(at: datetime) -> str:
+    """The WEEK key of a local datetime; datetime.weekday() of sat is 5."""
+    return WEEK[(at.weekday() + 2) % 7]
 
 
 def clean_hours(raw: str) -> dict:

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from pasazhgard.normalize import normalize
 from pasazhgard.search import PriceAgeBucket, _price_range, _usable
-from pasazhgard.shops import open_at
+from pasazhgard.shops import PaymentOption, open_at
 
 
 class SellerQuery(BaseModel):
@@ -48,11 +48,6 @@ class Warranty(BaseModel):
     provider: str | None
     months: int | None
     description: str | None
-
-
-class PaymentOption(BaseModel):
-    provider: str
-    channel: Literal["in_person", "unknown"]
 
 
 class Reason(BaseModel):
@@ -228,7 +223,6 @@ def _add_reasons(rows: list[SellerRow], provider: str | None) -> None:
             r.reasons.append(Reason(kind="cheapest"))
         if r.open_now:
             r.reasons.append(Reason(kind="open_now"))
-        # a warranty without a term is often noise ("ندارد", "تایید اصالت"), so only a term counts
         if r.warranty and r.warranty.months:
             r.reasons.append(Reason(kind="warranty", months=r.warranty.months))
         if r.price_age_bucket == "<=7":

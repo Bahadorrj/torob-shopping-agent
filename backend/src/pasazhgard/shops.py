@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel
 
-from pasazhgard.clean import WEEK
+from pasazhgard.clean import WEEK, weekday_key
 
 TEHRAN = ZoneInfo("Asia/Tehran")
 
@@ -53,7 +53,7 @@ class ShopDetails(BaseModel):
 def open_at(hours: dict, at: datetime) -> bool | None:
     """Whether a shop is open at `at`; None when its hours for that day are not recorded."""
     at = at.astimezone(TEHRAN)
-    day = hours[WEEK[(at.weekday() + 2) % 7]]
+    day = hours[weekday_key(at)]
     if day["status"] in ("unknown", "unsupported"):
         return None
     t = at.strftime("%H:%M")
@@ -69,7 +69,7 @@ def shop_details(conn, shop_id: str, now: datetime) -> ShopDetails | None:
         **{k: shop[k] for k in ShopDetails.model_fields if k != "hours"},
         hours=Hours(
             timezone=TEHRAN.key,
-            today=WEEK[(now.astimezone(TEHRAN).weekday() + 2) % 7],
+            today=weekday_key(now.astimezone(TEHRAN)),
             week=[DayHours(day=d, **shop["hours"][d]) for d in WEEK],
         ),
     )
