@@ -9,6 +9,7 @@ from psycopg.rows import dict_row
 from pydantic import ValidationError
 
 from pasazhgard.brief import Session, SessionPatch, create_session, get_session, patch_session
+from pasazhgard.compare import Product, get_product
 from pasazhgard.search import SearchResult, search_products
 from pasazhgard.sellers import SellerList, SellerQuery, find_sellers
 from pasazhgard.shops import TEHRAN, ShopDetails, shop_details
@@ -52,6 +53,14 @@ def products_search(
     now: datetime = Depends(get_now),
 ) -> SearchResult:
     return search_products(conn, q, now, limit)
+
+
+@app.get("/products/{product_id}")
+def products_detail(product_id: str, conn=Depends(get_conn)) -> Product:
+    product = get_product(conn, product_id)
+    if product is None:
+        raise HTTPException(404, "product not found")
+    return product
 
 
 @app.get("/products/{product_id}/sellers")
