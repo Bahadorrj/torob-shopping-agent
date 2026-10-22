@@ -12,10 +12,12 @@ from pydantic import ValidationError
 from pasazhgard.brief import Session, SessionPatch, create_session, get_session, patch_session
 from pasazhgard.compare import Product, ProductCompare, ProductCompareQuery, compare_products, get_product
 from pasazhgard.embeddings import Embedder, embedder_from_env
+from pasazhgard.routing import Router, router_from_env
 from pasazhgard.search import SearchResult, search_products
 from pasazhgard.seller_compare import CompareQuery, SellerCompare, compare_sellers
 from pasazhgard.sellers import SellerList, SellerQuery, find_sellers
 from pasazhgard.shops import TEHRAN, ShopDetails, shop_details
+from pasazhgard.visit import Directions, DirectionsQuery, PlanQuery, VisitPlan, get_directions, plan_visit
 
 app = FastAPI(title="Pasazhgard")
 
@@ -39,6 +41,12 @@ def get_now() -> datetime:
 def get_embedder() -> Embedder | None:
     """The embedding port; None without a key, and search stays lexical."""
     return embedder_from_env()
+
+
+@cache
+def get_router() -> Router:
+    """The routing port; straight-line estimates without a key."""
+    return router_from_env()
 
 
 @app.get("/health")
@@ -116,6 +124,29 @@ def shops_detail(shop_id: str, conn=Depends(get_conn), now: datetime = Depends(g
     if shop is None:
         raise HTTPException(404, "shop not found")
     return shop
+
+
+@app.get("/shops/{shop_id}/directions")
+def shops_directions(
+    shop_id: str, q: Annotated[DirectionsQuery, Query()], conn=Depends(get_conn), router: Router = Depends(get_router)
+) -> Directions:
+    directions = get_directions(conn, shop_id, q, router)
+    if directions is None:
+        raise HTTPException(404, "shop not found")
+    return directions
+
+
+@app.get("/visit-plan")
+def visit_plan(
+    q: Annotated[PlanQuery, Query()],
+    conn=Depends(get_conn),
+    now: datetime = Depends(get_now),
+    router: Router = Depends(get_router),
+) -> VisitPlan:
+    plan = plan_visit(conn, q, now, router)
+    if plan is None:
+        raise HTTPException(404, "shop not found")
+    return plan
 
 
 @app.post("/sessions", status_code=201)

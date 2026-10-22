@@ -233,3 +233,29 @@ export async function compareSellers(productId: string, offerIds: string[], p: C
   if (!r.ok) throw new Error(`compare failed: ${r.status}`);
   return r.json();
 }
+
+// Mirrors Directions and VisitPlan in backend/src/pasazhgard/visit.py and Route in routing.py.
+export type Route = { distance_m: number; duration_min: number; source: "neshan" | "straight_line" };
+
+export type Directions = {
+  shop_id: string;
+  shop_name: string;
+  lat: number;
+  lon: number;
+  route: Route;
+  links: { neshan: string; balad: string; google: string };
+  last_leg: { pasaj: string | null; landmark: string | null; floor: string | null; unit: string | null };
+};
+
+// `route` is the leg from the previous stop, or from the origin for the first one
+export type Stop = Directions & { eta: string; open_at_eta: boolean | null };
+
+export type VisitPlan = { origin: { lat: number; lon: number }; depart_at: string; mode: TravelMode; stops: Stop[] };
+
+// `query` is the plan page's own query string, so a shared link asks for the same plan
+export async function getVisitPlan(query: string): Promise<VisitPlan | null> {
+  const r = await fetch(`/api/visit-plan?${query}`);
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`plan failed: ${r.status}`);
+  return r.json();
+}
