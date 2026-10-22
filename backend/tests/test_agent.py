@@ -1,0 +1,180 @@
+import pytest
+
+ANKER = "product_92ac53fa75e18e8e73f20b56"
+ANKER_NC = "product_13f930f4c1400c7ab7bfa61f"
+MANSA = "offer_948daebb31460ccf0b260704"  # دیسیلا مانسا in Aladdin: 3,500,000
+MAHIS = "offer_4482530cb944bbe32546da26"
+CHEAPEST_SHOP = "shop_c060bc5ea37b78e00ece4bdb"  # نیکورا ویوان: 1,690,000, the cheapest Anker seller
+
+
+def kinds(turn):
+    return [b.get("block") for b in turn.blocks]
+
+
+def test_without_a_model_free_text_gets_search_results_and_template_text(agent):
+    turn = agent.turn("هدفون")
+
+    assert kinds(turn) == ["product_cards"]
+    assert turn.blocks[0]["items"]
+    assert "در دسترس نیست" in turn.text
+
+
+def test_without_a_model_an_empty_search_says_so(agent):
+    turn = agent.turn("یخچال ساید بای ساید")
+
+    assert turn.blocks[0]["items"] == []
+    assert "پیدا نشد" in turn.text
+
+
+def test_a_turn_patches_the_brief_from_the_users_words(agent, client):
+    agent.script(
+        agent.brief(
+            need="هندزفری بی‌سیم",
+            area={"name": "جمهوری"},
+            budget={"max_total_toman": 2_000_000},
+            visit_window={"earliest_arrival": "17:00"},
+            payment={"kind": "installment"},
+            quantity=2,
+        ),
+        "باشه.",
+    )
+
+    agent.turn("دو تا هندزفری بی‌سیم تا ۲ میلیون، قسطی، امروز ساعت ۵ میرم جمهوری")
+
+    brief = client.get(f"/sessions/{agent.session_id}").json()["brief"]
+    assert brief["need"] == "هندزفری بی‌سیم"
+    assert brief["area"]["name"] == "جمهوری"
+    assert brief["budget"]["max_total_toman"] == 2_000_000
+    assert brief["visit_window"]["earliest_arrival"] == "17:00:00"
+    assert brief["payment"]["kind"] == "installment"
+    assert brief["items"][0]["quantity"] == 2
+
+
+def test_a_patch_keeps_the_fields_the_user_did_not_mention(agent, client):
+    agent.script(agent.brief(area={"pasaj": "علاالدین"}), "باشه.", agent.brief(budget={"max_total_toman": 3_000_000}), "باشه.")
+
+    agent.turn("پاساژ علاالدین")
+    agent.turn("تا ۳ میلیون")
+
+    brief = client.get(f"/sessions/{agent.session_id}").json()["brief"]
+    assert (brief["area"]["pasaj"], brief["budget"]["max_total_toman"]) == ("علاالدین", 3_000_000)
+
+
+def test_tool_results_stream_as_blocks_before_the_text(agent):
+    agent.script(agent.brief(need="هدفون"), agent.call("search_products", query="هدفون انکر"), "این‌ها را پیدا کردم.")
+
+    turn = agent.turn("هدفون انکر می‌خوام")
+
+    assert kinds(turn) == ["product_cards"]
+    assert ANKER in [i["product_id"] for i in turn.blocks[0]["items"]]
+    assert turn.text == "این‌ها را پیدا کردم."
+    types = [e["type"] for e in turn.events]
+    assert types.index("TOOL_CALL_RESULT") < types.index("TEXT_MESSAGE_CONTENT")
+
+
+def test_every_block_type_carries_its_tool_output(agent):
+    agent.script(
+        agent.brief(),
+        agent.call("compare_products", product_ids=[ANKER, ANKER_NC]),
+        agent.call("find_sellers", product_id=ANKER),
+        agent.call("compare_sellers", product_id=ANKER, offer_ids=[MANSA, MAHIS]),
+        "مقایسه آماده است.",
+    )
+
+    turn = agent.turn("این دو تا رو مقایسه کن و فروشنده‌هاش رو نشون بده")
+
+    compare, sellers, seller_compare = turn.blocks
+    assert compare["block"] == "compare_table"
+    assert [p["product_id"] for p in compare["products"]] == [ANKER, ANKER_NC]
+    assert sellers["block"] == "seller_list"
+    assert sellers["sellers"][0]["shop_id"] == CHEAPEST_SHOP
+    assert seller_compare["block"] == "seller_compare"
+    assert [s["shop_name"] for s in seller_compare["sellers"]] == ["دیسیلا مانسا", "نیین ماهیس"]
+
+
+def test_tools_read_the_brief_patched_in_the_same_turn(agent):
+    agent.script(agent.brief(area={"pasaj": "علاالدین"}), agent.call("find_sellers", product_id=ANKER), "فروشنده‌های علاالدین.")
+
+    turn = agent.turn("فروشنده‌های این هدفون توی علاالدین")
+
+    assert {s["pasaj"] for s in turn.blocks[0]["sellers"]} == {"علاالدین"}
+
+
+def test_a_failed_tool_call_is_no_block_and_the_turn_goes_on(agent):
+    agent.script(agent.brief(), agent.call("find_sellers", product_id="product_missing"), "این کالا را پیدا نکردم.")
+
+    turn = agent.turn("فروشنده‌های این کالا")
+
+    assert "block" not in turn.blocks[0]
+    assert turn.text == "این کالا را پیدا نکردم."
+
+
+def test_a_missing_field_is_asked_as_chips_and_ends_the_turn(agent):
+    # the script has no reply after the question: a further model call would fail the turn
+    agent.script(agent.brief(need="هندزفری"), agent.call("ask_user", field="area", question="کجا می‌خواهید بروید؟"))
+
+    turn = agent.turn("یه هندزفری می‌خوام")
+
+    assert kinds(turn) == ["chips"]
+    chips = turn.blocks[0]
+    assert (chips["field"], chips["question"]) == ("area", "کجا می‌خواهید بروید؟")
+    # covered areas and pasajs from the data, plus the user's location
+    assert {"نزدیک من", "فردوسی", "علاالدین"} <= set(chips["options"])
+
+
+def test_only_one_question_per_turn(agent):
+    two = agent.call("ask_user", field="area", question="کجا؟")
+    two.tool_calls.append({"name": "ask_user", "args": {"field": "payment", "question": "چطور پرداخت؟"}, "id": "second", "type": "tool_call"})
+    agent.script(agent.brief(), two)
+
+    turn = agent.turn("هندزفری")
+
+    # the two calls run in parallel, so their results arrive in either order
+    assert kinds(turn).count("chips") == 1
+    assert {"error": "one question per turn"} in turn.blocks
+
+
+def test_no_question_about_a_field_the_brief_already_has(agent):
+    agent.script(
+        agent.brief(area={"name": "فردوسی"}),
+        agent.call("ask_user", field="area", question="کجا؟"),
+        agent.call("search_products", query="هندزفری"),
+        "نتیجه‌ها در فردوسی.",
+    )
+
+    turn = agent.turn("هندزفری توی فردوسی")
+
+    assert kinds(turn) == [None, "product_cards"]
+
+
+def test_the_thread_keeps_earlier_turns(agent):
+    agent.script(agent.brief(), "سلام!", agent.brief(), "بله.")
+
+    agent.turn("سلام")
+    turn = agent.turn("هستی؟")
+
+    snapshot = next(e for e in turn.events if e["type"] == "MESSAGES_SNAPSHOT")["messages"]
+    assert [m["content"] for m in snapshot if m["role"] == "user"] == ["سلام", "هستی؟"]
+
+
+def test_a_price_from_tool_output_is_grounded(agent):
+    agent.script(agent.brief(), agent.call("find_sellers", product_id=ANKER), "ارزان‌ترین ۱٬۶۹۰٬۰۰۰ تومان است.")
+
+    agent.turn("ارزان‌ترین فروشنده؟")
+
+
+@pytest.mark.parametrize(
+    ("claim", "found"),
+    [
+        ("ارزان‌ترین ۱٬۵۰۰٬۰۰۰ تومان است.", "price 1500000"),
+        ("حدود ۱.۲ میلیون تومان است.", "price 1200000"),
+        (f"فروشگاه {CHEAPEST_SHOP[:-1]}0 ارزان‌تر است.", "shop shop_"),
+        # no seller confirmed stock
+        ("این هدفون موجود است.", "in stock"),
+    ],
+)
+def test_an_ungrounded_price_shop_or_stock_claim_fails_the_turn(agent, claim, found):
+    agent.script(agent.brief(), agent.call("find_sellers", product_id=ANKER), claim)
+
+    with pytest.raises(AssertionError, match=found):
+        agent.turn("ارزان‌ترین فروشنده؟")
