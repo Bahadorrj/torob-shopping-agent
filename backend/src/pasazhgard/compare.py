@@ -1,13 +1,13 @@
 """get_product and compare_products: full product details and a side-by-side compare."""
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel
+from pydantic import AfterValidator, BaseModel, Field
 
 from pasazhgard.normalize import normalize
 from pasazhgard.search import PriceRange, Spec, _price_range
-from pasazhgard.sellers import SellerQuery, _distance, _in_area
+from pasazhgard.sellers import SellerQuery, _distance, _in_area, distinct
 
 
 class Product(BaseModel):
@@ -24,6 +24,12 @@ def get_product(conn, product_id: str) -> Product | None:
         "SELECT product_id, title, brand, category, image_urls, specs FROM products WHERE product_id = %s", [product_id]
     ).fetchone()
     return row and Product(**row)
+
+
+class ProductCompareQuery(SellerQuery):
+    """2-3 distinct products. Only the area applies, as in compare_products."""
+
+    ids: Annotated[list[str], Field(min_length=2, max_length=3), AfterValidator(distinct)]
 
 
 class SpecRow(BaseModel):

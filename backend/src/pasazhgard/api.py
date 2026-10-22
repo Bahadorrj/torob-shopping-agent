@@ -10,7 +10,7 @@ from psycopg.rows import dict_row
 from pydantic import ValidationError
 
 from pasazhgard.brief import Session, SessionPatch, create_session, get_session, patch_session
-from pasazhgard.compare import Product, get_product
+from pasazhgard.compare import Product, ProductCompare, ProductCompareQuery, compare_products, get_product
 from pasazhgard.embeddings import Embedder, embedder_from_env
 from pasazhgard.search import SearchResult, search_products
 from pasazhgard.seller_compare import CompareQuery, SellerCompare, compare_sellers
@@ -63,6 +63,17 @@ def products_search(
     embedder: Embedder | None = Depends(get_embedder),
 ) -> SearchResult:
     return search_products(conn, q, now, limit, embedder)
+
+
+# before /products/{product_id}, which would take "compare" as an id
+@app.get("/products/compare")
+def products_compare(
+    q: Annotated[ProductCompareQuery, Query()], conn=Depends(get_conn), now: datetime = Depends(get_now)
+) -> ProductCompare:
+    result = compare_products(conn, q.ids, q, now)
+    if result is None:
+        raise HTTPException(404, "product not found")
+    return result
 
 
 @app.get("/products/{product_id}")

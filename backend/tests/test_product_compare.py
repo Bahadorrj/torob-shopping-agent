@@ -96,3 +96,23 @@ def test_no_seller_in_the_area_is_unknown_not_blank(client):
     assert r50i["seller_count"] == 0
     assert (r50i["price"]["trust_level"], r50i["price"]["min_toman"]) == ("unknown", None)
     assert r50i["warranty"]["trust_level"] == "unknown"
+
+
+def read_compare(client, ids, status=200, **area):
+    r = client.get("/products/compare", params={"ids": ids, **area})
+    assert r.status_code == status, r.text
+    return r.json()
+
+
+def test_compare_read_matches_the_session_step(client):
+    assert read_compare(client, [R50I, R50I_NC]) == compare(client, [R50I, R50I_NC])
+    assert read_compare(client, [R50I, R50I_NC], area="فردوسی") == compare(client, [R50I, R50I_NC], brief={"area": {"name": "فردوسی"}})
+
+
+def test_compare_read_takes_two_to_three_distinct_known_products(client):
+    assert len(read_compare(client, [R50I, R50I_NC, R60I_NC])["products"]) == 3
+    read_compare(client, [R50I, R50I_NC, R60I_NC, QCY], status=422)
+    read_compare(client, [R50I], status=422)
+    read_compare(client, [R50I, R50I], status=422)
+    read_compare(client, [R50I, R50I_NC], status=422, radius_m=300)
+    read_compare(client, [R50I, "product_missing"], status=404)

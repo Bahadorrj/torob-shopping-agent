@@ -11,6 +11,13 @@ from pasazhgard.search import PriceAgeBucket, _price_range, _usable
 from pasazhgard.shops import PaymentOption, open_at
 
 
+def distinct(ids: list[str]) -> list[str]:
+    """Pydantic validator for an id list: the same id twice is one pick, not two."""
+    if len(set(ids)) != len(ids):
+        raise ValueError("an id repeats")
+    return ids
+
+
 class SellerQuery(BaseModel):
     """Area and ranking for a seller list. The area is one of: radius around the origin, a named area, a pasaj."""
 
