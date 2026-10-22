@@ -18,6 +18,7 @@ const stop = (shop_id: string, shop_name: string, extra: object) => ({
   last_leg: { pasaj: "علاالدین", landmark: "رو‌به‌روی پاساژ چهارسو", floor: "۲", unit: "۲۱۶" },
   eta: "2026-10-22T13:45:00+03:30",
   open_at_eta: true,
+  inquiry: null,
   ...extra,
 });
 
@@ -111,6 +112,58 @@ test("seller compare opens the visit plan from the brief's origin, mode and visi
   await page.goto("/products/p1/sellers/compare?offer=o0&offer=o1");
   await expect(page.getByRole("link", { name: "برنامه مراجعه" })).toHaveAttribute(
     "href",
-    "/plan?shop_id=shop_a&shop_id=shop_b&lat=35.69&lon=51.42&mode=car&depart_at=2026-10-22T17%3A00%3A00%2B03%3A30",
+    "/plan?shop_id=shop_a&shop_id=shop_b&lat=35.69&lon=51.42&mode=car&depart_at=2026-10-22T17%3A00%3A00%2B03%3A30&session_id=s9",
   );
+});
+
+const inquiry = (status: string, extra: object = {}) => ({
+  inquiry_id: 1,
+  status,
+  available: "unknown",
+  latest_price_toman: null,
+  hold_until: null,
+  installments: null,
+  replied_at: null,
+  product_id: "p1",
+  product_title: "هندزفری انکر R50i NC",
+  listed_price_toman: 4_499_000,
+  price_delta_toman: null,
+  over_budget: false,
+  ...extra,
+});
+
+test("a session's plan follows its inquiries over SSE: confirmed badge and time, price difference, over budget at 360 px", async ({ page }) => {
+  await page.route("**/tile.openstreetmap.org/**", (r) => r.abort());
+  await fakeSessions(page, {});
+  const waiting = { ...plan, stops: [stop("shop_a", "نیین ماهیس", { inquiry: inquiry("sent") })] };
+  await page.route("**/api/visit-plan?**", (route) => route.fulfill({ json: waiting }));
+  const confirmed = inquiry("confirmed", { available: "yes", latest_price_toman: 5_200_000, price_delta_toman: 701_000, over_budget: true, replied_at: "2026-10-20T15:00:00+03:30" });
+  const updated = {
+    ...plan,
+    stops: [
+      stop("shop_a", "نیین ماهیس", { inquiry: confirmed }),
+      stop("shop_b", "نیکورا ویوان", { inquiry: inquiry("closed", { inquiry_id: 2 }) }),
+    ],
+  };
+  const streamed: string[] = [];
+  await page.route("**/api/visit-plan/stream?**", (route) => {
+    streamed.push(new URL(route.request().url()).search.slice(1));
+    return route.fulfill({ contentType: "text/event-stream", body: `retry: 100
+data: ${JSON.stringify(updated)}
+
+` });
+  });
+  await page.goto(`/plan?${query}&session_id=s9`);
+
+  const stops = page.getByRole("listitem").filter({ has: page.getByRole("link", { name: "صفحه فروشگاه" }) });
+  await expect(stops).toHaveCount(2);
+  expect(streamed[0]).toBe(`${query}&session_id=s9`);
+  const [a, b] = [stops.nth(0), stops.nth(1)];
+  await expect(a).toContainText("تأیید شد ساعت ۱۵:۰۰");
+  await expect(a).toContainText("قیمت تأییدشده ۵٬۲۰۰٬۰۰۰ تومان، ۷۰۱٬۰۰۰ تومان گران‌تر از قیمت ثبت‌شده");
+  await expect(a).toContainText("بیشتر از بودجه");
+  await expect(b).toContainText("فروشگاه الان بسته است");
+  await expect(b).toContainText("قیمت ثبت‌شده ۴٬۴۹۹٬۰۰۰ تومان");
+  await expect(b).not.toContainText("بیشتر از بودجه");
+  expect(await noOverflow(page)).toBe(0);
 });

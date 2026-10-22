@@ -29,7 +29,7 @@ function FallenThrough({ sessionId, inquiry }: { sessionId: string; inquiry: Inq
   useEffect(() => {
     getAlternatives(sessionId, inquiry_id).then(setBlock, () => setBlock(null));
   }, [sessionId, inquiry_id, status]);
-  return block && <Alternatives block={block} onAsk={(a) => askAlternative(sessionId, a)} />;
+  return block && <Alternatives block={block} onAsk={(a) => askAlternative(sessionId, a, inquiry_id)} />;
 }
 
 // an ISO time from the API, in Tehran time, as HH:MM

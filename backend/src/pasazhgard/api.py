@@ -4,6 +4,7 @@ from collections.abc import AsyncIterable, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from functools import cache
+from types import SimpleNamespace
 from typing import Annotated
 
 import anyio
@@ -216,16 +217,21 @@ def shops_directions(
     return directions
 
 
+def get_plan_router(router: Router = Depends(get_router)) -> Router:
+    """The routing port, each leg routed once per request: the plan stream recomputes the plan twice a second."""
+    return SimpleNamespace(route=cache(router.route))
+
+
 @app.get("/visit-plan")
 def visit_plan(
     q: Annotated[PlanQuery, Query()],
     conn=Depends(get_conn),
     now: datetime = Depends(get_now),
-    router: Router = Depends(get_router),
+    router: Router = Depends(get_plan_router),
 ) -> VisitPlan:
     plan = plan_visit(conn, q, now, router)
     if plan is None:
-        raise HTTPException(404, "shop not found")
+        raise HTTPException(404, "shop or session not found")
     return plan
 
 
@@ -360,6 +366,19 @@ async def inquiries_stream(
 ) -> AsyncIterable[InquiryStatus]:
     async for status in _changes(lambda conn, at: get_inquiries(conn, session_id, at), now):
         yield status
+
+
+@app.get("/visit-plan/stream", response_class=EventSourceResponse, dependencies=[Depends(_no_transform)])
+async def visit_plan_stream(
+    q: Annotated[PlanQuery, Query()],
+    _=Depends(visit_plan),
+    now: datetime = Depends(get_now),
+    router: Router = Depends(get_plan_router),
+) -> AsyncIterable[VisitPlan]:
+    # the trip leaves when the stream opens, so only the session's inquiries change the plan
+    fixed = q.model_copy(update={"depart_at": q.depart_at or now})
+    async for plan in _changes(lambda conn, at: plan_visit(conn, fixed, at, router), now):
+        yield plan
 
 
 @app.get("/console/shops/{shop_id}/inquiries/stream", response_class=EventSourceResponse, dependencies=[Depends(_no_transform)])

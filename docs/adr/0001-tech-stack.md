@@ -115,6 +115,8 @@ this is part of degraded mode. Changing the model or dimensions means re-embeddi
 As in the spec. Agent turns stream as AG-UI events over SSE (FastAPI `StreamingResponse` with the
 `ag-ui-protocol` encoder). Inquiry updates use a plain SSE endpoint per session. Disable response
 buffering and compression on SSE routes through the Next.js proxy.
+Amended (#19): a visit plan with a `session_id` streams too (`/visit-plan/stream`), recomputed as the
+session's inquiries change, with each leg routed once per stream.
 
 ### Maps: Leaflet + OSM tiles, Neshan routing
 

@@ -150,6 +150,8 @@ def ingest(data_dir: Path, database_url: str, embedder: Embedder | None = None) 
     );
     -- a shop that does not list the item can be asked too (tables made before that had offer_id NOT NULL)
     ALTER TABLE inquiries ALTER COLUMN offer_id DROP NOT NULL;
+    -- an alternative's inquiry names the one that fell through, so the visit plan swaps the stop
+    ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS instead_of bigint;
     CREATE INDEX IF NOT EXISTS inquiries_session_id ON inquiries (session_id);
     CREATE INDEX IF NOT EXISTS inquiries_shop_id ON inquiries (shop_id);
     """
