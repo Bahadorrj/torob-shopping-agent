@@ -17,7 +17,6 @@ _NUMBERS = {
     )
     for w in words
 }
-_BASEMENT = re.compile(r"^(زیر ?همکف|زیر ?زمین|زیرین)\b")
 _LEVEL = re.compile(r"^(منفی ?|-)?(\d+|" + "|".join(sorted(_NUMBERS, key=len, reverse=True)) + r")(-)?")
 
 
