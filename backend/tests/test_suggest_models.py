@@ -157,3 +157,14 @@ def test_discovery_eval_counts_shortlists_holding_the_expected_category(client):
     ]
 
     assert module.hit_count(client, cases) == 1
+
+
+def test_a_single_model_still_gets_trade_off_lines(client):
+    # up to 1,000,000 in Aladdin only AirPods (830,000, one seller) is left
+    shortlist = suggest(client, NEED, pasaj="علاالدین", max_per_item_toman=1_000_000)
+
+    [airpods] = shortlist["models"]
+    assert airpods["product_id"] == AIRPODS
+    assert "تنها مدل نزدیک برای این نیاز" in airpods["tradeoffs"]
+    assert "فقط یک فروشنده در این محدوده" in airpods["tradeoffs"]
+    assert any(t.startswith("جنس بدنه: ") for t in airpods["tradeoffs"])
