@@ -21,6 +21,7 @@ from pydantic import BaseModel, ValidationError
 
 from pasazhgard.agent import Ports, build_graph, chat_model_from_env
 from pasazhgard.alternatives import Alternatives, find_alternatives
+from pasazhgard.basket import Basket, BasketQuery, optimize_basket
 from pasazhgard.brief import Session, SessionPatch, create_session, get_session, patch_session
 from pasazhgard.compare import Product, ProductCompare, ProductCompareQuery, compare_products, get_product
 from pasazhgard.discovery import Shortlist, SuggestQuery, suggest_models
@@ -226,6 +227,12 @@ def shops_directions(
     if directions is None:
         raise HTTPException(404, "shop not found")
     return directions
+
+
+# a POST: a pasted list can be longer than a URL should be
+@app.post("/basket")
+def basket(q: BasketQuery, conn=Depends(get_conn), now: datetime = Depends(get_now)) -> Basket:
+    return optimize_basket(conn, q, now)
 
 
 class _RouteOnce:
