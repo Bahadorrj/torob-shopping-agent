@@ -1,4 +1,5 @@
 import hmac
+import logging
 import os
 import time
 from collections.abc import AsyncIterable, Callable
@@ -42,6 +43,7 @@ from pasazhgard.inquiries import (
     record_reply,
 )
 from pasazhgard.pasaj import PasajView, brief_products, pasaj_view
+from pasazhgard.responder import Responder, respond, responder_from_env
 from pasazhgard.routing import Router, router_from_env
 from pasazhgard.search import SearchResult, search_products
 from pasazhgard.seller_compare import CompareQuery, SellerCompare, compare_sellers
@@ -66,7 +68,26 @@ async def lifespan(app: FastAPI):
         )
         graph = build_graph(ports).compile(checkpointer=checkpointer)
         add_langgraph_fastapi_endpoint(app, LangGraphAgent(name="pasazhgard", graph=graph, emit_raw_events=False), "/agent")
-        yield
+        async with anyio.create_task_group() as tg:
+            if responder := responder_from_env():
+                tg.start_soon(_auto_respond, responder)
+            yield
+            tg.cancel_scope.cancel()
+
+
+async def _auto_respond(config: Responder) -> None:
+    """The auto-responder's loop (#22): every few seconds the waiting Seller Console inquiries get their replies."""
+    while True:
+        try:
+            await anyio.to_thread.run_sync(_respond_once, config)
+        except Exception:
+            logging.getLogger(__name__).warning("auto-responder pass failed", exc_info=True)
+        await anyio.sleep(5)
+
+
+def _respond_once(config: Responder) -> None:
+    with _connect(row_factory=dict_row) as conn:
+        respond(conn, config, _resolve(get_now), _resolve(get_chat_model), _resolve(get_small_model))
 
 
 app = FastAPI(title="Pasazhgard", lifespan=lifespan)
