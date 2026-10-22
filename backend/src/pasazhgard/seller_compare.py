@@ -57,7 +57,7 @@ def compare_sellers(conn, product_id: str, q: CompareQuery, now: datetime) -> Se
     by_id = {o["offer_id"]: o for o in seller_offers(conn, product_id) if o["offer_id"] in q.offer_id}
     if len(by_id) != len(q.offer_id):
         return None
-    asked = outcomes(conn, q.session_id, product_id) if q.session_id else {}
+    asked = outcomes(conn, q.session_id, product_id, now) if q.session_id else {}
     cols = []
     for oid in q.offer_id:
         o = by_id[oid]

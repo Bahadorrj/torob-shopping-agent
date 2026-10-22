@@ -1,14 +1,19 @@
 """Seller Liaison outside the graph (ADR-0002): the inquiry store, its state machine and the seller channel port."""
 
 import datetime as dt
+import os
 from typing import Annotated, Literal, Protocol, Self
 
 from psycopg.types.json import Jsonb
 from pydantic import AfterValidator, BaseModel, Field, model_validator
 
 from pasazhgard.normalize import distinct
+from pasazhgard.shops import open_at
 
-Status = Literal["draft", "sent", "replied", "confirmed", "unavailable"]
+# closed: the shop was closed when the user consented; queued: it goes out when the shop opens
+Status = Literal["draft", "closed", "queued", "sent", "replied", "confirmed", "unavailable", "no_reply"]
+# an inquiry still sent this long after sending turns no_reply
+NO_REPLY_AFTER = dt.timedelta(minutes=float(os.environ.get("NO_REPLY_MINUTES", "2")))
 Question = Literal["available", "price", "hold", "installments"]
 
 
@@ -86,8 +91,9 @@ def latest_price(o: Outcome | None) -> LatestPrice:
     return LatestPrice(status="confirmed", price_toman=o.latest_price_toman, trust_level="confirmed", at=o.replied_at)
 
 
-def outcomes(conn, sid: str, product_id: str) -> dict[str, Outcome]:
+def outcomes(conn, sid: str, product_id: str, now: dt.datetime) -> dict[str, Outcome]:
     """The latest sent inquiry per shop for one item of a session."""
+    _tick(conn, now)
     rows = conn.execute(
         "SELECT * FROM inquiries WHERE session_id = %s AND product_id = %s AND status <> 'draft' ORDER BY inquiry_id", [sid, product_id]
     ).fetchall()
@@ -122,10 +128,27 @@ def _inquiry(row: dict) -> Inquiry:
     return Inquiry(**row, simulated=row["channel"] == SellerConsole.name)
 
 
-def get_inquiries(conn, sid: str) -> InquiryStatus | None:
+def _tick(conn, now: dt.datetime) -> None:
+    """The moves the clock makes, applied on every read: queued -> sent once the shop opens, sent -> no_reply after N."""
+    # shortcut: scans every waiting inquiry on each read; move to a scheduler if the table grows
+    for row in conn.execute(
+        "SELECT i.*, s.hours FROM inquiries i LEFT JOIN shops s USING (shop_id) WHERE i.status IN ('queued', 'sent')"
+    ).fetchall():
+        i = _inquiry(row)
+        if i.status == "queued" and row["hours"] and open_at(row["hours"], now):
+            # shortcut: the Seller Console needs no send call; a channel that does needs a sender job here
+            _move(conn, i, "sent", now, channel=SellerConsole.name)
+        elif i.status == "sent":
+            due = next(e.at for e in reversed(i.events) if e.status == "sent") + NO_REPLY_AFTER
+            if due <= now:
+                _move(conn, i, "no_reply", due)
+
+
+def get_inquiries(conn, sid: str, now: dt.datetime) -> InquiryStatus | None:
     """None when the session does not exist."""
     if conn.execute("SELECT 1 FROM sessions WHERE session_id = %s", [sid]).fetchone() is None:
         return None
+    _tick(conn, now)
     rows = conn.execute("SELECT * FROM inquiries WHERE session_id = %s ORDER BY inquiry_id", [sid]).fetchall()
     return InquiryStatus(inquiries=[_inquiry(r) for r in rows])
 
@@ -184,15 +207,23 @@ class Confirm(BaseModel):
 def _move(conn, inquiry: Inquiry, to: Status, now: dt.datetime, **changes) -> None:
     """The one place a status changes; the timeline gets the step. Raises ValueError for a move the machine does not allow."""
     replied = {"replied", "confirmed", "unavailable"}
-    # a seller may correct an earlier reply, so the replied states lead to each other
-    allowed = {"draft": {"sent"}, "sent": replied, **dict.fromkeys(replied, replied)}
+    # a seller may correct an earlier reply, and may still answer after no_reply
+    allowed = {
+        "draft": {"sent", "closed", "queued"},
+        "closed": {"sent", "queued"},
+        "queued": {"sent"},
+        "sent": replied | {"no_reply"},
+        "no_reply": replied,
+        **dict.fromkeys(replied, replied),
+    }
     if to not in allowed[inquiry.status]:
         raise ValueError(f"{inquiry.status} -> {to}")
     events = [*inquiry.events, Event(at=now, status=to, reply=changes.pop("event_reply", None))]
     sets = ", ".join(f"{k} = %s" for k in changes)
+    # only from the status the caller read, so two readers ticking the same inquiry move it once
     conn.execute(
-        f"UPDATE inquiries SET status = %s, events = %s{', ' + sets if sets else ''} WHERE inquiry_id = %s",
-        [to, Jsonb([e.model_dump(mode="json") for e in events]), *changes.values(), inquiry.inquiry_id],
+        f"UPDATE inquiries SET status = %s, events = %s{', ' + sets if sets else ''} WHERE inquiry_id = %s AND status = %s",
+        [to, Jsonb([e.model_dump(mode="json") for e in events]), *changes.values(), inquiry.inquiry_id, inquiry.status],
     )
 
 
@@ -201,7 +232,7 @@ def confirm_inquiries(conn, sid: str, change: Confirm, channel: "SellerChannel",
 
     None when the session does not exist; LookupError for an inquiry of another session.
     """
-    status = get_inquiries(conn, sid)
+    status = get_inquiries(conn, sid, now)
     if status is None:
         return None
     mine = {i.inquiry_id: i for i in status.inquiries}
@@ -211,7 +242,7 @@ def confirm_inquiries(conn, sid: str, change: Confirm, channel: "SellerChannel",
         if mine[iid].status == "draft":
             channel.send(conn, mine[iid])
             _move(conn, mine[iid], "sent", now, channel=channel.name)
-    return get_inquiries(conn, sid)
+    return get_inquiries(conn, sid, now)
 
 
 class SellerChannel(Protocol):
@@ -237,11 +268,12 @@ class ConsoleInbox(BaseModel):
     inquiries: list[Inquiry]
 
 
-def console_inbox(conn, shop_id: str) -> ConsoleInbox | None:
+def console_inbox(conn, shop_id: str, now: dt.datetime) -> ConsoleInbox | None:
     """A shop's inquiries sent through the Seller Console, newest first. None for an unknown shop."""
     shop = conn.execute("SELECT name FROM shops WHERE shop_id = %s", [shop_id]).fetchone()
     if shop is None:
         return None
+    _tick(conn, now)
     rows = conn.execute(
         "SELECT * FROM inquiries WHERE shop_id = %s AND channel = %s ORDER BY inquiry_id DESC", [shop_id, SellerConsole.name]
     ).fetchall()

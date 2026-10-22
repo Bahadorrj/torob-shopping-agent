@@ -1,6 +1,7 @@
 import os
+import time
 from collections.abc import AsyncIterable, Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import cache
 from typing import Annotated
 
@@ -235,16 +236,16 @@ def inquiries_confirm(
 
 
 @app.get("/sessions/{session_id}/inquiries")
-def inquiries_read(session_id: str, conn=Depends(get_conn)) -> InquiryStatus:
-    status = get_inquiries(conn, session_id)
+def inquiries_read(session_id: str, conn=Depends(get_conn), now: datetime = Depends(get_now)) -> InquiryStatus:
+    status = get_inquiries(conn, session_id, now)
     if status is None:
         raise HTTPException(404, "session not found")
     return status
 
 
 @app.get("/console/shops/{shop_id}/inquiries")
-def console_read(shop_id: str, conn=Depends(get_conn)) -> ConsoleInbox:
-    inbox = console_inbox(conn, shop_id)
+def console_read(shop_id: str, conn=Depends(get_conn), now: datetime = Depends(get_now)) -> ConsoleInbox:
+    inbox = console_inbox(conn, shop_id, now)
     if inbox is None:
         raise HTTPException(404, "shop not found")
     return inbox
@@ -260,13 +261,13 @@ def console_reply(inquiry_id: int, body: ConsoleReply, conn=Depends(get_conn), n
         raise HTTPException(409, "inquiry not sent") from None
 
 
-async def _changes[T: BaseModel](load: Callable[[psycopg.Connection], T]) -> AsyncIterable[T]:
-    """`load(conn)` now and again each time its result changes."""
-    last = None
+async def _changes[T: BaseModel](load: Callable[[psycopg.Connection, datetime], T], now: datetime) -> AsyncIterable[T]:
+    """`load(conn, at)` now and again each time its result changes; `at` is the request's clock, running on."""
+    last, start = None, time.monotonic()
     # shortcut: polls the store twice a second; move to LISTEN/NOTIFY if many trackers stay open
     with _connect(row_factory=dict_row, autocommit=True) as conn:
         while True:
-            current = await anyio.to_thread.run_sync(load, conn)
+            current = await anyio.to_thread.run_sync(load, conn, now + timedelta(seconds=time.monotonic() - start))
             if current != last:
                 yield current
                 last = current
@@ -279,12 +280,14 @@ def _no_transform(response: Response) -> None:
 
 
 @app.get("/sessions/{session_id}/inquiries/stream", response_class=EventSourceResponse, dependencies=[Depends(_no_transform)])
-async def inquiries_stream(session_id: str, _=Depends(inquiries_read)) -> AsyncIterable[InquiryStatus]:
-    async for status in _changes(lambda conn: get_inquiries(conn, session_id)):
+async def inquiries_stream(
+    session_id: str, _=Depends(inquiries_read), now: datetime = Depends(get_now)
+) -> AsyncIterable[InquiryStatus]:
+    async for status in _changes(lambda conn, at: get_inquiries(conn, session_id, at), now):
         yield status
 
 
 @app.get("/console/shops/{shop_id}/inquiries/stream", response_class=EventSourceResponse, dependencies=[Depends(_no_transform)])
-async def console_stream(shop_id: str, _=Depends(console_read)) -> AsyncIterable[ConsoleInbox]:
-    async for inbox in _changes(lambda conn: console_inbox(conn, shop_id)):
+async def console_stream(shop_id: str, _=Depends(console_read), now: datetime = Depends(get_now)) -> AsyncIterable[ConsoleInbox]:
+    async for inbox in _changes(lambda conn, at: console_inbox(conn, shop_id, at), now):
         yield inbox

@@ -1,3 +1,4 @@
+import datetime as dt
 import json
 
 ANKER = "product_92ac53fa75e18e8e73f20b56"
@@ -235,3 +236,21 @@ def test_the_hold_question_names_the_visit_time(client):
     [draft] = compose(client, sid, MANSA, questions=["hold"])["inquiries"]
     assert "تا ساعت ۱۷:۰۰ برایم نگه می‌دارید؟" in draft["message"]
     assert "قیمت" not in draft["message"]
+
+
+def statuses(client, sid):
+    return [i["status"] for i in client.get(f"/sessions/{sid}/inquiries").json()["inquiries"]]
+
+
+def test_unanswered_inquiries_turn_no_reply_after_n_minutes(client, clock, now):
+    sid, [mansa, mahis] = sent(client, MANSA, MAHIS)
+    reply(client, mahis, available="yes")
+    clock(now + dt.timedelta(minutes=2) - dt.timedelta(seconds=1))
+    assert statuses(client, sid) == ["sent", "confirmed"]
+    clock(now + dt.timedelta(minutes=5))
+    [late, answered] = client.get(f"/sessions/{sid}/inquiries").json()["inquiries"]
+    assert (late["status"], answered["status"]) == ("no_reply", "confirmed")
+    # the step happened when the wait ran out, not when someone looked
+    assert late["events"][-1] == {"at": (now + dt.timedelta(minutes=2)).isoformat(), "status": "no_reply", "reply": None}
+    # a late reply still counts
+    assert reply(client, mansa, available="yes")["status"] == "confirmed"
