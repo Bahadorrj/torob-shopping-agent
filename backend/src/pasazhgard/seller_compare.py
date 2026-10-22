@@ -6,7 +6,7 @@ from typing import Annotated, Literal, Self
 from pydantic import AfterValidator, AwareDatetime, BaseModel, Field, model_validator
 
 from pasazhgard.compare import get_product
-from pasazhgard.inquiries import outcomes
+from pasazhgard.inquiries import outcomes, sites
 from pasazhgard.normalize import distinct
 from pasazhgard.routing import TravelMode, straight_line
 from pasazhgard.sellers import SellerRow, _distance, _row, seller_offers
@@ -57,6 +57,7 @@ def compare_sellers(conn, product_id: str, q: CompareQuery, now: datetime) -> Se
     if len(by_id) != len(q.offer_id):
         return None
     asked = outcomes(conn, q.session_id, product_id, now) if q.session_id else {}
+    fetched = sites(conn, q.session_id, product_id) if q.session_id else {}
     cols = []
     for oid in q.offer_id:
         o = by_id[oid]
@@ -65,7 +66,7 @@ def compare_sellers(conn, product_id: str, q: CompareQuery, now: datetime) -> Se
         at = (q.arrival or now + timedelta(minutes=travel or 0)).astimezone(TEHRAN)
         cols.append(
             SellerColumn(
-                **_row(o, d, now, asked.get(o["shop_id"])).model_dump(),
+                **_row(o, d, now, asked.get(o["shop_id"]), fetched.get(o["shop_id"])).model_dump(),
                 travel_min=travel,
                 arrival_at=at,
                 open_at_arrival=open_at(o["hours"], at),

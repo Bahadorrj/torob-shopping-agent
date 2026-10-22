@@ -6,7 +6,8 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, Field, model_validator
 
-from pasazhgard.inquiries import LatestPrice, Outcome, latest_price, outcomes
+from pasazhgard.inquiries import LatestPrice, Outcome, latest_price, outcomes, sites
+from pasazhgard.site_prices import SitePrice
 from pasazhgard.normalize import normalize
 from pasazhgard.search import PriceAgeBucket, _price_range, _usable
 from pasazhgard.shops import PaymentOption, open_at
@@ -145,7 +146,7 @@ def _in_area(q: SellerQuery, shop: dict, distance: int | None) -> bool:
     return True
 
 
-def _row(offer: dict, distance: int | None, now: datetime, inquiry: Outcome | None = None) -> SellerRow:
+def _row(offer: dict, distance: int | None, now: datetime, inquiry: Outcome | None = None, site: SitePrice | None = None) -> SellerRow:
     price = _price_range([offer], now)
     return SellerRow(
         offer_id=offer["offer_id"],
@@ -164,7 +165,7 @@ def _row(offer: dict, distance: int | None, now: datetime, inquiry: Outcome | No
         open_now=open_at(offer["hours"], now),
         payment_options=offer["payment_options"],
         reasons=[],
-        latest_price=latest_price(inquiry),
+        latest_price=latest_price(inquiry, site),
         inquiry=inquiry,
     )
 
@@ -294,6 +295,7 @@ def find_sellers(conn, product_id: str, q: SellerQuery, now: datetime) -> Seller
         return None
     offers = seller_offers(conn, product_id)
     asked = outcomes(conn, q.session_id, product_id, now) if q.session_id else {}
+    fetched = sites(conn, q.session_id, product_id) if q.session_id else {}
     # one row per shop: its cheapest usable offer, else any offer
     best = {}
     for o in sorted(offers, key=lambda o: (not _usable([o]), o["price_toman"] or 0, o["offer_id"])):
@@ -304,7 +306,7 @@ def find_sellers(conn, product_id: str, q: SellerQuery, now: datetime) -> Seller
         if not _in_area(q, o, d):
             continue
         in_area = True
-        row = _row(o, d, now, asked.get(o["shop_id"]))
+        row = _row(o, d, now, asked.get(o["shop_id"]), fetched.get(o["shop_id"]))
         met = _conditions(q, o, row.inquiry)
         if False in met.values():
             continue

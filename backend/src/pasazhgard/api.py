@@ -45,6 +45,7 @@ from pasazhgard.routing import Router, router_from_env
 from pasazhgard.search import SearchResult, search_products
 from pasazhgard.seller_compare import CompareQuery, SellerCompare, compare_sellers
 from pasazhgard.sellers import SellerList, SellerQuery, find_sellers
+from pasazhgard.site_prices import FetchQuery, HttpFetch, SitePrice, WebFetch, fetch_site_price
 from pasazhgard.shops import TEHRAN, ShopDetails, shop_details
 from pasazhgard.visit import Directions, DirectionsQuery, PlanQuery, VisitPlan, get_directions, plan_visit
 
@@ -122,6 +123,12 @@ def get_console_secret() -> str | None:
 def _seller_of(shop_id: str, token: str | None, secret: str | None) -> None:
     if not (secret and token and hmac.compare_digest(token, console_token(secret, shop_id))):
         raise HTTPException(403, "not this shop's console link")
+
+
+@cache
+def get_web_fetch() -> WebFetch:
+    """The port to seller websites."""
+    return HttpFetch()
 
 
 @cache
@@ -321,6 +328,24 @@ def inquiries_read(session_id: str, conn=Depends(get_conn), now: datetime = Depe
     if status is None:
         raise HTTPException(404, "session not found")
     return status
+
+
+@app.post("/sessions/{session_id}/site-prices")
+def site_prices_fetch(
+    session_id: str,
+    q: FetchQuery,
+    conn=Depends(get_conn),
+    now: datetime = Depends(get_now),
+    web: WebFetch = Depends(get_web_fetch),
+    model: BaseChatModel | None = Depends(get_small_model),
+) -> SitePrice:
+    try:
+        price = fetch_site_price(conn, session_id, q, web, model, now)
+    except ValueError:
+        raise HTTPException(409, "shop has no website") from None
+    if price is None:
+        raise HTTPException(404, "session, shop or product not found")
+    return price
 
 
 @app.get("/sessions/{session_id}/inquiries/{inquiry_id}/alternatives")
