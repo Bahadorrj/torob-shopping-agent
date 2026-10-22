@@ -310,14 +310,26 @@ export type Inquiry = {
   events: { at: string; status: InquiryState; reply: ConsoleReply | null; question: string | null }[];
 };
 
-export type InquiryStatus = { inquiries: Inquiry[] };
+// a price read from the shop's website: says nothing about stock; unavailable when the site failed or showed no price
+export type SitePrice = {
+  shop_id: string;
+  shop_name: string;
+  product_id: string;
+  status: "found" | "unavailable";
+  price_toman: number | null;
+  trust_level: "website_price";
+  fetched_at: string;
+  url: string;
+};
+
+export type InquiryStatus = { inquiries: Inquiry[]; site_prices?: SitePrice[] };
 
 export type ConsoleInbox = { shop_id: string; shop_name: string; inquiries: Inquiry[] };
 
 export type LatestPrice = {
-  status: "not_asked" | "asked" | "confirmed";
+  status: "not_asked" | "asked" | "website" | "confirmed";
   price_toman: number | null;
-  trust_level: "confirmed" | "unknown";
+  trust_level: "confirmed" | "website_price" | "unknown";
   at: string | null;
 };
 
