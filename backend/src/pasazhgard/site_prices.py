@@ -1,9 +1,11 @@
 """fetch_site_price: the latest price on a seller's own website, read by the small model. It says nothing about stock."""
 
 import datetime as dt
+import ipaddress
 import logging
 import os
 import re
+import socket
 from typing import Literal, Protocol
 from urllib.parse import urlencode, urljoin
 
@@ -23,15 +25,49 @@ class WebFetch(Protocol):
 
 
 class HttpFetch:
-    """Each site gets its own short timeout, so a slow or blocking site never holds up the flow."""
+    """Each site gets its own short timeout, so a slow or blocking site never holds up the flow.
 
-    def __init__(self, timeout: float = float(os.environ.get("SITE_FETCH_TIMEOUT_SECONDS", "5"))):
-        self.client = httpx.Client(timeout=timeout, follow_redirects=True)
+    Seller sites are untrusted: only public http(s) addresses, redirects followed by hand, body size capped.
+    """
+
+    def __init__(self, timeout: float | None = None, transport: httpx.BaseTransport | None = None):
+        if timeout is None:
+            timeout = float(os.environ.get("SITE_FETCH_TIMEOUT_SECONDS", "5"))
+        self.client = httpx.Client(timeout=timeout, transport=transport)
 
     def get(self, url: str) -> str:
-        r = self.client.get(url)
-        r.raise_for_status()
-        return r.text
+        max_bytes = 2_000_000
+        for _ in range(5):
+            _check_public(url)
+            with self.client.stream("GET", url) as r:
+                if r.is_redirect:
+                    url = str(r.url.join(r.headers["location"]))
+                    continue
+                r.raise_for_status()
+                body = b""
+                for chunk in r.iter_bytes():
+                    body += chunk
+                    if len(body) > max_bytes:
+                        raise ValueError(f"{url} body over {max_bytes} bytes")
+                return body.decode(r.encoding or "utf-8", errors="replace")
+        raise ValueError(f"too many redirects from {url}")
+
+
+def _check_public(url: str) -> None:
+    """ValueError unless the URL is http(s) and every address its host resolves to is public."""
+    u = httpx.URL(url)
+    if u.scheme not in ("http", "https") or not u.host:
+        raise ValueError(f"refused non-http URL {url}")
+    # shortcut: httpx resolves the host again on connect, so DNS rebinding between the two lookups is not covered;
+    # pin the checked address in the transport if seller sites become hostile
+    try:
+        infos = socket.getaddrinfo(u.host, u.port or (443 if u.scheme == "https" else 80), proto=socket.IPPROTO_TCP)
+    except OSError as e:
+        raise ValueError(f"cannot resolve {u.host}") from e
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0].split("%")[0])
+        if not ip.is_global or ip.is_multicast:
+            raise ValueError(f"refused non-public address {ip} for {u.host}")
 
 
 class SitePrice(BaseModel):

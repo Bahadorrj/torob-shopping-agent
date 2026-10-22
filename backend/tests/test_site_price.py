@@ -99,3 +99,57 @@ def test_a_shop_without_a_website_or_an_unknown_id_is_refused(client):
     fetch(client, sid, shop_id="shop_nope", status=404)
     fetch(client, sid, product_id="product_nope", status=404)
     fetch(client, "no-such-session", status=404)
+
+
+PUBLIC = "http://93.184.216.34/"  # a public address literal, so no DNS lookup
+
+
+def http_fetch(handler, **kw):
+    from pasazhgard.site_prices import HttpFetch
+
+    return HttpFetch(transport=httpx.MockTransport(handler), **kw)
+
+
+def redirect_to(location):
+    return lambda request: httpx.Response(302, headers={"location": location}) if request.url.host == "93.184.216.34" else httpx.Response(200, text="secret")
+
+
+@pytest.mark.parametrize(
+    "target",
+    ["http://169.254.169.254/latest/meta-data/", "http://127.0.0.1:5432/", "http://10.0.0.5/", "http://[::1]/", "file:///etc/passwd", "http://localhost/"],
+)
+def test_a_seller_site_cannot_redirect_the_fetch_to_an_internal_or_non_http_address(target):
+    with pytest.raises(ValueError):
+        http_fetch(redirect_to(target)).get(PUBLIC)
+
+
+def test_an_internal_address_is_refused_before_any_request():
+    seen = []
+    with pytest.raises(ValueError):
+        http_fetch(lambda request: seen.append(request) or httpx.Response(200, text="x")).get("http://192.168.1.1/")
+    assert seen == []
+
+
+def test_redirects_between_public_pages_are_followed_a_few_hops():
+    def handler(request):
+        n = int(request.url.params.get("n", "0"))
+        return httpx.Response(200, text="page") if n == 3 else httpx.Response(302, headers={"location": f"{PUBLIC}?n={n + 1}"})
+
+    assert http_fetch(handler).get(PUBLIC) == "page"
+
+
+def test_an_endless_redirect_loop_is_refused():
+    with pytest.raises(ValueError):
+        http_fetch(lambda request: httpx.Response(302, headers={"location": PUBLIC})).get(PUBLIC)
+
+
+def test_a_body_over_the_cap_is_refused():
+    with pytest.raises(ValueError):
+        http_fetch(lambda request: httpx.Response(200, content=b"x" * 2_000_001)).get(PUBLIC)
+
+
+def test_the_timeout_is_read_from_the_environment_at_construction(monkeypatch):
+    from pasazhgard.site_prices import HttpFetch
+
+    monkeypatch.setenv("SITE_FETCH_TIMEOUT_SECONDS", "2.5")
+    assert HttpFetch().client.timeout.read == 2.5
