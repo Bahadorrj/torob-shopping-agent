@@ -198,7 +198,8 @@ def build_graph(ports: Ports) -> StateGraph:
 
     @tool
     def plan_visit(shop_ids: list[str], config: RunnableConfig) -> str:
-        """Order 1-6 shops into a visit from the user's location: ETAs, open at arrival, floor and unit. Shows the plan."""
+        """Order 1-6 shops into a visit from the user's location: ETAs, open at arrival, floor and unit, each shop's
+        inquiry; confirmed shops first, an alternative asked in place of a shop that fell through takes its stop. Shows the plan."""
         brief, now = brief_of(config), ports.now()
         if brief.origin is None:
             return error("the brief has no origin: ask the user to share their location")
@@ -210,6 +211,7 @@ def build_graph(ports: Ports) -> StateGraph:
                 mode=brief.travel_mode or "walk",
                 # the brief's visit time, else now, as the plan link in seller compare does; only .arrival is read
                 depart_at=seller_query(brief, "", now).arrival,
+                session_id=session_of(config),
             )
         except ValueError:
             return error("give 1-6 distinct shop ids")

@@ -59,6 +59,8 @@ class Inquiry(BaseModel):
     simulated: bool
     reply: Reply
     events: list[Event]
+    # an alternative asked in place of this inquiry of the session
+    instead_of: int | None = None
 
 
 class InquiryStatus(BaseModel):
@@ -105,12 +107,12 @@ def outcomes(conn, sid: str, product_id: str, now: dt.datetime) -> dict[str, Out
     rows = conn.execute(
         "SELECT * FROM inquiries WHERE session_id = %s AND product_id = %s AND status <> 'draft' ORDER BY inquiry_id", [sid, product_id]
     ).fetchall()
-    result = {}
-    for r in rows:
-        i = _inquiry(r)
-        replied = next((e.at for e in reversed(i.events) if e.reply), None)
-        result[i.shop_id] = Outcome(inquiry_id=i.inquiry_id, status=i.status, **i.reply.model_dump(exclude={"notes", "confidence"}), replied_at=replied)
-    return result
+    return {i.shop_id: outcome(i) for i in map(_inquiry, rows)}
+
+
+def outcome(i: Inquiry) -> Outcome:
+    replied = next((e.at for e in reversed(i.events) if e.reply), None)
+    return Outcome(inquiry_id=i.inquiry_id, status=i.status, **i.reply.model_dump(exclude={"notes", "confidence"}), replied_at=replied)
 
 
 class Ask(BaseModel):
@@ -128,11 +130,16 @@ class Compose(BaseModel):
     offer_ids: Annotated[list[str], AfterValidator(distinct)] = []
     asks: Annotated[list[Ask], AfterValidator(distinct)] = []
     questions: Annotated[list[Question], AfterValidator(distinct)] = ["available", "price", "hold", "installments"]
+    # the inquiry that fell through, when this one asks an alternative; it takes that stop in the visit plan
+    instead_of: int | None = None
 
     @model_validator(mode="after")
     def _one_to_three(self) -> Self:
-        if not 1 <= len(self.offer_ids) + len(self.asks) <= 3:
+        sellers = len(self.offer_ids) + len(self.asks)
+        if not 1 <= sellers <= 3:
             raise ValueError("ask 1 to 3 sellers")
+        if self.instead_of is not None and sellers != 1:
+            raise ValueError("one alternative stands in for one inquiry")
         return self
 
 
@@ -219,6 +226,10 @@ def contact_seller(conn, sid: str, change: Compose, now: dt.datetime) -> Inquiry
     ]
     if None in asks:
         raise LookupError(change.asks)
+    if change.instead_of is not None and not conn.execute(
+        "SELECT 1 FROM inquiries WHERE inquiry_id = %s AND session_id = %s", [change.instead_of, sid]
+    ).fetchone():
+        raise LookupError(change.instead_of)
     by_id = {o["offer_id"]: o for o in offers}
     targets = [by_id[oid] for oid in change.offer_ids] + asks
     products = [o["product_id"] for o in targets]
@@ -233,11 +244,11 @@ def contact_seller(conn, sid: str, change: Compose, now: dt.datetime) -> Inquiry
         drafts.append(
             conn.execute(
                 """
-                INSERT INTO inquiries (session_id, offer_id, product_id, product_title, shop_id, shop_name, status, message, reply, events)
-                VALUES (%s, %s, %s, %s, %s, %s, 'draft', %s, %s, %s) RETURNING *
+                INSERT INTO inquiries (session_id, offer_id, product_id, product_title, shop_id, shop_name, status, message, reply, events, instead_of)
+                VALUES (%s, %s, %s, %s, %s, %s, 'draft', %s, %s, %s, %s) RETURNING *
                 """,
                 [sid, o["offer_id"], o["product_id"], o["product_title"], o["shop_id"], o["shop_name"], message, Jsonb(Reply().model_dump()),
-                 Jsonb([Event(at=now, status="draft").model_dump(mode="json")])],
+                 Jsonb([Event(at=now, status="draft").model_dump(mode="json")]), change.instead_of],
             ).fetchone()
         )
     return InquiryStatus(inquiries=[_inquiry(r) for r in drafts])
