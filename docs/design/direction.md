@@ -132,8 +132,10 @@ the app bar. Every number gets `tabular-nums`.
   ترب‌پی حضوری -> `payment.kind=torob_pay`; اقساطی -> `payment.kind=installment`; گارانتی ->
   `must_have.warranty`. No rating anywhere.
 - محدوده, بودجه and فیلترها open a `Drawer` (bottom sheet, handle, dimmed page). Area: "نزدیک من" with
-  radius chips (500 m, 1/2/5 km), then session areas and pasajs. Budget: presets (۲/۵/۱۰/۲۰ میلیون)
-  and a number field. فیلترها: everything, plus visit time, travel mode, priority, test in presence;
+  radius chips (500 m, 1/2/5 km) and a "مرکز" row for the radius center, then one search field over
+  session areas and pasajs (at most 8 list rows with a محله/پاساژ label; the مرکز row reuses it to pick
+  the center). Budget: presets (۲/۵/۱۰/۲۰ میلیون)
+  and a number field. فیلترها: area as one row that opens the area sheet, budget, plus visit time, travel mode, priority, test in presence;
   its badge counts active filters.
 - Shown on the sellers route and the home hero, not in the global layout. A filter left by an old
   session shows as a pressed chip, one tap from cleared (the audit's stale-brief case).

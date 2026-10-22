@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, ChevronLeft, SlidersHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { useBrief } from "@/components/brief-provider";
@@ -71,6 +71,102 @@ export function Choices<T extends string>({ label, options, value, onPick }: { l
   );
 }
 
+type Place = { kind: "area" | "pasaj"; name: string };
+const KINDS = { area: "محله", pasaj: "پاساژ" };
+// a match ignores ی/ي, ک/ك, spaces and ZWNJ: the data spells one pasaj several ways
+const fold = (s: string) => s.replace(/ي/g, "ی").replace(/ك/g, "ک").replace(/[\s\u200c]/g, "");
+
+type AreaPick = { radius_m: number } | { name: string } | { pasaj: string } | null;
+
+// Radius chips, the radius center, and one search list for places (or for the center), at most 8 rows
+function AreaSheet({ brief, places, centers, center, pickArea, pickOrigin }: {
+  brief: Brief;
+  places: Place[];
+  centers: Center[];
+  center: Center | undefined;
+  pickArea: (a: AreaPick) => void;
+  pickOrigin: (c: Center | null) => Promise<unknown>;
+}) {
+  const [query, setQuery] = useState("");
+  const [forCenter, setForCenter] = useState(false);
+  const q = fold(query);
+  const rows = (forCenter ? centers : places).filter((p) => fold(p.name).includes(q)).slice(0, 8);
+  const area = brief.area;
+  const chooseCenter = async (c: Center | null) => {
+    await pickOrigin(c);
+    setForCenter(false);
+  };
+
+  return (
+    <>
+      <Group label={center ? "شعاع" : "نزدیک من"}>
+        {RADII.map((r) => (
+          <Chip key={r} on={area?.radius_m === r} toggle onClick={() => pickArea({ radius_m: r })}>
+            {radiusLabel(r, center)}
+          </Chip>
+        ))}
+      </Group>
+      <button
+        type="button"
+        aria-expanded={forCenter}
+        className="flex h-11 items-center justify-between gap-2 border-y border-rule text-sm"
+        onClick={() => setForCenter(!forCenter)}
+      >
+        <span className="text-muted-foreground">مرکز</span>
+        <span className="flex min-w-0 items-center gap-1 font-bold">
+          <span className="truncate">{center ? placeLabel(center.kind, center.name) : "موقعیت من"}</span>
+          <ChevronLeft className="size-4 shrink-0" aria-hidden />
+        </span>
+      </button>
+      {forCenter ? (
+        <Group label="مرکز شعاع">
+          <Chip on={!!brief.origin && !center} toggle onClick={() => chooseCenter(null)}>
+            موقعیت من
+          </Chip>
+        </Group>
+      ) : (
+        <Group label="محله یا پاساژ">
+          <Chip on={!area} toggle onClick={() => pickArea(null)}>
+            همه مناطق
+          </Chip>
+          {area && area.radius_m === null && (
+            <Chip on toggle onClick={() => pickArea(area.name ? { name: area.name } : { pasaj: area.pasaj ?? "" })}>
+              {areaLabel(area, center)}
+            </Chip>
+          )}
+        </Group>
+      )}
+      <Input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        aria-label="جستجوی محله یا پاساژ"
+        placeholder="جستجوی محله یا پاساژ"
+        className="h-9"
+      />
+      {rows.length ? (
+        <ul className="-mt-2 flex flex-col divide-y divide-rule">
+          {rows.map((p) => (
+            <li key={`${p.kind}:${p.name}`}>
+              <button
+                type="button"
+                aria-label={placeLabel(p.kind, p.name)}
+                className="flex h-11 w-full items-center gap-3 text-start text-sm"
+                onClick={() => (forCenter ? chooseCenter(p as Center) : pickArea(p.kind === "area" ? { name: p.name } : { pasaj: p.name }))}
+              >
+                <span className="min-w-0 flex-1 truncate">{p.kind === "pasaj" ? faText(p.name) : p.name}</span>
+                <span className="shrink-0 text-xs text-muted-foreground">{KINDS[p.kind]}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">جایی با این نام پیدا نشد</p>
+      )}
+    </>
+  );
+}
+
 function Group({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-2" role="group" aria-label={label}>
@@ -138,7 +234,7 @@ export function FilterChipBar() {
     }
   }
 
-  async function pickArea(area: { radius_m: number } | { name: string } | { pasaj: string } | null) {
+  async function pickArea(area: AreaPick) {
     if (area && "radius_m" in area) {
       if (!(await withOrigin({ area }))) return;
     } else set({ area });
@@ -157,45 +253,6 @@ export function FilterChipBar() {
   const active = [brief.area, brief.budget.max_total_toman, visit.date || visit.earliest_arrival, payment.kind !== "any", ...Object.values(must_have)].filter(Boolean).length;
   const area = areaLabel(brief.area, center);
   const budget = brief.budget.max_total_toman ? `تا ${faDigits(brief.budget.max_total_toman)} تومان` : null;
-
-  const areaPanel = (
-    <>
-      <Group label={center ? "شعاع" : "نزدیک من"}>
-        {RADII.map((r) => (
-          <Chip key={r} on={brief.area?.radius_m === r} toggle onClick={() => pickArea({ radius_m: r })}>
-            {radiusLabel(r, center)}
-          </Chip>
-        ))}
-      </Group>
-      <Group label="مرکز شعاع">
-        <Chip on={!!origin && !center} toggle onClick={() => pickOrigin(null)}>
-          مرکز: موقعیت من
-        </Chip>
-        {centers.map((c) => (
-          <Chip key={`${c.kind}:${c.name}`} on={c === center} toggle onClick={() => pickOrigin(c)}>
-            مرکز: {placeLabel(c.kind, c.name)}
-          </Chip>
-        ))}
-      </Group>
-      <Group label="محله">
-        <Chip on={!brief.area} toggle onClick={() => pickArea(null)}>
-          همه مناطق
-        </Chip>
-        {session.areas.map((a) => (
-          <Chip key={a} on={brief.area?.name === a} toggle onClick={() => pickArea({ name: a })}>
-            {a}
-          </Chip>
-        ))}
-      </Group>
-      <Group label="پاساژ">
-        {session.pasajs.map((p) => (
-          <Chip key={p} on={brief.area?.pasaj === p} toggle onClick={() => pickArea({ pasaj: p })}>
-            {placeLabel("pasaj", p)}
-          </Chip>
-        ))}
-      </Group>
-    </>
-  );
 
   const budgetPanel = (
     <>
@@ -283,7 +340,25 @@ export function FilterChipBar() {
             <DrawerTitle className="font-bold">{TITLES[sheet]}</DrawerTitle>
           </DrawerHeader>
           <div className="flex flex-col gap-4 overflow-y-auto p-4">
-            {sheet !== "budget" && areaPanel}
+            {sheet === "area" && (
+              <AreaSheet
+                brief={brief}
+                places={[...session.areas.map((name) => ({ kind: "area" as const, name })), ...session.pasajs.map((name) => ({ kind: "pasaj" as const, name }))]}
+                centers={centers}
+                center={center}
+                pickArea={pickArea}
+                pickOrigin={pickOrigin}
+              />
+            )}
+            {sheet === "all" && (
+              <button type="button" aria-label={`محدوده: ${area}`} className="flex h-11 items-center justify-between gap-2 border-b border-rule text-sm" onClick={() => show("area")}>
+                <span className="text-muted-foreground">محدوده</span>
+                <span className="flex min-w-0 items-center gap-1 font-bold">
+                  <span className="truncate">{area}</span>
+                  <ChevronLeft className="size-4 shrink-0" aria-hidden />
+                </span>
+              </button>
+            )}
             {sheet !== "area" && budgetPanel}
             {sheet === "all" && (
               <>
