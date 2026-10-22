@@ -22,6 +22,7 @@ from pasazhgard.agent import Ports, build_graph, chat_model_from_env
 from pasazhgard.alternatives import Alternatives, find_alternatives
 from pasazhgard.brief import Session, SessionPatch, create_session, get_session, patch_session
 from pasazhgard.compare import Product, ProductCompare, ProductCompareQuery, compare_products, get_product
+from pasazhgard.discovery import Shortlist, SuggestQuery, suggest_models
 from pasazhgard.embeddings import Embedder, embedder_from_env
 from pasazhgard.inquiries import (
     Compose,
@@ -139,6 +140,17 @@ def products_search(
     embedder: Embedder | None = Depends(get_embedder),
 ) -> SearchResult:
     return search_products(conn, q, now, limit, embedder)
+
+
+# before /products/{product_id}, which would take "suggest" as an id
+@app.get("/products/suggest")
+def products_suggest(
+    q: Annotated[SuggestQuery, Query()],
+    conn=Depends(get_conn),
+    now: datetime = Depends(get_now),
+    embedder: Embedder | None = Depends(get_embedder),
+) -> Shortlist:
+    return suggest_models(conn, q, now, embedder)
 
 
 # before /products/{product_id}, which would take "compare" as an id
