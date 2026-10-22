@@ -9,10 +9,9 @@ from pydantic import AfterValidator, AwareDatetime, BaseModel, Field, model_vali
 from pasazhgard.compare import get_product
 from pasazhgard.inquiries import outcomes
 from pasazhgard.normalize import distinct
+from pasazhgard.routing import SPEED_KMH, TravelMode
 from pasazhgard.sellers import SellerRow, _distance, _row, seller_offers
 from pasazhgard.shops import TEHRAN, open_at
-
-TravelMode = Literal["walk", "transit", "car"]
 
 
 class CompareQuery(BaseModel):
@@ -50,9 +49,8 @@ class SellerCompare(BaseModel):
 
 def compare_sellers(conn, product_id: str, q: CompareQuery, now: datetime) -> SellerCompare | None:
     """None when the product is missing or an offer is not one of its offers."""
-    # shortcut: straight-line distance at a flat speed per mode ignores streets and traffic,
-    # replace with the routing port when travel times drive the visit plan
-    kmh = {"walk": 4.5, "transit": 15, "car": 20}
+    # shortcut: straight-line estimate for up to three sellers; the visit plan uses the routing port.
+    # Move here too if compare times and plan times disagree visibly
     product = get_product(conn, product_id)
     if product is None:
         return None
@@ -64,7 +62,7 @@ def compare_sellers(conn, product_id: str, q: CompareQuery, now: datetime) -> Se
     for oid in q.offer_id:
         o = by_id[oid]
         d = _distance(q, o)
-        travel = None if d is None else ceil(d / (kmh[q.mode] * 1000 / 60))
+        travel = None if d is None else ceil(d / (SPEED_KMH[q.mode] * 1000 / 60))
         at = (q.arrival or now + timedelta(minutes=travel or 0)).astimezone(TEHRAN)
         cols.append(
             SellerColumn(

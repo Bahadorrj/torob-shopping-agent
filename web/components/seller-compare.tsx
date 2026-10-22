@@ -14,19 +14,18 @@ import {
   composeInquiries,
   confirmInquiries,
   inquiriesStreamUrl,
+  type Brief,
   type CompareParams,
   type InquiryStatus,
   type SellerColumn,
   type SellerCompare as Compare,
-  type Session,
 } from "@/lib/api";
 import { distance, faDigits, faText, localDate, priceAge } from "@/lib/format";
 import { useEventStream } from "@/lib/use-event-stream";
 
-function params({ session_id, brief: b }: Session): CompareParams {
+function params(b: Brief): CompareParams {
   const v = b.visit_window;
   return {
-    session_id,
     lat: b.origin?.lat,
     lon: b.origin?.lon,
     mode: b.travel_mode ?? undefined,
@@ -107,6 +106,18 @@ const ROWS: [string, (s: SellerColumn) => React.ReactNode][] = [
   ],
 ];
 
+// the visit plan for the compared shops; the brief's visit time, else now, is when the trip starts
+function planLink(b: Brief, shopIds: string[]) {
+  if (!b.origin) return null;
+  const { lat, lon, mode, arrival } = params(b);
+  const q = new URLSearchParams(shopIds.map((id) => ["shop_id", id]));
+  q.set("lat", String(lat));
+  q.set("lon", String(lon));
+  q.set("mode", mode ?? "walk");
+  q.set("depart_at", arrival ?? new Date().toISOString());
+  return `/plan?${q}`;
+}
+
 // buttons do not wrap by default, which overflows a narrow column
 const WRAP = "h-auto whitespace-normal py-1";
 
@@ -121,7 +132,7 @@ export function SellerCompare({ productId, offerIds }: { productId: string; offe
   const inquiries = (tracked?.inquiries ?? []).filter((i) => i.product_id === productId);
   // refetch only when a brief field the compare reads changes, or a seller replies
   const replies = inquiries.map((i) => i.events.length).join();
-  const key = session && JSON.stringify(params(session));
+  const key = session && JSON.stringify({ ...params(session.brief), session_id: session.session_id });
   const ids = offerIds.join();
 
   useEffect(() => {
@@ -146,6 +157,7 @@ export function SellerCompare({ productId, offerIds }: { productId: string; offe
   if (state.status === "missing") return <p className="text-sm text-muted-foreground">فروشنده‌های انتخاب‌شده پیدا نشدند.</p>;
 
   const { compare } = state;
+  const plan = session && planLink(session.brief, [...new Set(compare.sellers.map((s) => s.shop_id))]);
   return (
     <article className="flex flex-col gap-3">
       <h1 className="text-lg font-bold leading-7">مقایسه فروشنده‌ها</h1>
@@ -203,6 +215,13 @@ export function SellerCompare({ productId, offerIds }: { productId: string; offe
       <p className="text-xs text-muted-foreground">موجودی، قیمت امروز، نگه‌داشتن کالا و اقساط را می‌پرسیم. اول پیش‌نویس را می‌بینید.</p>
       {composeError && <p className="text-sm text-destructive">پیش‌نویس ساخته نشد. برای هر کالا حداکثر ۳ استعلام باز می‌ماند.</p>}
       <InquiryTracker inquiries={inquiries} onConfirm={(inquiryIds) => confirmInquiries(sid!, inquiryIds)} />
+      {plan ? (
+        <Link href={plan} className={buttonVariants({ size: "lg", className: "self-center" })}>
+          برنامه مراجعه
+        </Link>
+      ) : (
+        <p className="text-xs text-muted-foreground">برای برنامه مراجعه، مبدأ را در خلاصه خرید انتخاب کنید.</p>
+      )}
     </article>
   );
 }
