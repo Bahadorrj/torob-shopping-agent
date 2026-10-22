@@ -11,8 +11,9 @@ import uuid
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from itertools import takewhile
 from datetime import datetime
+from itertools import takewhile
+from textwrap import dedent
 from typing import Annotated, Literal
 
 from langchain_core.callbacks import dispatch_custom_event
@@ -125,28 +126,6 @@ def _session(config: RunnableConfig) -> str:
     return config["configurable"]["thread_id"]
 
 
-BRIEF_PROMPT = """You keep the Shopping Brief of an in-store shopping assistant for Tehran.
-Now: {now} (Asia/Tehran). Current brief: {brief}
-Return only the fields the user's latest message states or changes; prices are in toman."""
-
-AGENT_PROMPT = """You are Pasazhgard, an in-store shopping assistant for Tehran's shops and pasajs. Reply in short Persian.
-Now: {now} (Asia/Tehran). Shopping Brief: {brief}
-- Use tools for every product, shop, price and hour. Never state a price, shop or stock that no tool returned;
-  the UI shows tool results as cards, so refer to them instead of repeating numbers.
-- If a missing brief field would change the answer, call ask_user for that one field and stop.
-  Ask one question per turn, and none when the answer would not change the result.
-- Guided discovery: when the user names a need or category rather than a model, or asks for help choosing
-  ("کمکم کن انتخاب کنم"), shortlist models with suggest_models before any find_sellers. First ask about use,
-  features and budget, at most these three and only what the brief lacks; give use and features 3-5 short options.
-  In the reply, explain the trade-offs from the shortlist; do not repeat its prices.
-- Never say an item is in stock unless a seller confirmed it.
-- contact_seller only drafts messages; the user sends them with the button under the drafts. Never say a message
-  was sent or a seller answered unless get_inquiries shows it.
-- When an inquiry turns unavailable, no_reply or closed, call find_alternatives for it."""
-
-CHIP_FIELDS = Literal["area", "budget", "visit_window", "payment", "quantity", "need", "use", "features"]
-
-
 def build_graph(ports: Ports) -> StateGraph:
     """The orchestrator graph, uncompiled: the app compiles it with its checkpointer."""
 
@@ -256,7 +235,7 @@ def build_graph(ports: Ports) -> StateGraph:
 
     @tool
     def ask_user(
-        field: CHIP_FIELDS,
+        field: Literal["area", "budget", "visit_window", "payment", "quantity", "need", "use", "features"],
         question: str,
         state: Annotated[dict, InjectedState],
         call_id: Annotated[str, InjectedToolCallId],
@@ -334,7 +313,13 @@ def build_graph(ports: Ports) -> StateGraph:
     def patch_brief(state: MessagesState, config: RunnableConfig) -> dict:
         sid, brief = _session(config), brief_of(config)
         structured = ports.model().with_structured_output(BriefPatch, method="json_schema")
-        prompt = SystemMessage(BRIEF_PROMPT.format(now=ports.now().isoformat(), brief=brief.model_dump_json()))
+        prompt = dedent(
+            """\
+            You keep the Shopping Brief of an in-store shopping assistant for Tehran.
+            Now: {now} (Asia/Tehran). Current brief: {brief}
+            Return only the fields the user's latest message states or changes; prices are in toman."""
+        )
+        prompt = SystemMessage(prompt.format(now=ports.now().isoformat(), brief=brief.model_dump_json()))
         # the patch is state, not chat: keep its tokens out of the AG-UI stream
         patch = structured.invoke(
             [prompt, *state["messages"]], config={"metadata": {"emit-messages": False, "emit-tool-calls": False}}
@@ -348,7 +333,24 @@ def build_graph(ports: Ports) -> StateGraph:
 
     def agent(state: MessagesState, config: RunnableConfig) -> dict:
         brief = brief_of(config)
-        prompt = SystemMessage(AGENT_PROMPT.format(now=ports.now().isoformat(), brief=brief.model_dump_json()))
+        prompt = dedent(
+            """\
+            You are Pasazhgard, an in-store shopping assistant for Tehran's shops and pasajs. Reply in short Persian.
+            Now: {now} (Asia/Tehran). Shopping Brief: {brief}
+            - Use tools for every product, shop, price and hour. Never state a price, shop or stock that no tool returned;
+              the UI shows tool results as cards, so refer to them instead of repeating numbers.
+            - If a missing brief field would change the answer, call ask_user for that one field and stop.
+              Ask one question per turn, and none when the answer would not change the result.
+            - Guided discovery: when the user names a need or category rather than a model, or asks for help choosing
+              ("کمکم کن انتخاب کنم"), shortlist models with suggest_models before any find_sellers. First ask about use,
+              features and budget, at most these three and only what the brief lacks; give use and features 3-5 short options.
+              In the reply, explain the trade-offs from the shortlist; do not repeat its prices.
+            - Never say an item is in stock unless a seller confirmed it.
+            - contact_seller only drafts messages; the user sends them with the button under the drafts. Never say a message
+              was sent or a seller answered unless get_inquiries shows it.
+            - When an inquiry turns unavailable, no_reply or closed, call find_alternatives for it."""
+        )
+        prompt = SystemMessage(prompt.format(now=ports.now().isoformat(), brief=brief.model_dump_json()))
         return {"messages": [ports.model().bind_tools(tools).invoke([prompt, *state["messages"]])]}
 
     def degraded(state: MessagesState, config: RunnableConfig) -> dict:

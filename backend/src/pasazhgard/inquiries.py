@@ -3,6 +3,7 @@
 import datetime as dt
 import logging
 import os
+from textwrap import dedent
 from typing import Annotated, Literal, Protocol, Self
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -375,16 +376,17 @@ class ReplyParse(BaseModel):
     )
 
 
-PARSE_PROMPT = """You read a seller's free-text answer to a buyer's inquiry in Tehran. Times are local (Asia/Tehran);
-"5 عصر" is 17:00. Prices are in toman; "3 میلیون و 400" is 3400000.
-The buyer asked: {message}
-{asked}"""
-
-
 def _parse(model, inquiry: Inquiry, text: str) -> ReplyParse:
     asked = next((f"Then you asked: {e.question}" for e in reversed(inquiry.events) if e.question), "")
+    prompt = dedent(
+        """\
+        You read a seller's free-text answer to a buyer's inquiry in Tehran. Times are local (Asia/Tehran);
+        "5 عصر" is 17:00. Prices are in toman; "3 میلیون و 400" is 3400000.
+        The buyer asked: {message}
+        {asked}"""
+    )
     structured = model.with_structured_output(ReplyParse, method="json_schema")
-    return structured.invoke([SystemMessage(PARSE_PROMPT.format(message=inquiry.message, asked=asked)), HumanMessage(text)])
+    return structured.invoke([SystemMessage(prompt.format(message=inquiry.message, asked=asked)), HumanMessage(text)])
 
 
 def record_reply(conn, inquiry_id: int, body: ConsoleReply, now: dt.datetime, model=None) -> Inquiry:
