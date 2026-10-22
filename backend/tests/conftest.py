@@ -59,10 +59,12 @@ def database_url(fixture_dir, embedder):
 @pytest.fixture(scope="session")
 def client(database_url, now):
     os.environ["DATABASE_URL"] = database_url
-    from pasazhgard.api import app, get_embedder, get_now
+    from pasazhgard.api import app, get_embedder, get_now, get_router
+    from pasazhgard.routing import StraightLine
 
     app.dependency_overrides[get_now] = lambda: now
     # lexical unless a test plugs in the fake; never the real provider from the developer's env
     app.dependency_overrides[get_embedder] = lambda: None
+    app.dependency_overrides[get_router] = lambda: StraightLine()
     with TestClient(app) as c:
         yield c
