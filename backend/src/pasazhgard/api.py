@@ -42,6 +42,7 @@ from pasazhgard.inquiries import (
     get_inquiries,
     record_reply,
 )
+from pasazhgard.pasaj import PasajView, brief_products, pasaj_view
 from pasazhgard.responder import Responder, respond, responder_from_env
 from pasazhgard.routing import Router, router_from_env
 from pasazhgard.search import SearchResult, search_products
@@ -237,6 +238,25 @@ def shops_detail(shop_id: str, conn=Depends(get_conn), now: datetime = Depends(g
     if shop is None:
         raise HTTPException(404, "shop not found")
     return shop
+
+
+@app.get("/pasajs/{pasaj}")
+def pasajs_detail(
+    pasaj: str,
+    product_id: Annotated[list[str], Query()] = [],
+    session_id: str | None = None,
+    conn=Depends(get_conn),
+    now: datetime = Depends(get_now),
+) -> PasajView:
+    if session_id is not None:
+        session = get_session(conn, session_id)
+        if session is None:
+            raise HTTPException(404, "session not found")
+        product_id = [*product_id, *brief_products(session)]
+    view = pasaj_view(conn, pasaj, product_id, now)
+    if view is None:
+        raise HTTPException(404, "pasaj not found")
+    return view
 
 
 @app.get("/shops/{shop_id}/directions")

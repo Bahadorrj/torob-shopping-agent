@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { pasajHref } from "@/components/pasaj-view";
 import { Badge } from "@/components/ui/badge";
 import { getShop, type Day, type DayHours, type ShopDetails as Shop } from "@/lib/api";
 import { faText } from "@/lib/format";
@@ -69,7 +71,16 @@ export function ShopDetails({ shopId }: { shopId: string }) {
         <h2 className="text-sm font-semibold">مکان</h2>
         <table className="w-full text-sm">
           <tbody>
-            <Row label="پاساژ">{shop.pasaj && faText(shop.pasaj)}</Row>
+            <Row label="پاساژ">
+              {shop.pasaj && (
+                <span className="flex flex-wrap gap-x-3">
+                  {faText(shop.pasaj)}
+                  <Link href={pasajHref(shop.pasaj)} className="text-primary underline underline-offset-4">
+                    همه فروشگاه‌های این پاساژ
+                  </Link>
+                </span>
+              )}
+            </Row>
             <Row label="طبقه">{shop.floor && faText(shop.floor)}</Row>
             <Row label="واحد">{shop.unit && faText(shop.unit)}</Row>
             {shop.landmark && <Row label="نشانه">{shop.landmark}</Row>}
