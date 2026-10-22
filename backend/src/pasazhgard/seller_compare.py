@@ -4,9 +4,10 @@ from datetime import datetime, timedelta
 from math import ceil
 from typing import Annotated, Literal, Self
 
-from pydantic import AwareDatetime, BaseModel, Field, field_validator, model_validator
+from pydantic import AfterValidator, AwareDatetime, BaseModel, Field, model_validator
 
-from pasazhgard.sellers import SellerRow, _distance, _row
+from pasazhgard.compare import get_product
+from pasazhgard.sellers import SellerRow, _distance, _row, distinct, seller_offers
 from pasazhgard.shops import TEHRAN, open_at
 
 TravelMode = Literal["walk", "transit", "car"]
@@ -16,7 +17,7 @@ KMH: dict[str, float] = {"walk": 4.5, "transit": 15, "car": 20}
 
 
 class CompareQuery(BaseModel):
-    offer_id: Annotated[list[str], Field(min_length=1, max_length=3)]
+    offer_id: Annotated[list[str], Field(min_length=1, max_length=3), AfterValidator(distinct)]
     lat: float | None = Field(None, ge=-90, le=90)
     lon: float | None = Field(None, ge=-180, le=180)
     mode: TravelMode = "walk"
@@ -28,13 +29,6 @@ class CompareQuery(BaseModel):
         if (self.lat is None) != (self.lon is None):
             raise ValueError("lat and lon go together")
         return self
-
-    @field_validator("offer_id")
-    @classmethod
-    def _distinct(cls, ids: list[str]) -> list[str]:
-        if len(set(ids)) != len(ids):
-            raise ValueError("offer ids repeat")
-        return ids
 
 
 class LatestPrice(BaseModel):
@@ -66,18 +60,10 @@ class SellerCompare(BaseModel):
 
 def compare_sellers(conn, product_id: str, q: CompareQuery, now: datetime) -> SellerCompare | None:
     """None when the product is missing or an offer is not one of its offers."""
-    product = conn.execute("SELECT title FROM products WHERE product_id = %s", [product_id]).fetchone()
+    product = get_product(conn, product_id)
     if product is None:
         return None
-    offers = conn.execute(
-        """
-        SELECT o.*, s.name, s.location_label, s.pasaj, s.floor, s.unit, s.lat, s.lon, s.hours, s.payment_options, s.fast_delivery
-        FROM offers o JOIN shops s USING (shop_id)
-        WHERE o.product_id = %s AND o.offer_id = ANY(%s)
-        """,
-        [product_id, q.offer_id],
-    ).fetchall()
-    by_id = {o["offer_id"]: o for o in offers}
+    by_id = {o["offer_id"]: o for o in seller_offers(conn, product_id) if o["offer_id"] in q.offer_id}
     if len(by_id) != len(q.offer_id):
         return None
     cols = []
@@ -95,4 +81,4 @@ def compare_sellers(conn, product_id: str, q: CompareQuery, now: datetime) -> Se
                 fast_delivery=o["fast_delivery"],
             )
         )
-    return SellerCompare(product_id=product_id, title=product["title"], travel_mode=q.mode, sellers=cols)
+    return SellerCompare(product_id=product_id, title=product.title, travel_mode=q.mode, sellers=cols)

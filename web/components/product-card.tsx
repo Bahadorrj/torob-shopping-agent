@@ -1,9 +1,9 @@
 import Link from "next/link";
 
-import { CompareToggle } from "@/components/compare-tray";
+import { TrayToggle } from "@/components/compare-tray";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import type { PriceFlag, ProductCard as Product } from "@/lib/api";
+import type { PriceFlag, PriceRange, ProductCard as Product } from "@/lib/api";
 import { faDigits, faText, priceAge, toman } from "@/lib/format";
 
 const FLAG_LABELS: Partial<Record<PriceFlag, string>> = {
@@ -34,6 +34,26 @@ function whySentence(p: Product) {
   return `${found}${faDigits(p.offer_count)} فروشنده آن را ${priced} ثبت کرده‌اند.`;
 }
 
+// a listed price range with its trust level and age, else "not recorded"
+export function ListedPrice({ price }: { price: PriceRange }) {
+  if (price.trust_level !== "listed" || price.min_toman === null || price.max_toman === null) {
+    return <span className="text-sm text-muted-foreground">قیمت ثبت نشده</span>;
+  }
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-sm font-bold">{toman(price.min_toman, price.max_toman)}</span>
+        {price.per_meter && <Badge variant="outline">قیمت هر متر</Badge>}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+        <Badge variant="secondary">قیمت ثبت‌شده</Badge>
+        <span>{priceAge(price.price_age_days)}</span>
+        {price.price_age_bucket === ">30" && <span className="text-amber-700">قیمت قدیمی، استعلام بگیرید</span>}
+      </div>
+    </>
+  );
+}
+
 export function ProductCard({ product }: { product: Product }) {
   const { price } = product;
   const notes = product.price_flags.flatMap((f) => FLAG_LABELS[f] ?? []);
@@ -55,21 +75,7 @@ export function ProductCard({ product }: { product: Product }) {
             {product.key_specs.map((s) => `${s.key}: ${s.value}`).join(" · ")}
           </p>
         )}
-        {price.trust_level === "listed" && price.min_toman !== null && price.max_toman !== null ? (
-          <>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-sm font-bold">{toman(price.min_toman, price.max_toman)}</span>
-              {price.per_meter && <Badge variant="outline">قیمت هر متر</Badge>}
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-              <Badge variant="secondary">قیمت ثبت‌شده</Badge>
-              <span>{priceAge(price.price_age_days)}</span>
-              {price.price_age_bucket === ">30" && <span className="text-amber-700">قیمت قدیمی، استعلام بگیرید</span>}
-            </div>
-          </>
-        ) : (
-          <span className="text-sm text-muted-foreground">قیمت ثبت نشده</span>
-        )}
+        <ListedPrice price={price} />
         <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           <span>{faDigits(product.offer_count)} فروشنده</span>
           {notes.map((n) => (
@@ -97,7 +103,7 @@ export function ProductCard({ product }: { product: Product }) {
           </div>
         </details>
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <CompareToggle item={{ product_id: product.product_id, title: product.title }} />
+          <TrayToggle item={{ product_id: product.product_id, title: product.title }} />
           {product.offer_count > 0 && (
             <Link href={`/products/${product.product_id}/sellers`} className="font-medium text-primary underline-offset-4 hover:underline">
               دیدن فروشنده‌ها

@@ -40,14 +40,18 @@ export function CompareTrayProvider({ children }: { children: React.ReactNode })
   return <TrayContext.Provider value={value}>{children}</TrayContext.Provider>;
 }
 
-export function CompareToggle({ item }: { item: Item }) {
-  const { items, toggle } = useTray();
-  const added = items.some((i) => i.product_id === item.product_id);
+// one compare pick, for products here and for sellers in the seller list; a full pick list disables adding
+export function CompareToggle({ on, full, onToggle }: { on: boolean; full: boolean; onToggle: () => void }) {
   return (
-    <Button variant={added ? "default" : "outline"} size="xs" aria-pressed={added} disabled={!added && items.length >= MAX} onClick={() => toggle(item)}>
-      افزودن به مقایسه
+    <Button variant="outline" size="sm" className="self-start" aria-pressed={on} disabled={!on && full} onClick={onToggle}>
+      {on ? "حذف از مقایسه" : "افزودن به مقایسه"}
     </Button>
   );
+}
+
+export function TrayToggle({ item }: { item: Item }) {
+  const { items, toggle } = useTray();
+  return <CompareToggle on={items.some((i) => i.product_id === item.product_id)} full={items.length >= MAX} onToggle={() => toggle(item)} />;
 }
 
 export function CompareTrayBar() {

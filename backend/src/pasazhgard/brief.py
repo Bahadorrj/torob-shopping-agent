@@ -5,12 +5,12 @@ import uuid
 from typing import Annotated, Literal, Self
 
 from psycopg.types.json import Jsonb
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import AfterValidator, BaseModel, Field, field_validator, model_validator
 
 from pasazhgard.compare import ProductCompare, compare_products
 from pasazhgard.embeddings import Embedder
 from pasazhgard.search import SearchResult, search_products
-from pasazhgard.sellers import SellerList, SellerQuery, area_options, find_sellers
+from pasazhgard.sellers import SellerList, SellerQuery, area_options, distinct, find_sellers
 from pasazhgard.shops import TEHRAN
 
 
@@ -99,14 +99,7 @@ class SellersStep(BaseModel):
 
 class CompareStep(BaseModel):
     kind: Literal["compare"] = "compare"
-    product_ids: list[str] = Field(min_length=2, max_length=3)
-
-    @field_validator("product_ids")
-    @classmethod
-    def _distinct(cls, ids: list[str]) -> list[str]:
-        if len(set(ids)) != len(ids):
-            raise ValueError("a product is listed twice")
-        return ids
+    product_ids: Annotated[list[str], Field(min_length=2, max_length=3), AfterValidator(distinct)]
 
 
 Step = Annotated[SearchStep | SellersStep | CompareStep, Field(discriminator="kind")]

@@ -271,11 +271,9 @@ def area_options(conn) -> dict[str, list[str]]:
     return {k: sorted(v for v in row[k] or [] if v) for k in ("areas", "pasajs")}
 
 
-def find_sellers(conn, product_id: str, q: SellerQuery, now: datetime) -> SellerList | None:
-    product = conn.execute("SELECT product_id, title, category FROM products WHERE product_id = %s", [product_id]).fetchone()
-    if product is None:
-        return None
-    offers = conn.execute(
+def seller_offers(conn, product_id: str) -> list[dict]:
+    """A product's offers, each with the shop fields a seller row needs."""
+    return conn.execute(
         """
         SELECT o.*, s.name, s.location_label, s.pasaj, s.floor, s.unit, s.lat, s.lon, s.hours, s.payment_options, s.fast_delivery
         FROM offers o JOIN shops s USING (shop_id)
@@ -283,6 +281,13 @@ def find_sellers(conn, product_id: str, q: SellerQuery, now: datetime) -> Seller
         """,
         [product_id],
     ).fetchall()
+
+
+def find_sellers(conn, product_id: str, q: SellerQuery, now: datetime) -> SellerList | None:
+    product = conn.execute("SELECT product_id, title, category FROM products WHERE product_id = %s", [product_id]).fetchone()
+    if product is None:
+        return None
+    offers = seller_offers(conn, product_id)
     # one row per shop: its cheapest usable offer, else any offer
     best = {}
     for o in sorted(offers, key=lambda o: (not _usable([o]), o["price_toman"] or 0, o["offer_id"])):

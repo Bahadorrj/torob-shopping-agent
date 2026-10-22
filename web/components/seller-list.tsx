@@ -5,6 +5,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { Choices } from "@/components/brief-bar";
 import { useBrief } from "@/components/brief-provider";
+import { CompareToggle } from "@/components/compare-tray";
 import { pinKey, pins, SellerMap } from "@/components/seller-map";
 
 import { Badge } from "@/components/ui/badge";
@@ -102,26 +103,17 @@ function Seller({ s, children }: { s: SellerRow; children?: ReactNode }) {
   );
 }
 
-// offers picked for the seller compare
-function CompareToggle({ id, ids, setIds }: { id: string; ids: string[]; setIds: (f: (ids: string[]) => string[]) => void }) {
-  const on = ids.includes(id);
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      className="self-start"
-      aria-pressed={on}
-      disabled={!on && ids.length >= COMPARE_MAX}
-      onClick={() => setIds((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))}
-    >
-      {on ? "حذف از مقایسه" : "افزودن به مقایسه"}
-    </Button>
-  );
-}
-
 export function SellerList({ productId }: { productId: string }) {
   const { session, pending, error, patch } = useBrief();
+  // offers picked for the seller compare
   const [compareIds, setCompareIds] = useState<string[]>([]);
+  const compareToggle = (id: string) => (
+    <CompareToggle
+      on={compareIds.includes(id)}
+      full={compareIds.length >= COMPARE_MAX}
+      onToggle={() => setCompareIds((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))}
+    />
+  );
 
   // entering this step keeps the brief; the response carries this product's sellers filtered by it
   useEffect(() => {
@@ -213,7 +205,7 @@ export function SellerList({ productId }: { productId: string }) {
           {list.sellers.map((s) => (
             <li key={s.offer_id} aria-current={pinKey(s) === selected || undefined} className={PICKED}>
               <Seller s={s}>
-                <CompareToggle id={s.offer_id} ids={compareIds} setIds={setCompareIds} />
+                {compareToggle(s.offer_id)}
               </Seller>
             </li>
           ))}
@@ -230,7 +222,7 @@ export function SellerList({ productId }: { productId: string }) {
             {list.ask_them.map((s) => (
               <li key={s.offer_id} aria-current={pinKey(s) === selected || undefined} className={PICKED}>
                 <Seller s={s}>
-                  <CompareToggle id={s.offer_id} ids={compareIds} setIds={setCompareIds} />
+                  {compareToggle(s.offer_id)}
                 </Seller>
               </li>
             ))}

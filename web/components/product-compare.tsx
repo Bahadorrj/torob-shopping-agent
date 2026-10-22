@@ -4,27 +4,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { useBrief } from "@/components/brief-provider";
-import { Badge } from "@/components/ui/badge";
+import { ListedPrice } from "@/components/product-card";
 import { Button } from "@/components/ui/button";
 import type { CompareColumn } from "@/lib/api";
-import { faDigits, faText, priceAge, toman } from "@/lib/format";
+import { faDigits, faText } from "@/lib/format";
 
 const UNKNOWN = <span className="text-muted-foreground">ثبت نشده</span>;
-
-function Price({ price }: { price: CompareColumn["price"] }) {
-  if (price.trust_level !== "listed" || price.min_toman === null || price.max_toman === null) {
-    return <span className="text-muted-foreground">قیمت ثبت نشده</span>;
-  }
-  return (
-    <div className="flex flex-col items-start gap-1">
-      <span className="font-bold">{toman(price.min_toman, price.max_toman)}</span>
-      {price.per_meter && <Badge variant="outline">قیمت هر متر</Badge>}
-      <Badge variant="secondary">قیمت ثبت‌شده</Badge>
-      <span className="text-xs text-muted-foreground">{priceAge(price.price_age_days)}</span>
-      {price.price_age_bucket === ">30" && <span className="text-xs text-amber-700">قیمت قدیمی، استعلام بگیرید</span>}
-    </div>
-  );
-}
 
 function Warranty({ w }: { w: CompareColumn["warranty"] }) {
   if (w.trust_level === "unknown") return UNKNOWN;
@@ -88,7 +73,9 @@ export function ProductCompare({ ids }: { ids: string[] }) {
               </th>
               {products.map((p) => (
                 <td key={p.product_id} className={cell}>
-                  <Price price={p.price} />
+                  <div className="flex flex-col gap-1">
+                    <ListedPrice price={p.price} />
+                  </div>
                 </td>
               ))}
             </tr>
