@@ -67,6 +67,14 @@ def suggest_models(conn, q: SuggestQuery, now: datetime, embedder: Embedder | No
     ]
     if len(models) >= 2:
         _add_tradeoffs(conn, models, q, now)
+    elif models:
+        # nothing to weigh it against: say it stands alone and cite its own specs; the card shows price and sellers
+        [m] = models
+        m.tradeoffs = [
+            "تنها مدل نزدیک برای این نیاز",
+            *(["فقط یک فروشنده در این محدوده"] if m.seller_count == 1 else []),
+            *(f"{s.key}: {s.value}" for s in m.key_specs[:2]),
+        ]
     return Shortlist(need=q.need, models=models)
 
 

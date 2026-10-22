@@ -1,4 +1,4 @@
-"""find_alternatives: where else to ask when an inquiry falls through (PRD F6, F7)."""
+"""find_alternatives: where else to ask when an inquiry falls through."""
 
 import datetime as dt
 from typing import Literal
@@ -40,17 +40,22 @@ class Alternative(BaseModel):
 
 
 class Alternatives(BaseModel):
-    """The `alternatives` block: the top 2 places to ask instead, in PRD F6 order."""
+    """The `alternatives` block: the top 2 places to ask instead, best first."""
 
     inquiry_id: int
     reason: Reason
     alternatives: list[Alternative]
 
 
+def _decimal(x: float) -> str:
+    """One decimal in Persian digits, none when it is zero: ۲٫۵, ۳."""
+    return _fa(f"{x:.1f}".removesuffix(".0")).replace(".", "٫")
+
+
 def _toman(n: int) -> str:
     if n < 1_000_000:
         return f"{_fa(str(round(n / 1000)))} هزار تومان"
-    return f"{_fa(f'{n / 1_000_000:.1f}'.removesuffix('.0')).replace('.', '٫')} میلیون تومان"
+    return f"{_decimal(n / 1_000_000)} میلیون تومان"
 
 
 def _tradeoff(a: Alternative) -> str:
@@ -60,7 +65,7 @@ def _tradeoff(a: Alternative) -> str:
     if a.same_pasaj:
         parts.append("همین پاساژ")
     elif a.distance_m is not None:
-        parts.append(f"{_fa(str(a.distance_m))} متر فاصله" if a.distance_m < 1000 else f"{_fa(f'{a.distance_m / 1000:.1f}').replace('.', '٫')} کیلومتر فاصله")
+        parts.append(f"{_fa(str(a.distance_m))} متر فاصله" if a.distance_m < 1000 else f"{_decimal(a.distance_m / 1000)} کیلومتر فاصله")
     if a.open_now is not None:
         parts.append("الان باز است" if a.open_now else "الان بسته است")
     if a.kind == "fast_delivery":
@@ -71,7 +76,7 @@ def _tradeoff(a: Alternative) -> str:
 def find_alternatives(conn, sid: str, inquiry_id: int, now: dt.datetime) -> Alternatives | None:
     """None when the session has no such inquiry; ValueError when the inquiry has not fallen through.
 
-    Order (F6): the same product at another open shop near the plan, same pasaj first; a similar product (same
+    Order: the same product at another open shop near the plan, same pasaj first; a similar product (same
     category, a spec in common, within budget) nearby; shops of the category that do not list it, to ask; shops
     that deliver fast. Shops already asked about the item are left out, and so are shops closed now, except
     fast-delivery ones.
@@ -132,15 +137,17 @@ def find_alternatives(conn, sid: str, inquiry_id: int, now: dt.datetime) -> Alte
         product = get_product(conn, inquiry.product_id)
         if product.category is None:
             return []
-        mine = {(s.key, normalize(s.value)) for s in product.specs}
-        found = []
-        for p in conn.execute(
+        # colour says nothing about fit
+        mine = {(s.key, normalize(s.value)) for s in product.specs if "رنگ" not in s.key}
+        rows = conn.execute(
             "SELECT product_id, specs FROM products WHERE category = %s AND product_id <> %s", [product.category, product.product_id]
-        ).fetchall():
-            # shortcut: one spec in common counts as close; weigh specs if suggestions look far off
-            if shared := len(mine & {(s["key"], normalize(s["value"])) for s in p["specs"]}):
-                result = find_sellers(conn, p["product_id"], q, now)
-                found += [(shared, a) for a in offers("similar_product", result, result.sellers + result.ask_them) if a.open_now is not False]
+        ).fetchall()
+        ranked = sorted(((len(mine & {(s["key"], normalize(s["value"])) for s in p["specs"]}), p["product_id"]) for p in rows), key=lambda r: -r[0])
+        found = []
+        # shortcut: sellers of only the 5 products sharing the most specs are looked up; weigh specs if suggestions look far off
+        for shared, product_id in [r for r in ranked if r[0]][:5]:
+            result = find_sellers(conn, product_id, q, now)
+            found += [(shared, a) for a in offers("similar_product", result, result.sellers + result.ask_them) if a.open_now is not False]
         return [a for _, a in sorted(found, key=lambda x: (-x[0], near(x[1])))]
 
     def category_only():

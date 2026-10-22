@@ -1,7 +1,9 @@
 """Seller Liaison outside the graph (ADR-0002): the inquiry store, its state machine and the seller channel port."""
 
 import datetime as dt
+import logging
 import os
+from textwrap import dedent
 from typing import Annotated, Literal, Protocol, Self
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -11,6 +13,8 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validat
 from pasazhgard.normalize import distinct
 from pasazhgard.shops import open_at
 
+log = logging.getLogger(__name__)
+
 # closed: the shop was closed when the user consented; queued: it goes out when the shop opens
 Status = Literal["draft", "closed", "queued", "sent", "replied", "confirmed", "unavailable", "no_reply"]
 # an inquiry still sent this long after sending turns no_reply
@@ -19,7 +23,7 @@ Question = Literal["available", "price", "hold", "installments"]
 
 
 class Reply(BaseModel):
-    """A seller reply in the parsed shape (PRD 6.4); the inquiry keeps the merge of every reply."""
+    """A seller reply in the parsed shape; the inquiry keeps the merge of every reply."""
 
     available: Literal["yes", "no", "unknown"] = "unknown"
     latest_price_toman: int | None = None
@@ -175,6 +179,14 @@ def get_inquiries(conn, sid: str, now: dt.datetime) -> InquiryStatus | None:
     return InquiryStatus(inquiries=[_inquiry(r) for r in rows])
 
 
+def _open(conn, sid: str, product_id: str) -> int:
+    """How many of the session's inquiries about the item are open; at most 3 may be."""
+    return conn.execute(
+        "SELECT count(*) AS n FROM inquiries WHERE session_id = %s AND product_id = %s AND status IN ('queued', 'sent', 'replied')",
+        [sid, product_id],
+    ).fetchone()["n"]
+
+
 def contact_seller(conn, sid: str, change: Compose, now: dt.datetime) -> InquiryStatus | None:
     """Compose one draft per offer. Nothing is sent: `confirm_inquiries` sends after the user consents.
 
@@ -213,10 +225,7 @@ def contact_seller(conn, sid: str, change: Compose, now: dt.datetime) -> Inquiry
     # a new compose replaces the item's unsent drafts
     conn.execute("DELETE FROM inquiries WHERE session_id = %s AND status = 'draft' AND product_id = ANY(%s)", [sid, products])
     for p in set(products):
-        open_ = conn.execute(
-            "SELECT count(*) AS n FROM inquiries WHERE session_id = %s AND product_id = %s AND status IN ('queued', 'sent', 'replied')", [sid, p]
-        ).fetchone()["n"]
-        if open_ + products.count(p) > 3:
+        if (open_ := _open(conn, sid, p)) + products.count(p) > 3:
             raise ValueError(f"{p} has {open_} open inquiries")
     drafts = []
     for o in targets:
@@ -269,7 +278,8 @@ def confirm_inquiries(conn, sid: str, change: Confirm, channel: "SellerChannel",
     The shop's hours are checked first: a shop closed now is not sent to, its inquiry turns `closed`, or `queued` with
     `change.queue`. Unknown hours are not closed.
 
-    None when the session does not exist; LookupError for an inquiry of another session.
+    None when the session does not exist; LookupError for an inquiry of another session; ValueError when an item
+    would have more than 3 open inquiries.
     """
     status = get_inquiries(conn, sid, now)
     if status is None:
@@ -285,9 +295,16 @@ def confirm_inquiries(conn, sid: str, change: Confirm, channel: "SellerChannel",
         i = mine[iid]
         if i.status not in ("draft", "closed"):
             continue
-        if i.shop_id in hours and open_at(hours[i.shop_id], now) is False:
-            if change.queue or i.status == "draft":
-                _move(conn, i, "queued" if change.queue else "closed", now)
+        closed = i.shop_id in hours and open_at(hours[i.shop_id], now) is False
+        if closed and not change.queue:
+            if i.status == "draft":
+                _move(conn, i, "closed", now)
+            continue
+        # a closed inquiry was not open when composed, so the cap is checked again on the way out
+        if _open(conn, sid, i.product_id) >= 3:
+            raise ValueError(f"{i.product_id} has 3 open inquiries")
+        if closed:
+            _move(conn, i, "queued", now)
             continue
         channel.send(conn, i)
         _move(conn, i, "sent", now, channel=channel.name)
@@ -359,16 +376,17 @@ class ReplyParse(BaseModel):
     )
 
 
-PARSE_PROMPT = """You read a seller's free-text answer to a buyer's inquiry in Tehran. Times are local (Asia/Tehran);
-"5 عصر" is 17:00. Prices are in toman; "3 میلیون و 400" is 3400000.
-The buyer asked: {message}
-{asked}"""
-
-
 def _parse(model, inquiry: Inquiry, text: str) -> ReplyParse:
     asked = next((f"Then you asked: {e.question}" for e in reversed(inquiry.events) if e.question), "")
+    prompt = dedent(
+        """\
+        You read a seller's free-text answer to a buyer's inquiry in Tehran. Times are local (Asia/Tehran);
+        "5 عصر" is 17:00. Prices are in toman; "3 میلیون و 400" is 3400000.
+        The buyer asked: {message}
+        {asked}"""
+    )
     structured = model.with_structured_output(ReplyParse, method="json_schema")
-    return structured.invoke([SystemMessage(PARSE_PROMPT.format(message=inquiry.message, asked=asked)), HumanMessage(text)])
+    return structured.invoke([SystemMessage(prompt.format(message=inquiry.message, asked=asked)), HumanMessage(text)])
 
 
 def record_reply(conn, inquiry_id: int, body: ConsoleReply, now: dt.datetime, model=None) -> Inquiry:
@@ -377,17 +395,26 @@ def record_reply(conn, inquiry_id: int, body: ConsoleReply, now: dt.datetime, mo
     Free text is parsed by `model` (the small chat model); an ambiguous one gets one follow-up question per inquiry.
     Without a model free text is kept as-is and leaves the parse alone.
     """
-    row = conn.execute("SELECT * FROM inquiries WHERE inquiry_id = %s FOR UPDATE", [inquiry_id]).fetchone()
-    if row is None:
-        raise LookupError(inquiry_id)
-    inquiry = _inquiry(row)
-    sent = body.model_dump(exclude_none=True)
-    update = {k: v for k, v in sent.items() if k != "text"}
+    def read(lock: str = "") -> Inquiry:
+        row = conn.execute(f"SELECT * FROM inquiries WHERE inquiry_id = %s {lock}", [inquiry_id]).fetchone()
+        if row is None:
+            raise LookupError(inquiry_id)
+        return _inquiry(row)
+
+    parse = None
+    if body.text and model:
+        # the model call takes up to a minute: hold no row lock, or every read that ticks this inquiry waits
+        unlocked = read()
+        try:
+            parse = _parse(model, unlocked, body.text)
+        except Exception:
+            # the seller's words must not be lost: keep them unparsed, as without a model
+            log.warning("seller reply parse failed, keeping the text unparsed", exc_info=True)
+    inquiry = read("FOR UPDATE")
+    update = body.model_dump(exclude_none=True, exclude={"text"})
     update |= {"confidence": 1.0} if update else {}
     question = None
-    if body.text and model:
-        # shortcut: the model call runs inside the row lock, which only delays other replies to this inquiry
-        parse = _parse(model, inquiry, body.text)
+    if parse:
         update |= {k: v for k, v in parse.model_dump(exclude={"follow_up"}).items() if v not in (None, "unknown")}
         if not any(e.question for e in inquiry.events):
             question = parse.follow_up

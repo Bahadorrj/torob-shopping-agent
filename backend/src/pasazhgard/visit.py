@@ -90,7 +90,7 @@ def get_directions(conn, shop_id: str, q: DirectionsQuery, router: Router) -> Di
 
 
 class PlanQuery(DirectionsQuery):
-    # brute-force ordering is fine up to 6 stops (PRD 6.5)
+    # brute-force ordering is fine: a plan has at most 6 stops
     shop_id: Annotated[list[str], Field(min_length=1, max_length=6), AfterValidator(distinct)]
     # defaults to now
     depart_at: AwareDatetime | None = None

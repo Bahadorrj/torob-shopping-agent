@@ -109,6 +109,15 @@ def test_a_failed_tool_call_is_no_block_and_the_turn_goes_on(agent):
     assert turn.text == "این کالا را پیدا نکردم."
 
 
+def test_a_plain_text_tool_error_does_not_end_the_turn(agent):
+    # no product_id: the tool node answers with a plain-text error, not JSON
+    agent.script(agent.brief(), agent.call("find_sellers"), agent.call("ask_user", field="budget", question="بودجه چقدر است؟"))
+
+    turn = agent.turn("فروشنده‌ها")
+
+    assert kinds(turn) == ["chips"]
+
+
 def test_a_missing_field_is_asked_as_chips_and_ends_the_turn(agent):
     # the script has no reply after the question: a further model call would fail the turn
     agent.script(agent.brief(need="هندزفری"), agent.call("ask_user", field="area", question="کجا می‌خواهید بروید؟"))
@@ -170,6 +179,8 @@ def test_a_price_from_tool_output_is_grounded(agent):
     [
         ("ارزان‌ترین ۱٬۵۰۰٬۰۰۰ تومان است.", "price 1500000"),
         ("حدود ۱.۲ میلیون تومان است.", "price 1200000"),
+        # the model code A3949 in the tool output is no price
+        ("ارزان‌ترین ۳۹۴۹ تومان است.", "price 3949"),
         (f"فروشگاه {CHEAPEST_SHOP[:-1]}0 ارزان‌تر است.", "shop shop_"),
         # no seller confirmed stock
         ("این هدفون موجود است.", "in stock"),
@@ -294,3 +305,18 @@ def test_find_alternatives_shows_where_else_to_ask_for_an_inquiry_that_fell_thro
     agent.history = []
     agent.script(agent.brief(), agent.call("find_alternatives", inquiry_id=draft["inquiry_id"]), "پیدا نشد.")
     assert "block" not in agent.turn("جایگزین؟").blocks[0]
+
+
+def test_seller_tools_show_the_price_a_seller_confirmed_in_this_session(agent, client):
+    sid = agent.session_id
+    [mahis] = [i["inquiry_id"] for i in client.post(f"/sessions/{sid}/inquiries", json={"offer_ids": [MAHIS]}).json()["inquiries"]]
+    client.post(f"/sessions/{sid}/inquiries/confirm", json={"inquiry_ids": [mahis]})
+    client.post(f"/console/inquiries/{mahis}/replies", json={"latest_price_toman": 3_100_000})
+    agent.script(agent.brief(), agent.call("find_sellers", product_id=ANKER), agent.call("compare_sellers", product_id=ANKER, offer_ids=[MAHIS]), "این‌ها.")
+
+    turn = agent.turn("فروشنده‌ها")
+
+    sellers, [compared] = turn.blocks[0]["sellers"] + turn.blocks[0]["ask_them"], turn.blocks[1]["sellers"]
+    [listed] = [s for s in sellers if s["offer_id"] == MAHIS]
+    for row in (listed, compared):
+        assert (row["latest_price"]["status"], row["latest_price"]["price_toman"]) == ("confirmed", 3_100_000)

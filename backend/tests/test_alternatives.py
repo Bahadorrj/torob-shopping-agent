@@ -86,7 +86,7 @@ def test_then_a_similar_product_within_budget(client):
 
 
 def test_then_shops_of_the_category_to_ask(client):
-    # AirPods Pro 2: two sellers, and no product of its category shares a spec with it
+    # AirPods Pro 2: two sellers, and no product of its category shares a spec with it but its colour
     sid, [_, vivan] = fell_through(client, "offer_63cd2cf47ed555bed5977e91", "offer_4b77afce6859bf4acaf35d5e")
     block = alternatives(client, sid, vivan)
     assert lines(block) == [

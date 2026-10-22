@@ -1,7 +1,6 @@
 """compare_sellers: up to three sellers of one product side by side."""
 
 from datetime import datetime, timedelta
-from math import ceil
 from typing import Annotated, Literal, Self
 
 from pydantic import AfterValidator, AwareDatetime, BaseModel, Field, model_validator
@@ -9,7 +8,7 @@ from pydantic import AfterValidator, AwareDatetime, BaseModel, Field, model_vali
 from pasazhgard.compare import get_product
 from pasazhgard.inquiries import outcomes
 from pasazhgard.normalize import distinct
-from pasazhgard.routing import SPEED_KMH, TravelMode
+from pasazhgard.routing import TravelMode, straight_line
 from pasazhgard.sellers import SellerRow, _distance, _row, seller_offers
 from pasazhgard.shops import TEHRAN, open_at
 
@@ -62,7 +61,7 @@ def compare_sellers(conn, product_id: str, q: CompareQuery, now: datetime) -> Se
     for oid in q.offer_id:
         o = by_id[oid]
         d = _distance(q, o)
-        travel = None if d is None else ceil(d / (SPEED_KMH[q.mode] * 1000 / 60))
+        travel = None if d is None else straight_line((q.lat, q.lon), (o["lat"], o["lon"]), q.mode).duration_min
         at = (q.arrival or now + timedelta(minutes=travel or 0)).astimezone(TEHRAN)
         cols.append(
             SellerColumn(

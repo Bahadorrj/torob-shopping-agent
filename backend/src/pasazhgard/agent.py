@@ -1,4 +1,4 @@
-"""The orchestrator (PRD 6.2, ADR-0002): a LangGraph tool loop over the shopping tools, served as AG-UI at /agent.
+"""The orchestrator: a LangGraph tool loop over the shopping tools, served as AG-UI at /agent.
 
 A turn: patch the session's brief from the user's words (structured output), then call tools until the model
 answers. Every block the UI renders is a tool result: a JSON object whose `block` names its renderer.
@@ -12,6 +12,8 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime
+from itertools import takewhile
+from textwrap import dedent
 from typing import Annotated, Literal
 
 from langchain_core.callbacks import dispatch_custom_event
@@ -95,6 +97,14 @@ def error(message: str) -> str:
     return json.dumps({"error": message})
 
 
+def _result(m: ToolMessage) -> dict:
+    """A tool result as JSON; {} for the plain-text error the tool node writes for a bad call."""
+    try:
+        return json.loads(m.content)
+    except ValueError:
+        return {}
+
+
 def load_brief(conn, sid: str) -> Brief:
     # a thread may start before its session row exists
     conn.execute(
@@ -116,34 +126,17 @@ def _session(config: RunnableConfig) -> str:
     return config["configurable"]["thread_id"]
 
 
-BRIEF_PROMPT = """You keep the Shopping Brief of an in-store shopping assistant for Tehran.
-Now: {now} (Asia/Tehran). Current brief: {brief}
-Return only the fields the user's latest message states or changes; prices are in toman."""
-
-AGENT_PROMPT = """You are Pasazhgard, an in-store shopping assistant for Tehran's shops and pasajs. Reply in short Persian.
-Now: {now} (Asia/Tehran). Shopping Brief: {brief}
-- Use tools for every product, shop, price and hour. Never state a price, shop or stock that no tool returned;
-  the UI shows tool results as cards, so refer to them instead of repeating numbers.
-- If a missing brief field would change the answer, call ask_user for that one field and stop.
-  Ask one question per turn, and none when the answer would not change the result.
-- Guided discovery: when the user names a need or category rather than a model, or asks for help choosing
-  ("کمکم کن انتخاب کنم"), shortlist models with suggest_models before any find_sellers. First ask about use,
-  features and budget, at most these three and only what the brief lacks; give use and features 3-5 short options.
-  In the reply, explain the trade-offs from the shortlist; do not repeat its prices.
-- Never say an item is in stock unless a seller confirmed it.
-- contact_seller only drafts messages; the user sends them with the button under the drafts. Never say a message
-  was sent or a seller answered unless get_inquiries shows it.
-- When an inquiry turns unavailable, no_reply or closed, call find_alternatives for it."""
-
-CHIP_FIELDS = Literal["area", "budget", "visit_window", "payment", "quantity", "need", "use", "features"]
-
-
 def build_graph(ports: Ports) -> StateGraph:
     """The orchestrator graph, uncompiled: the app compiles it with its checkpointer."""
 
     def brief_of(config: RunnableConfig) -> Brief:
         with ports.connect() as conn:
             return load_brief(conn, _session(config))
+
+    def session_of(config: RunnableConfig) -> str:
+        """The thread's session id, its row created if the thread started without one."""
+        brief_of(config)
+        return _session(config)
 
     @tool
     def search_products(query: str) -> str:
@@ -166,7 +159,8 @@ def build_graph(ports: Ports) -> StateGraph:
         """Shops selling a product, filtered and ranked by the brief. Shows the seller list."""
         brief, now = brief_of(config), ports.now()
         with ports.connect() as conn:
-            result = _find_sellers(conn, product_id, seller_query(brief, product_id, now), now)
+            q = seller_query(brief, product_id, now).model_copy(update={"session_id": _session(config)})
+            result = _find_sellers(conn, product_id, q, now)
         return block("seller_list", result) if result else error("product not found")
 
     @tool
@@ -181,6 +175,7 @@ def build_graph(ports: Ports) -> StateGraph:
                 lon=origin and origin.lon,
                 mode=brief.travel_mode or "walk",
                 arrival=seller_query(brief, product_id, now).arrival,
+                session_id=_session(config),
             )
         except ValueError:
             return error("give 1-3 distinct offer ids")
@@ -245,7 +240,7 @@ def build_graph(ports: Ports) -> StateGraph:
 
     @tool
     def ask_user(
-        field: CHIP_FIELDS,
+        field: Literal["area", "budget", "visit_window", "payment", "quantity", "need", "use", "features"],
         question: str,
         state: Annotated[dict, InjectedState],
         call_id: Annotated[str, InjectedToolCallId],
@@ -270,13 +265,13 @@ def build_graph(ports: Ports) -> StateGraph:
         }
         if answered[field]:
             return error(f"the brief already has {field}")
-        asked = {
-            json.loads(m.content).get("field")
-            for m in state["messages"]
-            if isinstance(m, ToolMessage) and json.loads(m.content).get("block") == "chips"
-        }
-        if field in asked:
+        results = [_result(m) for m in state["messages"] if isinstance(m, ToolMessage)]
+        if field in {r.get("field") for r in results if r.get("block") == "chips"}:
             return error(f"already asked about {field}")
+        # questions since the user last saw a result; errors show nothing
+        waiting = takewhile(lambda r: r.get("block") in ("chips", None), reversed(results))
+        if sum(r.get("block") == "chips" for r in waiting) >= 3:
+            return error("at most 3 questions before results: show them now")
         # the model writes the chips only for use and features
         options = (options or []) if field in ("use", "features") else []
         if field == "area":
@@ -293,9 +288,7 @@ def build_graph(ports: Ports) -> StateGraph:
     def contact_seller(offer_ids: list[str], config: RunnableConfig) -> str:
         """Draft one short Persian inquiry per offer (1-3 offers): available now, today's price, hold, installments.
         Nothing is sent: the user sends the drafts with a tap. Shows the inquiry tracker."""
-        sid = _session(config)
-        # creates the session row a thread may start without
-        brief_of(config)
+        sid = session_of(config)
         try:
             change = Compose(offer_ids=offer_ids)
             with ports.connect() as conn:
@@ -309,9 +302,7 @@ def build_graph(ports: Ports) -> StateGraph:
     @tool
     def get_inquiries(config: RunnableConfig) -> str:
         """This session's inquiries to sellers with each seller's latest reply. Shows the inquiry tracker."""
-        sid = _session(config)
-        # creates the session row a thread may start without
-        brief_of(config)
+        sid = session_of(config)
         with ports.connect() as conn:
             return block("inquiry_status", _get_inquiries(conn, sid, ports.now()))
 
@@ -323,7 +314,13 @@ def build_graph(ports: Ports) -> StateGraph:
     def patch_brief(state: MessagesState, config: RunnableConfig) -> dict:
         sid, brief = _session(config), brief_of(config)
         structured = ports.model().with_structured_output(BriefPatch, method="json_schema")
-        prompt = SystemMessage(BRIEF_PROMPT.format(now=ports.now().isoformat(), brief=brief.model_dump_json()))
+        prompt = dedent(
+            """\
+            You keep the Shopping Brief of an in-store shopping assistant for Tehran.
+            Now: {now} (Asia/Tehran). Current brief: {brief}
+            Return only the fields the user's latest message states or changes; prices are in toman."""
+        )
+        prompt = SystemMessage(prompt.format(now=ports.now().isoformat(), brief=brief.model_dump_json()))
         # the patch is state, not chat: keep its tokens out of the AG-UI stream
         patch = structured.invoke(
             [prompt, *state["messages"]], config={"metadata": {"emit-messages": False, "emit-tool-calls": False}}
@@ -337,7 +334,24 @@ def build_graph(ports: Ports) -> StateGraph:
 
     def agent(state: MessagesState, config: RunnableConfig) -> dict:
         brief = brief_of(config)
-        prompt = SystemMessage(AGENT_PROMPT.format(now=ports.now().isoformat(), brief=brief.model_dump_json()))
+        prompt = dedent(
+            """\
+            You are Pasazhgard, an in-store shopping assistant for Tehran's shops and pasajs. Reply in short Persian.
+            Now: {now} (Asia/Tehran). Shopping Brief: {brief}
+            - Use tools for every product, shop, price and hour. Never state a price, shop or stock that no tool returned;
+              the UI shows tool results as cards, so refer to them instead of repeating numbers.
+            - If a missing brief field would change the answer, call ask_user for that one field and stop.
+              Ask one question per turn, and none when the answer would not change the result.
+            - Guided discovery: when the user names a need or category rather than a model, or asks for help choosing
+              ("کمکم کن انتخاب کنم"), shortlist models with suggest_models before any find_sellers. First ask about use,
+              features and budget, at most these three and only what the brief lacks; give use and features 3-5 short options.
+              In the reply, explain the trade-offs from the shortlist; do not repeat its prices.
+            - Never say an item is in stock unless a seller confirmed it.
+            - contact_seller only drafts messages; the user sends them with the button under the drafts. Never say a message
+              was sent or a seller answered unless get_inquiries shows it.
+            - When an inquiry turns unavailable, no_reply or closed, call find_alternatives for it."""
+        )
+        prompt = SystemMessage(prompt.format(now=ports.now().isoformat(), brief=brief.model_dump_json()))
         return {"messages": [ports.model().bind_tools(tools).invoke([prompt, *state["messages"]])]}
 
     def degraded(state: MessagesState, config: RunnableConfig) -> dict:
@@ -360,7 +374,7 @@ def build_graph(ports: Ports) -> StateGraph:
         for m in reversed(state["messages"]):
             if not isinstance(m, ToolMessage):
                 break
-            if json.loads(m.content).get("block") == "chips":
+            if _result(m).get("block") == "chips":
                 return END
         return "agent"
 

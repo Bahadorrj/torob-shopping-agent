@@ -286,6 +286,8 @@ def inquiries_confirm(
         status = confirm_inquiries(conn, session_id, change, channel, now)
     except LookupError:
         raise HTTPException(404, "inquiry not found") from None
+    except ValueError:
+        raise HTTPException(409, "at most 3 open inquiries per item") from None
     if status is None:
         raise HTTPException(404, "session not found")
     return status
