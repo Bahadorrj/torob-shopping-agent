@@ -28,6 +28,8 @@ from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field
 
 from pasazhgard.alternatives import find_alternatives as _find_alternatives
+from pasazhgard.basket import BasketQuery
+from pasazhgard.basket import optimize_basket as _optimize_basket
 from pasazhgard.brief import Area, Brief, Budget, Item, Payment, VisitWindow, seller_query
 from pasazhgard.compare import compare_products as _compare_products
 from pasazhgard.discovery import SuggestQuery
@@ -308,6 +310,15 @@ def build_graph(ports: Ports) -> StateGraph:
             return error("give 1-3 distinct offer ids, one with instead_of; an item has at most 3 open inquiries")
 
     @tool
+    def optimize_basket(text: str, config: RunnableConfig) -> str:
+        """For a shopping list of several items (one per line): the fewest shops in the brief's area that cover it,
+        then the lowest total, what each shop covers and what is missing. `text`: the user's list as written. Shows the basket."""
+        brief, now = brief_of(config), ports.now()
+        q = BasketQuery(text=text, **seller_query(brief, "", now).model_dump())
+        with ports.connect() as conn:
+            return block("basket", _optimize_basket(conn, q, now))
+
+    @tool
     def get_inquiries(config: RunnableConfig) -> str:
         """This session's inquiries to sellers with each seller's latest reply. Shows the inquiry tracker."""
         sid = session_of(config)
@@ -328,7 +339,7 @@ def build_graph(ports: Ports) -> StateGraph:
 
     tools = [
         search_products, suggest_models, compare_products, find_sellers, compare_sellers, plan_visit, get_directions,
-        find_alternatives, ask_user, contact_seller, get_inquiries, fetch_site_price,
+        find_alternatives, ask_user, contact_seller, get_inquiries, fetch_site_price, optimize_basket,
     ]
 
     def patch_brief(state: MessagesState, config: RunnableConfig) -> dict:
