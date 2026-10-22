@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { MODES } from "@/components/brief-bar";
-import { STATUS } from "@/components/inquiry-tracker";
+import { FELL_THROUGH, STATUS } from "@/components/inquiry-tracker";
 import { SellerMap, type Pin } from "@/components/seller-map";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -49,11 +49,11 @@ function StopInquiryLine({ i }: { i: StopInquiry }) {
       {i.status === "confirmed" && i.replied_at ? (
         <Badge>تأیید شد ساعت {clock(i.replied_at)}</Badge>
       ) : (
-        <Badge variant={["unavailable", "no_reply", "closed"].includes(i.status) ? "destructive" : "outline"}>{STATUS[i.status]}</Badge>
+        <Badge variant={FELL_THROUGH.includes(i.status) ? "destructive" : "outline"}>{STATUS[i.status]}</Badge>
       )}
       {i.latest_price_toman !== null ? (
         <span>
-          قیمت تأییدشده {faDigits(i.latest_price_toman)} تومان
+          {i.status === "confirmed" ? "قیمت تأییدشده" : "قیمت فروشنده"} {faDigits(i.latest_price_toman)} تومان
           {delta !== null && delta !== 0 && `، ${faDigits(Math.abs(delta))} تومان ${delta > 0 ? "گران‌تر" : "ارزان‌تر"} از قیمت ثبت‌شده`}
         </span>
       ) : (
@@ -107,27 +107,34 @@ export function VisitPlan({ query }: { query: string }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [shared, setShared] = useState(false);
 
+  // with a session the plan follows its inquiries over the stream alone; without one it is fixed
+  const stream = new URLSearchParams(query).has("session_id") ? visitPlanStreamUrl(query) : null;
+  // a refused stream falls back to the one-time plan, which tells a missing plan from a failed one
+  const [refused, setRefused] = useState(false);
+  const live = useEventStream<Plan>(stream, setRefused);
+
   useEffect(() => {
+    if (stream && !refused) return;
     getVisitPlan(query).then(
       (plan) => setState(plan ? { status: "done", plan } : { status: "missing" }),
       () => setState({ status: "error" }),
     );
-  }, [query]);
+  }, [query, stream, refused]);
 
-  // with a session the plan follows its inquiries; without one it is fixed
-  const live = useEventStream<Plan>(new URLSearchParams(query).has("session_id") ? visitPlanStreamUrl(query) : null);
   const current = live ?? (state.status === "done" ? state.plan : null);
   const pins = useMemo(() => (current ? planPins(current.stops) : []), [current]);
 
-  if (state.status === "loading") return <p className="text-sm text-muted-foreground">در حال بارگذاری...</p>;
   if (state.status === "error") return <p className="text-sm text-destructive">برنامه مراجعه دریافت نشد. دوباره تلاش کنید.</p>;
   if (state.status === "missing") return <p className="text-sm text-muted-foreground">فروشگاه‌های این برنامه پیدا نشدند.</p>;
+  if (!current) return <p className="text-sm text-muted-foreground">در حال بارگذاری...</p>;
 
-  const plan = current!;
+  const plan = current;
   const pinOf = (s: Stop) => pins.find((p) => p.rows.includes(s))?.key;
   const share = async () => {
-    // the page's own link is the plan: it has no controls that change it
-    await navigator.clipboard.writeText(location.href);
+    // the page's link is the plan, without the session: the session id is the only key to its inquiries
+    const link = new URL(location.href);
+    link.searchParams.delete("session_id");
+    await navigator.clipboard.writeText(link.href);
     setShared(true);
   };
 

@@ -45,19 +45,20 @@ function Inquiries({ initial }: { initial: Inquiry[] }) {
   return <InquiryTracker sessionId={sid} inquiries={inquiries} onConfirm={(inquiryIds) => confirmInquiries(sid, inquiryIds)} />;
 }
 
-// the plan screen's query asks the backend for the same plan, so it is also the share link
-const planHref = (p: VisitPlan, sessionId: string) =>
+// the plan screen's query asks the backend for the same plan; with the session the plan follows its inquiries,
+// and the plan screen drops the session from the link it shares
+const planHref = (p: VisitPlan, sessionId?: string) =>
   `/plan?${new URLSearchParams([
     ...p.stops.map((s) => ["shop_id", s.shop_id]),
     ["lat", String(p.origin.lat)],
     ["lon", String(p.origin.lon)],
     ["mode", p.mode],
     ["depart_at", p.depart_at],
-    ["session_id", sessionId],
+    ...(sessionId ? [["session_id", sessionId]] : []),
   ])}`;
 
 function PlanLink({ plan }: { plan: VisitPlan }) {
-  const sid = useBrief().session!.session_id;
+  const sid = useBrief().session?.session_id;
   return (
     <Link href={planHref(plan, sid)} className={linkClass}>
       دیدن برنامه روی نقشه

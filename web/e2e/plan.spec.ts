@@ -132,38 +132,71 @@ const inquiry = (status: string, extra: object = {}) => ({
   ...extra,
 });
 
+// a live plan: the stream is its only source, so each leg is routed once per page load
+async function fakeStream(page: Page, live: object | null) {
+  const streamed: string[] = [];
+  const fetched: string[] = [];
+  await page.route("**/api/visit-plan?**", (route) => {
+    fetched.push(new URL(route.request().url()).search.slice(1));
+    return route.fulfill(live ? { json: live } : { status: 404, json: { detail: "shop or session not found" } });
+  });
+  await page.route("**/api/visit-plan/stream?**", (route) => {
+    streamed.push(new URL(route.request().url()).search.slice(1));
+    if (!live) return route.fulfill({ status: 404, json: { detail: "shop or session not found" } });
+    return route.fulfill({ contentType: "text/event-stream", body: `retry: 100
+data: ${JSON.stringify(live)}
+
+` });
+  });
+  return { streamed, fetched };
+}
+
 test("a session's plan follows its inquiries over SSE: confirmed badge and time, price difference, over budget at 360 px", async ({ page }) => {
   await page.route("**/tile.openstreetmap.org/**", (r) => r.abort());
   await fakeSessions(page, {});
-  const waiting = { ...plan, stops: [stop("shop_a", "نیین ماهیس", { inquiry: inquiry("sent") })] };
-  await page.route("**/api/visit-plan?**", (route) => route.fulfill({ json: waiting }));
   const confirmed = inquiry("confirmed", { available: "yes", latest_price_toman: 5_200_000, price_delta_toman: 701_000, over_budget: true, replied_at: "2026-10-20T15:00:00+03:30" });
   const updated = {
     ...plan,
     stops: [
       stop("shop_a", "نیین ماهیس", { inquiry: confirmed }),
       stop("shop_b", "نیکورا ویوان", { inquiry: inquiry("closed", { inquiry_id: 2 }) }),
+      // a price the seller gave without confirming stock
+      stop("shop_c", "دیسیلا مانسا", { inquiry: inquiry("replied", { inquiry_id: 3, latest_price_toman: 4_000_000, price_delta_toman: -499_000 }) }),
     ],
   };
-  const streamed: string[] = [];
-  await page.route("**/api/visit-plan/stream?**", (route) => {
-    streamed.push(new URL(route.request().url()).search.slice(1));
-    return route.fulfill({ contentType: "text/event-stream", body: `retry: 100
-data: ${JSON.stringify(updated)}
-
-` });
-  });
+  const { streamed, fetched } = await fakeStream(page, updated);
   await page.goto(`/plan?${query}&session_id=s9`);
 
   const stops = page.getByRole("listitem").filter({ has: page.getByRole("link", { name: "صفحه فروشگاه" }) });
-  await expect(stops).toHaveCount(2);
+  await expect(stops).toHaveCount(3);
   expect(streamed[0]).toBe(`${query}&session_id=s9`);
-  const [a, b] = [stops.nth(0), stops.nth(1)];
+  expect(fetched).toEqual([]);
+  const [a, b, c] = [stops.nth(0), stops.nth(1), stops.nth(2)];
   await expect(a).toContainText("تأیید شد ساعت ۱۵:۰۰");
   await expect(a).toContainText("قیمت تأییدشده ۵٬۲۰۰٬۰۰۰ تومان، ۷۰۱٬۰۰۰ تومان گران‌تر از قیمت ثبت‌شده");
   await expect(a).toContainText("بیشتر از بودجه");
   await expect(b).toContainText("فروشگاه الان بسته است");
   await expect(b).toContainText("قیمت ثبت‌شده ۴٬۴۹۹٬۰۰۰ تومان");
   await expect(b).not.toContainText("بیشتر از بودجه");
+  await expect(c).toContainText("قیمت فروشنده ۴٬۰۰۰٬۰۰۰ تومان، ۴۹۹٬۰۰۰ تومان ارزان‌تر از قیمت ثبت‌شده");
+  await expect(c).not.toContainText("تأییدشده");
   expect(await noOverflow(page)).toBe(0);
+});
+
+test("a session's plan is shared without the session, which is the only key to its inquiries", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.route("**/tile.openstreetmap.org/**", (r) => r.abort());
+  await fakeSessions(page, {});
+  await fakeStream(page, plan);
+  await page.goto(`/plan?${query}&session_id=s9`);
+  await page.getByRole("button", { name: "اشتراک‌گذاری برنامه" }).click();
+  await expect(page.getByText("پیوند برنامه کپی شد")).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(new URL(`/plan?${query}`, page.url()).href);
+});
+
+test("a session's plan the server refuses to stream says why", async ({ page }) => {
+  await fakeSessions(page, {});
+  await fakeStream(page, null);
+  await page.goto(`/plan?${query}&session_id=gone`);
+  await expect(page.getByText("فروشگاه‌های این برنامه پیدا نشدند.")).toBeVisible();
 });

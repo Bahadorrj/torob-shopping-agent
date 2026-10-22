@@ -20,7 +20,7 @@ export const STATUS: Record<InquiryState, string> = {
   no_reply: "پاسخ نداد",
 };
 
-const FELL_THROUGH: InquiryState[] = ["unavailable", "no_reply", "closed"];
+export const FELL_THROUGH: InquiryState[] = ["unavailable", "no_reply", "closed"];
 
 // shown as soon as an inquiry falls through; fetched again only when its status changes
 function FallenThrough({ sessionId, inquiry }: { sessionId: string; inquiry: Inquiry }) {
