@@ -37,8 +37,8 @@ def test_compose_makes_drafts_and_sends_nothing(client):
     for words in ("موجود", "قیمت امروز", "نگه", "اقساط"):
         assert words in mansa["message"]
     assert client.get(f"/sessions/{sid}/inquiries").json()["inquiries"] == drafts
-    # the seller sees nothing before consent
-    assert inbox(client, MANSA_SHOP)["inquiries"] == []
+    # the seller sees nothing before consent; other tests' inquiries may be there
+    assert mansa["inquiry_id"] not in ids(inbox(client, MANSA_SHOP))
 
 
 def confirm(client, sid, *ids, status=200):
@@ -265,18 +265,18 @@ def test_closed_shops_are_not_sent_unless_queued_for_opening(client, clock, now)
     azar, mahis, pakyar = ids(compose(client, sid, AZAR, MAHIS, PAKYAR))
     # hours unknown is not closed, so pakyar is asked
     assert [i["status"] for i in confirm(client, sid, azar, mahis, pakyar)["inquiries"]] == ["closed", "sent", "sent"]
-    assert [i["inquiry_id"] for i in inbox(client, AZAR_SHOP)["inquiries"]] == []
+    assert azar not in ids(inbox(client, AZAR_SHOP))
     reply(client, azar, available="yes", status=409)
     r = client.post(f"/sessions/{sid}/inquiries/confirm", json={"inquiry_ids": [azar], "queue": True})
     assert r.json()["inquiries"][0]["status"] == "queued"
     # a queued message holds a place among the item's three
     compose(client, sid, MANUSH, status=409)
     clock(evening + dt.timedelta(hours=1))
-    assert inbox(client, AZAR_SHOP)["inquiries"] == []
+    assert azar not in ids(inbox(client, AZAR_SHOP))
     # Thursday morning, once the shop opens
     opening = (now + dt.timedelta(days=1)).replace(hour=10, minute=30)
     clock(opening)
-    [seen] = inbox(client, AZAR_SHOP)["inquiries"]
+    [seen] = [i for i in inbox(client, AZAR_SHOP)["inquiries"] if i["inquiry_id"] == azar]
     assert (seen["inquiry_id"], seen["status"], seen["channel"]) == (azar, "sent", "seller_console")
     assert [(e["status"], e["at"]) for e in seen["events"]][1:] == [
         ("closed", evening.isoformat()),

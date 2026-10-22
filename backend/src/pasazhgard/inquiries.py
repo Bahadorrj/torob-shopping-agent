@@ -5,7 +5,7 @@ import os
 from typing import Annotated, Literal, Protocol, Self
 
 from psycopg.types.json import Jsonb
-from pydantic import AfterValidator, BaseModel, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 from pasazhgard.normalize import distinct
 from pasazhgard.shops import open_at
@@ -38,7 +38,8 @@ class Event(BaseModel):
 
 class Inquiry(BaseModel):
     inquiry_id: int
-    offer_id: str
+    # None when the shop does not list the item and is asked anyway
+    offer_id: str | None
     product_id: str
     product_title: str
     shop_id: str
@@ -105,9 +106,27 @@ def outcomes(conn, sid: str, product_id: str, now: dt.datetime) -> dict[str, Out
     return result
 
 
+class Ask(BaseModel):
+    """A shop that does not list the item, asked about it anyway."""
+
+    model_config = ConfigDict(frozen=True)
+
+    product_id: str
+    shop_id: str
+
+
 class Compose(BaseModel):
-    offer_ids: Annotated[list[str], Field(min_length=1, max_length=3), AfterValidator(distinct)]
+    """1-3 sellers: offers, or shops to ask about an item they do not list."""
+
+    offer_ids: Annotated[list[str], AfterValidator(distinct)] = []
+    asks: Annotated[list[Ask], AfterValidator(distinct)] = []
     questions: Annotated[list[Question], AfterValidator(distinct)] = ["available", "price", "hold", "installments"]
+
+    @model_validator(mode="after")
+    def _one_to_three(self) -> Self:
+        if not 1 <= len(self.offer_ids) + len(self.asks) <= 3:
+            raise ValueError("ask 1 to 3 sellers")
+        return self
 
 
 def _fa(s: str) -> str:
@@ -173,8 +192,21 @@ def contact_seller(conn, sid: str, change: Compose, now: dt.datetime) -> Inquiry
     ).fetchall()
     if len(offers) != len(change.offer_ids):
         raise LookupError(change.offer_ids)
+    asks = [
+        conn.execute(
+            """
+            SELECT NULL AS offer_id, p.product_id, p.title AS product_title, s.shop_id, s.name AS shop_name
+            FROM products p, shops s WHERE p.product_id = %s AND s.shop_id = %s
+            """,
+            [a.product_id, a.shop_id],
+        ).fetchone()
+        for a in change.asks
+    ]
+    if None in asks:
+        raise LookupError(change.asks)
     by_id = {o["offer_id"]: o for o in offers}
-    products = [o["product_id"] for o in offers]
+    targets = [by_id[oid] for oid in change.offer_ids] + asks
+    products = [o["product_id"] for o in targets]
     # a new compose replaces the item's unsent drafts
     conn.execute("DELETE FROM inquiries WHERE session_id = %s AND status = 'draft' AND product_id = ANY(%s)", [sid, products])
     for p in set(products):
@@ -184,8 +216,7 @@ def contact_seller(conn, sid: str, change: Compose, now: dt.datetime) -> Inquiry
         if open_ + products.count(p) > 3:
             raise ValueError(f"{p} has {open_} open inquiries")
     drafts = []
-    for oid in change.offer_ids:
-        o = by_id[oid]
+    for o in targets:
         message = _message(o["product_title"], change.questions, hold and dt.time.fromisoformat(hold))
         drafts.append(
             conn.execute(
@@ -193,7 +224,7 @@ def contact_seller(conn, sid: str, change: Compose, now: dt.datetime) -> Inquiry
                 INSERT INTO inquiries (session_id, offer_id, product_id, product_title, shop_id, shop_name, status, message, reply, events)
                 VALUES (%s, %s, %s, %s, %s, %s, 'draft', %s, %s, %s) RETURNING *
                 """,
-                [sid, oid, o["product_id"], o["product_title"], o["shop_id"], o["shop_name"], message, Jsonb(Reply().model_dump()),
+                [sid, o["offer_id"], o["product_id"], o["product_title"], o["shop_id"], o["shop_name"], message, Jsonb(Reply().model_dump()),
                  Jsonb([Event(at=now, status="draft").model_dump(mode="json")])],
             ).fetchone()
         )

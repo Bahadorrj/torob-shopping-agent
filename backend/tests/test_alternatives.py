@@ -1,6 +1,6 @@
 import datetime as dt
 
-from test_inquiries import AZAR, MANSA, compose, confirm, ids, new_session, reply, sent
+from test_inquiries import AZAR, MAHIS, MANSA, PAKYAR, compose, confirm, ids, inbox, new_session, reply, sent
 
 ANKER_TITLE = "هدفون بلوتوثی انکر Soundcore R50i مدل A3949"
 
@@ -107,3 +107,29 @@ def test_then_fast_delivery_shops(client, clock, now):
         ("دیسان سرویار", "۴۶۱ متر فاصله، الان بسته است، ارسال سریع دارد"),
     ]
     assert block["alternatives"][1]["kind"] == "fast_delivery"
+
+
+def test_one_tap_asks_an_alternative_within_the_three_open_rule(client):
+    sid = new_session(client)
+    mansa, _, _ = ids(confirm(client, sid, *ids(compose(client, sid, MANSA, MAHIS, PAKYAR))))
+    reply(client, mansa, available="no")
+    first, second = alternatives(client, sid, mansa)["alternatives"]
+    # the tap: a draft for the alternative, then consent
+    [draft] = compose(client, sid, first["offer_id"])["inquiries"]
+    assert [i["status"] for i in confirm(client, sid, draft["inquiry_id"])["inquiries"]][-1] == "sent"
+    # three are open again, so the next one waits
+    compose(client, sid, second["offer_id"], status=409)
+
+
+def test_one_tap_asks_a_shop_that_does_not_list_the_item(client):
+    sid, [_, vivan] = fell_through(client, "offer_63cd2cf47ed555bed5977e91", "offer_4b77afce6859bf4acaf35d5e")
+    first = alternatives(client, sid, vivan)["alternatives"][0]
+    ask = {"product_id": first["product_id"], "shop_id": first["shop_id"]}
+    [draft] = compose(client, sid, asks=[ask])["inquiries"]
+    assert (draft["offer_id"], draft["shop_name"], draft["product_title"]) == (None, "دیسیلا مانسا", "هدفون بی سیم اپل مدل ایرپاد پرو 2 نویز کنسلینگ")
+    confirm(client, sid, draft["inquiry_id"])
+    assert [i["inquiry_id"] for i in inbox(client, first["shop_id"])["inquiries"]][0] == draft["inquiry_id"]
+    # an asked shop is not suggested again
+    assert [a["shop_name"] for a in alternatives(client, sid, vivan)["alternatives"]][0] == "آذرنوش دیسیس"
+    compose(client, sid, asks=[{"product_id": "nope", "shop_id": first["shop_id"]}], status=404)
+    compose(client, sid, status=422)
