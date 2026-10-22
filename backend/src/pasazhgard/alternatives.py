@@ -47,10 +47,15 @@ class Alternatives(BaseModel):
     alternatives: list[Alternative]
 
 
+def _decimal(x: float) -> str:
+    """One decimal in Persian digits, none when it is zero: ۲٫۵, ۳."""
+    return _fa(f"{x:.1f}".removesuffix(".0")).replace(".", "٫")
+
+
 def _toman(n: int) -> str:
     if n < 1_000_000:
         return f"{_fa(str(round(n / 1000)))} هزار تومان"
-    return f"{_fa(f'{n / 1_000_000:.1f}'.removesuffix('.0')).replace('.', '٫')} میلیون تومان"
+    return f"{_decimal(n / 1_000_000)} میلیون تومان"
 
 
 def _tradeoff(a: Alternative) -> str:
@@ -60,7 +65,7 @@ def _tradeoff(a: Alternative) -> str:
     if a.same_pasaj:
         parts.append("همین پاساژ")
     elif a.distance_m is not None:
-        parts.append(f"{_fa(str(a.distance_m))} متر فاصله" if a.distance_m < 1000 else f"{_fa(f'{a.distance_m / 1000:.1f}').replace('.', '٫')} کیلومتر فاصله")
+        parts.append(f"{_fa(str(a.distance_m))} متر فاصله" if a.distance_m < 1000 else f"{_decimal(a.distance_m / 1000)} کیلومتر فاصله")
     if a.open_now is not None:
         parts.append("الان باز است" if a.open_now else "الان بسته است")
     if a.kind == "fast_delivery":

@@ -133,6 +133,11 @@ def build_graph(ports: Ports) -> StateGraph:
         with ports.connect() as conn:
             return load_brief(conn, _session(config))
 
+    def session_of(config: RunnableConfig) -> str:
+        """The thread's session id, its row created if the thread started without one."""
+        brief_of(config)
+        return _session(config)
+
     @tool
     def search_products(query: str) -> str:
         """Search products by Persian or English name, brand, model or need. Shows product cards."""
@@ -283,9 +288,7 @@ def build_graph(ports: Ports) -> StateGraph:
     def contact_seller(offer_ids: list[str], config: RunnableConfig) -> str:
         """Draft one short Persian inquiry per offer (1-3 offers): available now, today's price, hold, installments.
         Nothing is sent: the user sends the drafts with a tap. Shows the inquiry tracker."""
-        sid = _session(config)
-        # creates the session row a thread may start without
-        brief_of(config)
+        sid = session_of(config)
         try:
             change = Compose(offer_ids=offer_ids)
             with ports.connect() as conn:
@@ -299,9 +302,7 @@ def build_graph(ports: Ports) -> StateGraph:
     @tool
     def get_inquiries(config: RunnableConfig) -> str:
         """This session's inquiries to sellers with each seller's latest reply. Shows the inquiry tracker."""
-        sid = _session(config)
-        # creates the session row a thread may start without
-        brief_of(config)
+        sid = session_of(config)
         with ports.connect() as conn:
             return block("inquiry_status", _get_inquiries(conn, sid, ports.now()))
 
