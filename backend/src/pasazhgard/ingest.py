@@ -15,6 +15,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from pasazhgard.clean import clean_offer, clean_product, clean_shop, flag_far_from_median
+from pasazhgard.embeddings import Embedder, embedder_from_env
 
 
 def _rows(path: Path):
@@ -30,7 +31,42 @@ def _copy(cur, table: str, columns: list[str], types: list[str], rows) -> None:
             copy.write_row(row)
 
 
-def ingest(data_dir: Path, database_url: str) -> None:
+def _embed_products(cur, embedder: Embedder, database_url: str) -> None:
+    """Fill products.embedding from a cache that outlives re-ingests, so only new texts reach the paid provider."""
+    batch = 1000
+    doc = "concat_ws(' ', title, brand, category)"
+    missing = [
+        r[0]
+        for r in cur.execute(
+            f"SELECT DISTINCT {doc} FROM products EXCEPT SELECT doc FROM public.embedding_cache WHERE model = %s",
+            [embedder.name],
+        )
+    ]
+    # committed batch by batch outside the ingest transaction, so a failed run keeps what it paid for
+    with psycopg.connect(database_url, autocommit=True) as conn:
+        for i in range(0, len(missing), batch):
+            docs = missing[i : i + batch]
+            with conn.cursor().copy("COPY embedding_cache (model, doc, embedding) FROM STDIN") as copy:
+                for d, v in zip(docs, embedder.embed(docs), strict=True):
+                    copy.write_row((embedder.name, d, str(v)))
+    cur.execute(
+        f"UPDATE products SET embedding = c.embedding FROM public.embedding_cache c WHERE c.model = %s AND c.doc = {doc}",
+        [embedder.name],
+    )
+    cur.execute("CREATE INDEX products_embedding_hnsw ON products USING hnsw (embedding vector_cosine_ops)")
+
+
+def ingest(data_dir: Path, database_url: str, embedder: Embedder | None = None) -> None:
+    """Without an embedder the products get no vectors and search stays lexical."""
+    cache = """
+    CREATE EXTENSION IF NOT EXISTS vector;
+    CREATE TABLE IF NOT EXISTS embedding_cache (
+        model text,
+        doc text,
+        embedding vector NOT NULL,
+        PRIMARY KEY (model, doc)
+    );
+    """
     schema = """
     CREATE EXTENSION IF NOT EXISTS pg_trgm;
     DROP SCHEMA IF EXISTS staging CASCADE;
@@ -62,7 +98,8 @@ def ingest(data_dir: Path, database_url: str) -> None:
         model text,
         image_urls text[] NOT NULL,
         specs jsonb NOT NULL,
-        search_text text NOT NULL
+        search_text text NOT NULL,
+        embedding vector{dimensions}
     );
     CREATE TABLE offers (
         offer_id text PRIMARY KEY,
@@ -99,8 +136,10 @@ def ingest(data_dir: Path, database_url: str) -> None:
     offers = [clean_offer(r) for r in _rows(data_dir / "offers.csv")]
     flag_far_from_median(offers)
 
+    with psycopg.connect(database_url, autocommit=True) as conn:
+        conn.execute(cache)
     with psycopg.connect(database_url) as conn, conn.cursor() as cur:
-        cur.execute(schema)
+        cur.execute(schema.replace("{dimensions}", f"({embedder.dimensions})" if embedder else ""))
         shop_cols = [
             "shop_id", "name", "address", "location_label", "lat", "lon", "categories", "pasaj", "floor", "unit", "landmark",
             "hours", "payment_options", "fast_delivery", "website_url", "instagram_url",
@@ -137,9 +176,11 @@ def ingest(data_dir: Path, database_url: str) -> None:
             # an unknown warranty is SQL NULL, not a JSON null
             (tuple((Jsonb(o[k]) if o[k] else None) if k == "warranty" else o[k] for k in offer_cols) for o in offers),
         )
+        if embedder:
+            _embed_products(cur, embedder, database_url)
         cur.execute(indexes)
         cur.execute(swap)
 
 
 if __name__ == "__main__":
-    ingest(Path(sys.argv[1]), os.environ["DATABASE_URL"])
+    ingest(Path(sys.argv[1]), os.environ["DATABASE_URL"], embedder_from_env())

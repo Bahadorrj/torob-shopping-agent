@@ -123,13 +123,13 @@ def test_price_age_bucket_follows_the_clock(client, now, today, days, bucket):
     assert (price["price_age_days"], price["price_age_bucket"]) == (days, bucket)
 
 
-def test_ingest_is_idempotent(client, database_url, fixture_dir):
+def test_ingest_is_idempotent(client, database_url, fixture_dir, embedder):
     before = search(client, "انکر")
-    ingest(fixture_dir, database_url)
+    ingest(fixture_dir, database_url, embedder)
     assert search(client, "انکر") == before
 
 
-def test_reload_does_not_block_reads_during_build(monkeypatch, database_url, fixture_dir):
+def test_reload_does_not_block_reads_during_build(monkeypatch, database_url, fixture_dir, embedder):
     from pasazhgard import ingest as ingest_module
 
     real_copy = ingest_module._copy
@@ -141,7 +141,7 @@ def test_reload_does_not_block_reads_during_build(monkeypatch, database_url, fix
             reads.append(other.execute("SELECT count(*) FROM public.products").fetchone()[0])
 
     monkeypatch.setattr(ingest_module, "_copy", copy_then_read)
-    ingest(fixture_dir, database_url)
+    ingest(fixture_dir, database_url, embedder)
     assert len(reads) == 3 and reads[0] > 0
 
 

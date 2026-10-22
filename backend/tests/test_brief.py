@@ -181,8 +181,8 @@ def test_brief_edits_make_no_llm_call(client, monkeypatch):
     assert calls == []
 
 
-def test_sessions_survive_a_reingest(client, fixture_dir, database_url):
+def test_sessions_survive_a_reingest(client, fixture_dir, database_url, embedder):
     sid = new_session(client)
     patch(client, sid, {"brief": {"priority": "closest"}})
-    ingest(fixture_dir, database_url)
+    ingest(fixture_dir, database_url, embedder)
     assert client.get(f"/sessions/{sid}").json()["brief"]["priority"] == "closest"

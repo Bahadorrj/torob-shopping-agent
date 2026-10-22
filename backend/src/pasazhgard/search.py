@@ -1,4 +1,4 @@
-"""search_products: lexical product search over normalized titles."""
+"""search_products: hybrid product search, lexical over normalized titles merged with semantic neighbours."""
 
 from datetime import UTC, datetime
 from typing import Literal
@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel
 
 from pasazhgard.clean import BAD_PRICE_FLAGS, PriceFlag
+from pasazhgard.embeddings import Embedder
 from pasazhgard.normalize import normalize
 
 PriceAgeBucket = Literal["<=7", "8-30", ">30"]
@@ -92,7 +93,7 @@ def _price_range(offers: list[dict], now: datetime) -> PriceRange:
     )
 
 
-def search_products(conn, query: str, now: datetime, limit: int = 20) -> SearchResult:
+def _lexical(conn, query: str, pool: int) -> list[str]:
     # punctuation-only tokens like "-" carry no signal
     tokens = [t for t in normalize(query).split() if any(ch.isalnum() for ch in t)]
     # short words like "20" match most rows, so they only rank and do not select
@@ -100,11 +101,11 @@ def search_products(conn, query: str, now: datetime, limit: int = 20) -> SearchR
     # each query word is matched on its own, so word order and words in between do not matter.
     # A word weighs more the fewer candidates contain it, so common words like "برای" cannot
     # outvote the product words; a word no candidate contains weighs nothing.
-    # shortcut: common words still scan many rows (1-2 s on the full data), revisit with hybrid search
-    products = conn.execute(
+    # shortcut: common words still scan many rows (1-2 s on the full data), revisit if search latency suffers
+    rows = conn.execute(
         """
         WITH cand AS (
-            SELECT product_id, title, brand, category, image_urls, specs,
+            SELECT product_id,
                    ARRAY(SELECT word_similarity(t, search_text)
                          FROM unnest(%(tokens)s::text[]) WITH ORDINALITY u(t, i) ORDER BY i) AS sims
             FROM products
@@ -120,13 +121,46 @@ def search_products(conn, query: str, now: datetime, limit: int = 20) -> SearchR
         scored AS (
             SELECT *, (SELECT sum(w * sims[i]) / nullif(sum(w), 0) FROM weight) AS score FROM cand
         )
-        SELECT * FROM scored
+        SELECT product_id FROM scored
         WHERE score >= %(min_score)s
         ORDER BY score DESC, product_id
         LIMIT %(limit)s
         """,
-        {"tokens": tokens, "selective": selective, "n": len(tokens), "word_match": 0.6, "min_score": 0.5, "limit": limit},
+        {"tokens": tokens, "selective": selective, "n": len(tokens), "word_match": 0.6, "min_score": 0.5, "limit": pool},
     ).fetchall()
+    return [r["product_id"] for r in rows]
+
+
+def _semantic(conn, query: str, embedder: Embedder | None, pool: int) -> list[str]:
+    if embedder is None:
+        return []
+    # text-embedding-3-small puts related products above about 0.3 cosine similarity, unrelated ones below
+    max_distance = 0.7
+    vector = embedder.embed([query])[0]
+    rows = conn.execute(
+        "SELECT product_id, embedding <=> %s::vector AS distance FROM products ORDER BY distance LIMIT %s",
+        [str(vector), pool],
+    ).fetchall()
+    return [r["product_id"] for r in rows if r["distance"] is not None and r["distance"] <= max_distance]
+
+
+def search_products(conn, query: str, now: datetime, limit: int = 20, embedder: Embedder | None = None) -> SearchResult:
+    # candidates per source; also the most an HNSW scan returns at its default ef_search
+    pool = 40
+    # reciprocal rank fusion: a product high in either list ranks high, one in both ranks higher
+    rrf_k = 10
+    score: dict[str, float] = {}
+    for ranked in (_lexical(conn, query, pool), _semantic(conn, query, embedder, pool)):
+        for rank, product_id in enumerate(ranked, 1):
+            score[product_id] = score.get(product_id, 0) + 1 / (rrf_k + rank)
+    top = sorted(score, key=lambda p: (-score[p], p))[:limit]
+    found = {
+        p["product_id"]: p
+        for p in conn.execute(
+            "SELECT product_id, title, brand, category, image_urls, specs FROM products WHERE product_id = ANY(%s)", [top]
+        )
+    }
+    products = [found[p] for p in top]
     offers = conn.execute(
         "SELECT product_id, price_toman, last_price_changed_at, price_flags FROM offers WHERE product_id = ANY(%s)",
         [[p["product_id"] for p in products]],

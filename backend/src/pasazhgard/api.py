@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from functools import cache
 from typing import Annotated
 
 import psycopg
@@ -9,6 +10,7 @@ from psycopg.rows import dict_row
 from pydantic import ValidationError
 
 from pasazhgard.brief import Session, SessionPatch, create_session, get_session, patch_session
+from pasazhgard.embeddings import Embedder, embedder_from_env
 from pasazhgard.search import SearchResult, search_products
 from pasazhgard.sellers import SellerList, SellerQuery, find_sellers
 from pasazhgard.shops import TEHRAN, ShopDetails, shop_details
@@ -31,6 +33,12 @@ def get_now() -> datetime:
     return datetime.now(TEHRAN)
 
 
+@cache
+def get_embedder() -> Embedder | None:
+    """The embedding port; None without a key, and search stays lexical."""
+    return embedder_from_env()
+
+
 @app.get("/health")
 def health(response: Response) -> dict:
     # LLM and map keys are optional: without them the app runs in degraded mode
@@ -50,8 +58,9 @@ def products_search(
     limit: int = Query(20, ge=1, le=50),
     conn=Depends(get_conn),
     now: datetime = Depends(get_now),
+    embedder: Embedder | None = Depends(get_embedder),
 ) -> SearchResult:
-    return search_products(conn, q, now, limit)
+    return search_products(conn, q, now, limit, embedder)
 
 
 @app.get("/products/{product_id}/sellers")
