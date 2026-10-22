@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from pasazhgard.search import SearchResult, search_products
 from pasazhgard.sellers import SellerList, SellerQuery, area_options, find_sellers
+from pasazhgard.shops import TEHRAN
 
 
 class Item(BaseModel):
@@ -128,8 +129,11 @@ class SessionPatch(BaseModel):
     step: Step | None = None
 
 
-def seller_query(brief: Brief) -> SellerQuery:
-    area, origin = brief.area, brief.origin
+def seller_query(brief: Brief, now: dt.datetime) -> SellerQuery:
+    area, origin, visit = brief.area, brief.origin, brief.visit_window
+    arrival = None
+    if visit.earliest_arrival:
+        arrival = dt.datetime.combine(visit.date or now.astimezone(TEHRAN).date(), visit.earliest_arrival, TEHRAN)
     return SellerQuery(
         lat=origin and origin.lat,
         lon=origin and origin.lon,
@@ -138,6 +142,10 @@ def seller_query(brief: Brief) -> SellerQuery:
         pasaj=area and area.pasaj,
         priority=brief.priority,
         max_price_toman=brief.budget.max_per_item_toman or brief.budget.max_total_toman,
+        arrival=arrival,
+        payment=brief.payment.kind,
+        provider=brief.payment.provider,
+        **brief.must_have.model_dump(),
     )
 
 
@@ -154,7 +162,7 @@ def patch_session(conn, sid: str, change: SessionPatch, now: dt.datetime) -> Ses
         session.step = change.step
     step = session.step
     if isinstance(step, SellersStep):
-        session.results = find_sellers(conn, step.product_id, seller_query(session.brief), now)
+        session.results = find_sellers(conn, step.product_id, seller_query(session.brief, now), now)
         if session.results is None:
             raise LookupError(step.product_id)
         step.title = session.results.title

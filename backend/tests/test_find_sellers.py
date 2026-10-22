@@ -85,9 +85,10 @@ def test_most_reliable_preset(client):
 
 def test_reason_chips(client):
     rows = {s["shop_name"]: s for s in sellers(client, **ALADDIN)["sellers"]}
-    assert kinds(rows["نیکورا ویوان"]) == ["cheapest", "declared_hours"]
-    assert kinds(rows["دیسیلا مانسا"]) == ["closest", "warranty", "declared_hours"]
-    assert rows["دیسیلا مانسا"]["reasons"][1]["months"] == 18
+    # the clock reads Wednesday 12:00, when both are open
+    assert kinds(rows["نیکورا ویوان"]) == ["cheapest", "open_now", "declared_hours"]
+    assert kinds(rows["دیسیلا مانسا"]) == ["closest", "open_now", "warranty", "declared_hours"]
+    assert rows["دیسیلا مانسا"]["reasons"][2]["months"] == 18
     # a warranty without a term is not a reason
     assert kinds(rows["دیسورا پاکیار"]) == []
     assert rows["دیسیلا مانسا"]["warranty"]["months"] == 18

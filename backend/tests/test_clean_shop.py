@@ -117,6 +117,9 @@ def warranty(provider=None, months=None, description=None):
             warranty(description="7 روز مهلت تست و 6 ماه گارانتی"),
             {"kind": "warranty", "provider": None, "months": 6, "description": "7 روز مهلت تست و 6 ماه گارانتی"},
         ),
+        # "ندارد" is "none", not a warranty without a term
+        (warranty(description="ندارد - کالای مشابه اصل ©"), {"kind": "none", "provider": None, "months": None, "description": None}),
+        (warranty(description="دارد"), {"kind": "warranty", "provider": None, "months": None, "description": "دارد"}),
         # the source writes a missing description as the string "None"
         (warranty(description="None"), None),
     ],

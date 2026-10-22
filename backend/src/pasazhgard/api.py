@@ -1,5 +1,5 @@
 import os
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Annotated
 
 import psycopg
@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from pasazhgard.brief import Session, SessionPatch, create_session, get_session, patch_session
 from pasazhgard.search import SearchResult, search_products
 from pasazhgard.sellers import SellerList, SellerQuery, find_sellers
-from pasazhgard.shops import ShopDetails, shop_details
+from pasazhgard.shops import TEHRAN, ShopDetails, shop_details
 
 app = FastAPI(title="Pasazhgard")
 
@@ -27,7 +27,8 @@ def get_conn():
 
 
 def get_now() -> datetime:
-    return datetime.now(UTC)
+    """The clock port: all open-now and open-at-arrival logic reads it, tests override it."""
+    return datetime.now(TEHRAN)
 
 
 @app.get("/health")

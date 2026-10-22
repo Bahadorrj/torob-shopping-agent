@@ -187,7 +187,7 @@ def clean_warranty(raw: str) -> dict | None:
     if not (provider or description or months):
         return None
     text = normalize(f"{provider or ''} {description or ''}")
-    if "بدون گارانتی" in text:
+    if "بدون گارانتی" in text or re.match(r"ندارد(?!\w)", text):
         return {"kind": "none", "provider": None, "months": None, "description": None}
     if "تست و تحویل در حضور مشتری" in text:
         return {"kind": "test_in_presence", "provider": None, "months": None, "description": None}

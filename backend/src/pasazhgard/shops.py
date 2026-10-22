@@ -8,6 +8,8 @@ from pydantic import BaseModel
 
 from pasazhgard.clean import WEEK
 
+TEHRAN = ZoneInfo("Asia/Tehran")
+
 Day = Literal["sat", "sun", "mon", "tue", "wed", "thu", "fri"]
 
 
@@ -48,16 +50,26 @@ class ShopDetails(BaseModel):
     instagram_url: str | None
 
 
+def open_at(hours: dict, at: datetime) -> bool | None:
+    """Whether a shop is open at `at`; None when its hours for that day are not recorded."""
+    at = at.astimezone(TEHRAN)
+    day = hours[WEEK[(at.weekday() + 2) % 7]]
+    if day["status"] in ("unknown", "unsupported"):
+        return None
+    t = at.strftime("%H:%M")
+    # shortcut: a shift that ends before it starts is not read as running past midnight; add it if such data shows up
+    return any(s["start"] <= t < s["end"] for s in day["shifts"])
+
+
 def shop_details(conn, shop_id: str, now: datetime) -> ShopDetails | None:
     shop = conn.execute("SELECT * FROM shops WHERE shop_id = %s", [shop_id]).fetchone()
     if shop is None:
         return None
-    tz = "Asia/Tehran"
     return ShopDetails(
         **{k: shop[k] for k in ShopDetails.model_fields if k != "hours"},
         hours=Hours(
-            timezone=tz,
-            today=WEEK[(now.astimezone(ZoneInfo(tz)).weekday() + 2) % 7],
+            timezone=TEHRAN.key,
+            today=WEEK[(now.astimezone(TEHRAN).weekday() + 2) % 7],
             week=[DayHours(day=d, **shop["hours"][d]) for d in WEEK],
         ),
     )
