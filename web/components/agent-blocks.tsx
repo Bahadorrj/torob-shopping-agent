@@ -3,14 +3,38 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { useBrief } from "@/components/brief-provider";
+import { InquiryTracker } from "@/components/inquiry-tracker";
 import { ProductCard } from "@/components/product-card";
 import { Seller } from "@/components/seller-list";
 import { Button } from "@/components/ui/button";
-import type { ProductCard as Product, ProductCompare, SellerCompare, SellerList } from "@/lib/api";
+import {
+  confirmInquiries,
+  inquiriesStreamUrl,
+  type Inquiry,
+  type InquiryStatus,
+  type ProductCard as Product,
+  type ProductCompare,
+  type SellerCompare,
+  type SellerList,
+} from "@/lib/api";
+import { useEventStream } from "@/lib/use-event-stream";
 
 // One renderer per block type. A block is an agent tool result: `{ block: "<type>", ...tool output }`
 // (backend/src/pasazhgard/agent.py). Numbers on screen come from these fields only, never from agent text.
 type Chips = { field: string; question: string; options: string[] };
+
+// The block's inquiries as they are now, not as the tool saw them. The tap sends through the REST confirm path:
+// consent never goes through the model (ADR-0002 fallback).
+function Inquiries({ initial }: { initial: Inquiry[] }) {
+  // the sheet renders only once the session exists
+  const sid = useBrief().session!.session_id;
+  // shortcut: one stream per block; share one per session if threads grow many inquiry blocks
+  const live = useEventStream<InquiryStatus>(inquiriesStreamUrl(sid));
+  const ids = new Set(initial.map((i) => i.inquiry_id));
+  const inquiries = live ? live.inquiries.filter((i) => ids.has(i.inquiry_id)) : initial;
+  return <InquiryTracker inquiries={inquiries} onConfirm={(inquiryIds) => confirmInquiries(sid, inquiryIds)} />;
+}
 
 const linkClass = "text-sm font-medium text-primary underline-offset-4 hover:underline";
 
@@ -56,6 +80,7 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
       </Link>
     </div>
   ),
+  inquiry_status: (d: InquiryStatus) => <Inquiries initial={d.inquiries} />,
   chips: (d: Chips, send) => (
     <div className="flex flex-col gap-2">
       <p className="text-sm">{d.question}</p>

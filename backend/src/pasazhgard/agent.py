@@ -28,6 +28,9 @@ from pydantic import BaseModel, Field
 from pasazhgard.brief import Area, Brief, Budget, Item, Payment, VisitWindow, seller_query
 from pasazhgard.compare import compare_products as _compare_products
 from pasazhgard.embeddings import Embedder
+from pasazhgard.inquiries import Compose
+from pasazhgard.inquiries import contact_seller as _contact_seller
+from pasazhgard.inquiries import get_inquiries as _get_inquiries
 from pasazhgard.search import search_products as _search_products
 from pasazhgard.seller_compare import CompareQuery
 from pasazhgard.seller_compare import compare_sellers as _compare_sellers
@@ -113,7 +116,9 @@ Now: {now} (Asia/Tehran). Shopping Brief: {brief}
   the UI shows tool results as cards, so refer to them instead of repeating numbers.
 - If a missing brief field would change the answer, call ask_user for that one field and stop.
   Ask one question per turn, and none when the answer would not change the result.
-- Never say an item is in stock unless a seller confirmed it."""
+- Never say an item is in stock unless a seller confirmed it.
+- contact_seller only drafts messages; the user sends them with the button under the drafts. Never say a message
+  was sent or a seller answered unless get_inquiries shows it."""
 
 CHIP_FIELDS = Literal["area", "budget", "visit_window", "payment", "quantity", "need"]
 
@@ -202,7 +207,33 @@ def build_graph(ports: Ports) -> StateGraph:
             options = ["همین الان", "امروز عصر", "فردا"]
         return block("chips", {"field": field, "question": question, "options": options})
 
-    tools = [search_products, compare_products, find_sellers, compare_sellers, ask_user]
+    @tool
+    def contact_seller(offer_ids: list[str], config: RunnableConfig) -> str:
+        """Draft one short Persian inquiry per offer (1-3 offers): available now, today's price, hold, installments.
+        Nothing is sent: the user sends the drafts with a tap. Shows the inquiry tracker."""
+        sid = _session(config)
+        # creates the session row a thread may start without
+        brief_of(config)
+        try:
+            change = Compose(offer_ids=offer_ids)
+            with ports.connect() as conn:
+                return block("inquiry_status", _contact_seller(conn, sid, change, ports.now()))
+        except LookupError:
+            return error("offer not found")
+        except ValueError:
+            # pydantic's ValidationError is a ValueError too
+            return error("give 1-3 distinct offer ids; an item has at most 3 open inquiries")
+
+    @tool
+    def get_inquiries(config: RunnableConfig) -> str:
+        """This session's inquiries to sellers with each seller's latest reply. Shows the inquiry tracker."""
+        sid = _session(config)
+        # creates the session row a thread may start without
+        brief_of(config)
+        with ports.connect() as conn:
+            return block("inquiry_status", _get_inquiries(conn, sid))
+
+    tools = [search_products, compare_products, find_sellers, compare_sellers, ask_user, contact_seller, get_inquiries]
 
     def patch_brief(state: MessagesState, config: RunnableConfig) -> dict:
         sid, brief = _session(config), brief_of(config)
