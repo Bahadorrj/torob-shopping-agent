@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { fakeSessions } from "./fake-session";
 
@@ -56,30 +56,46 @@ async function open(page: Page, respond: (brief: Record<string, unknown>) => obj
 const noOverflow = (page: Page) =>
   page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
-test("map pins cluster one pasaj, tapping one shows its shops, the toggle keeps filters and selection", async ({ page }) => {
+// the element's box lies inside the docked row's box and the viewport
+async function fullyVisible(page: Page, card: Locator, row: Locator) {
+  const [c, r] = [await card.boundingBox(), await row.boundingBox()];
+  const vw = page.viewportSize()!.width;
+  return !!c && !!r && c.x >= r.x - 1 && c.x + c.width <= Math.min(r.x + r.width, vw) + 1;
+}
+
+test("map pins cluster one pasaj, a pin tap scrolls the docked cards to its shop, the toggle keeps filters and selection", async ({ page }) => {
   const patches = await open(page, (brief) => ((brief.area as { name?: string } | null)?.name ? list([c]) : list([a, b, c, nowhere])));
   await page.getByRole("button", { name: "نقشه", exact: true }).click();
+  await expect(page.getByRole("button", { name: "نقشه", exact: true })).toHaveAttribute("aria-pressed", "true");
 
   const pins = page.getByRole("button", { name: /فروشنده روی نقشه/ });
   await expect(pins).toHaveCount(2);
   await expect(page.getByText("۱ فروشنده موقعیت ثبت‌شده ندارد")).toBeVisible();
+  const dock = page.getByRole("list", { name: "فروشنده‌های روی نقشه" });
+  await expect(dock.getByRole("listitem")).toHaveCount(3);
+  const cardOf = (name: string) => dock.getByRole("listitem").filter({ hasText: name });
+  // the third card starts off screen
+  expect(await fullyVisible(page, cardOf(c.shop_name), dock)).toBe(false);
   expect(await noOverflow(page)).toBe(0);
 
+  await page.getByRole("button", { name: `${c.shop_name}: ۱ فروشنده روی نقشه` }).click();
+  await expect.poll(() => fullyVisible(page, cardOf(c.shop_name), dock)).toBe(true);
+  await expect(cardOf(c.shop_name)).toHaveAttribute("aria-current", "true");
+
   await page.getByRole("button", { name: "پاساژ علاالدین ۲: ۲ فروشنده روی نقشه" }).click();
-  const picked = page.getByRole("region", { name: "پاساژ علاالدین ۲" });
-  await expect(picked.getByRole("listitem")).toHaveCount(2);
-  const first = picked.getByRole("listitem").filter({ hasText: a.shop_name });
+  await expect.poll(() => fullyVisible(page, cardOf(a.shop_name), dock)).toBe(true);
+  const first = cardOf(a.shop_name);
   await expect(first).toContainText("۳٫۵۰۰٫۰۰۰ تومان");
-  await expect(first).toContainText("قیمت ثبت‌شده");
   await expect(first.getByRole("link", { name: a.shop_name })).toHaveAttribute("href", "/shops/shop_a");
-  await expect(first.getByRole("button", { name: "پرسیدن از فروشنده" })).toBeVisible();
+  await expect(first.getByRole("button", { name: "استعلام بگیرید" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "همه فروشگاه‌های این پاساژ" })).toBeVisible();
   expect(await noOverflow(page)).toBe(0);
 
   const sent = patches.length;
   await page.getByRole("button", { name: "فهرست", exact: true }).click();
   await expect(page.locator("li[aria-current=true]")).toHaveCount(2);
   await page.getByRole("button", { name: "نقشه", exact: true }).click();
-  await expect(picked.getByRole("listitem")).toHaveCount(2);
+  await expect(dock.locator("li[aria-current=true]")).toHaveCount(2);
   expect(patches.length).toBe(sent);
 
   // a filter change while on the map redraws the pins and stays on the map

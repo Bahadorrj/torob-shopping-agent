@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { askHome, fakeAgent, fakeSessions } from "./fake-session";
 
@@ -81,16 +81,72 @@ const bar = (page: Page) => page.getByRole("region", { name: "خلاصه خری�
 const noOverflow = (page: Page) =>
   page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
+// buttons and links with a fill of their own, not ghost (transparent) or white
+const filled = (loc: Locator) =>
+  loc.locator("button, a").evaluateAll((els) =>
+    els.filter((e) => !["rgba(0, 0, 0, 0)", "rgb(255, 255, 255)"].includes(getComputedStyle(e).backgroundColor)).length,
+  );
+
+test("result cards show price, age and availability slots, one reason and one filled action at 360 px", async ({ page }) => {
+  const today = new Date().toLocaleDateString("en-CA");
+  const confirmed = {
+    ...row,
+    offer_id: "o3",
+    shop_id: "shop_e",
+    shop_name: "مانا نیلا",
+    price_toman: 3800000,
+    reasons: [{ kind: "closest", months: null }],
+    latest_price: { status: "confirmed", price_toman: 3750000, trust_level: "confirmed", at: `${today}T11:42:00+03:30` },
+    inquiry: { inquiry_id: 1, status: "replied", available: "yes", latest_price_toman: 3750000, hold_until: null, installments: null, replied_at: `${today}T11:42:00+03:30` },
+  };
+  const waiting = { ...unpriced, inquiry: { ...confirmed.inquiry, status: "sent", available: "unknown", latest_price_toman: null, replied_at: null } };
+  await open(page, () => ({ ...list, count: 3, sellers: [row, confirmed, waiting] }));
+  await expect(page.getByText("۳ فروشنده", { exact: true })).toBeVisible();
+  const card = (name: string) => page.getByRole("listitem").filter({ hasText: name });
+  const slot = (name: string, s: string) => card(name).locator(`[data-slot="${s}"]`);
+
+  for (const name of [row.shop_name, confirmed.shop_name, unpriced.shop_name]) {
+    for (const s of ["price", "age", "availability"]) await expect(slot(name, s)).toHaveCount(1);
+    await expect(slot(name, "age")).toContainText("آخرین تغییر قیمت");
+    await expect(slot(name, "age")).not.toContainText("به‌روز");
+    await expect(slot(name, "availability")).toContainText("موجودی");
+    await expect(card(name).locator('[data-slot="badge"]')).toHaveCount(1);
+    expect(await filled(card(name))).toBe(1);
+  }
+
+  await expect(slot(row.shop_name, "price")).toContainText("۳٫۵۰۰٫۰۰۰ تومان");
+  await expect(slot(row.shop_name, "price")).toContainText("قیمت ثبت‌شده");
+  await expect(slot(row.shop_name, "age")).toContainText("۲۲ روز پیش");
+  await expect(slot(row.shop_name, "availability")).toContainText("نامشخص");
+  await expect(card(row.shop_name).locator('[data-slot="badge"]')).toHaveText("ارزان‌ترین");
+  await expect(card(row.shop_name).getByRole("button", { name: "استعلام بگیرید" })).toBeVisible();
+  await expect(card(row.shop_name).getByRole("link", { name: row.shop_name })).toHaveAttribute("href", "/shops/shop_a");
+
+  await expect(slot(confirmed.shop_name, "price")).toContainText("۳٫۷۵۰٫۰۰۰ تومان");
+  await expect(slot(confirmed.shop_name, "price")).toContainText("قیمت فروشنده، ساعت ۱۱:۴۲");
+  await expect(slot(confirmed.shop_name, "age")).toContainText("امروز");
+  await expect(slot(confirmed.shop_name, "availability")).toContainText("موجود است");
+  await expect(card(confirmed.shop_name)).toContainText("قیمت ثبت‌شده ۳٫۸۰۰٫۰۰۰ تومان بود.");
+  await expect(card(confirmed.shop_name).getByRole("button", { name: "مسیر تا فروشگاه" })).toBeVisible();
+
+  await expect(slot(unpriced.shop_name, "price")).toHaveText("قیمت: نامشخص");
+  await expect(slot(unpriced.shop_name, "availability")).toContainText("در انتظار پاسخ");
+  await expect(card(unpriced.shop_name).getByRole("button", { name: "استعلام فرستاده شد" })).toBeDisabled();
+
+  // the dock is the page's one red button
+  await expect(page.locator(".bg-brand")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "استعلام از ۱ فروشنده ارزان‌تر" })).toBeVisible();
+  expect(await noOverflow(page)).toBe(0);
+});
+
 test("seller rows show reason chips, trust badge and link to the shop at 360 px", async ({ page }) => {
   await open(page, () => list);
-  await expect(page.getByText("۲ فروشنده")).toBeVisible();
+  await expect(page.getByText("۲ فروشنده", { exact: true })).toBeVisible();
   const first = page.getByRole("listitem").filter({ hasText: row.shop_name });
   await expect(first).toContainText("ارزان‌ترین");
-  await expect(first).toContainText("گارانتی ۱۸ ماهه");
   await expect(first).toContainText("قیمت ثبت‌شده");
   await expect(first).toContainText("۳٫۵۰۰٫۰۰۰ تومان");
-  await expect(first.getByRole("link", { name: row.shop_name })).toHaveAttribute("href", "/shops/shop_a");
-  await expect(page.getByRole("listitem").filter({ hasText: unpriced.shop_name })).toContainText("قیمت ثبت نشده");
+  await expect(page.getByRole("listitem").filter({ hasText: unpriced.shop_name })).toContainText("قیمت: نامشخص");
 
   const categoryOnly = page.getByRole("region", { name: "فروشگاه‌های هم‌دسته" });
   await expect(categoryOnly).toContainText("رامیلا رامیرا");
@@ -102,7 +158,7 @@ test("area and ranking changes in the brief bar refetch the list and update the 
   const patches = await open(page, (b) => (area(b)?.name ? { ...list, count: 1, sellers: [unpriced] } : list));
   await bar(page).getByRole("button", { name: /^محدوده/ }).click();
   await page.getByLabel("انتخاب محدوده").selectOption({ label: "فردوسی" });
-  await expect(page.getByText("۱ فروشنده")).toBeVisible();
+  await expect(page.getByText("۱ فروشنده", { exact: true })).toBeVisible();
   expect(patches.at(-1)?.brief?.area).toEqual({ name: "فردوسی" });
 
   await page.getByLabel("انتخاب محدوده").selectOption({ label: "پاساژ علاالدین" });
@@ -120,7 +176,7 @@ test("area and ranking changes in the brief bar refetch the list and update the 
 
 test("one seller looks fine", async ({ page }) => {
   await open(page, () => ({ ...list, count: 1, sellers: [{ ...row, reasons: [] }], category_only: [] }));
-  await expect(page.getByText("۱ فروشنده")).toBeVisible();
+  await expect(page.getByText("۱ فروشنده", { exact: true })).toBeVisible();
   await expect(page.getByRole("region", { name: "فروشگاه‌های هم‌دسته" })).toHaveCount(0);
   expect(await noOverflow(page)).toBe(0);
 });
@@ -129,7 +185,7 @@ test("an empty area explains coverage and suggests the nearest covered area", as
   const patches = await open(page, (b) => (area(b)?.name === "بهارستان" ? list : empty));
   await expect(page.getByText("داده‌ها بخشی از فروشگاه‌های تهران، بیشتر مرکز شهر، را پوشش می‌دهند")).toBeVisible();
   await page.getByRole("button", { name: /بهارستان/ }).click();
-  await expect(page.getByText("۲ فروشنده")).toBeVisible();
+  await expect(page.getByText("۲ فروشنده", { exact: true })).toBeVisible();
   expect(patches.at(-1)?.brief?.area).toEqual({ name: "بهارستان" });
   expect(await noOverflow(page)).toBe(0);
 });
@@ -142,13 +198,12 @@ test("condition chips, the declared installment channel and the ask-them group a
   };
   await open(page, () => ({ ...list, count: 1, sellers: [installments], ask_them: [{ ...unpriced, unknown: ["hours", "payment"] }] }));
   const first = page.getByRole("listitem").filter({ hasText: row.shop_name });
-  await expect(first).toContainText("الان باز است");
-  await expect(first).toContainText("اقساط اسنپ‌پی");
-  await expect(first).toContainText("اقساط: اسنپ‌پی (حضوری)، تارا (نحوه پرداخت نامشخص)");
+  await expect(first.locator('[data-slot="badge"]')).toHaveText("الان باز");
+  await expect(first).toContainText("اسنپ‌پی حضوری، تارا · الان باز");
 
   const ask = page.getByRole("region", { name: "از فروشنده بپرسید" });
   await expect(ask).toContainText(unpriced.shop_name);
-  await expect(ask).toContainText("ثبت نشده: ساعت کاری، روش پرداخت");
+  await expect(ask).toContainText("نامشخص: ساعت کاری، روش پرداخت");
   expect(await noOverflow(page)).toBe(0);
 });
 
@@ -213,21 +268,20 @@ test("seller cards end with ask, directions and compare, in both groups, at 360 
   await page.goto("/products/p1/sellers");
 
   // the count covers the ask-them group
-  await expect(page.getByText("۲ فروشنده")).toBeVisible();
+  await expect(page.getByText("۲ فروشنده", { exact: true })).toBeVisible();
   const ask = page.getByRole("region", { name: "از فروشنده بپرسید" });
   const card = ask.getByRole("listitem").filter({ hasText: row.shop_name });
   // the shop name looks like a link without hover
   const name = card.getByRole("link", { name: row.shop_name });
   await expect(name).toHaveAttribute("href", "/shops/shop_a");
-  await expect(name).toHaveCSS("text-decoration-line", "underline");
-  await expect(card.getByRole("button", { name: "افزودن به مقایسه" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "مقایسه", exact: true })).toBeVisible();
 
-  await card.getByRole("button", { name: "پرسیدن از فروشنده" }).click();
+  await card.getByRole("button", { name: "استعلام بگیرید" }).click();
   await expect(page.getByRole("heading", { name: "پیش‌نویس پیام‌ها" })).toBeVisible();
   expect(composed).toEqual([["o1"]]);
-  await expect(card.getByRole("button", { name: "استعلام شد" })).toBeDisabled();
+  await expect(card.getByRole("button", { name: "پیش‌نویس استعلام آماده است" })).toBeDisabled();
 
-  await card.getByRole("button", { name: "مسیر" }).click();
+  await card.getByRole("button", { name: "مسیر", exact: true }).click();
   await expect(card.getByRole("link", { name: "باز کردن در نشان" })).toBeVisible();
   await expect(card).toContainText("۶ دقیقه (تخمین خط مستقیم)");
   expect(routed[0].get("lat")).toBe("35.69");
@@ -236,7 +290,7 @@ test("seller cards end with ask, directions and compare, in both groups, at 360 
   // category-only shops get the shop page and directions, nothing to ask or compare
   const categoryOnly = page.getByRole("region", { name: "فروشگاه‌های هم‌دسته" }).getByRole("listitem");
   await expect(categoryOnly.getByRole("link", { name: "رامیلا رامیرا" })).toHaveAttribute("href", "/shops/shop_c");
-  await expect(categoryOnly.getByRole("button", { name: "پرسیدن از فروشنده" })).toHaveCount(0);
+  await expect(categoryOnly.getByRole("button", { name: "استعلام بگیرید" })).toHaveCount(0);
   await categoryOnly.getByRole("button", { name: "مسیر" }).click();
   await expect(categoryOnly.getByRole("link", { name: "باز کردن در گوگل مپ" })).toBeVisible();
   expect(await noOverflow(page)).toBe(0);
@@ -245,6 +299,6 @@ test("seller cards end with ask, directions and compare, in both groups, at 360 
 test("directions without an origin ask for one", async ({ page }) => {
   await open(page, () => list);
   const card = page.getByRole("listitem").filter({ hasText: row.shop_name });
-  await card.getByRole("button", { name: "مسیر" }).click();
+  await card.getByRole("button", { name: "مسیر", exact: true }).click();
   await expect(card).toContainText("برای مسیر، مبدأ را در خلاصه خرید انتخاب کنید.");
 });

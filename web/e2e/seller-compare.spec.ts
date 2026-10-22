@@ -87,16 +87,16 @@ test("pick up to three sellers from the list and open the compare", async ({ pag
   await fakeSessions(page, { sellers: () => list });
   await fakeCompare(page);
   await page.goto("/products/p1/sellers");
-  const add = page.getByRole("button", { name: "افزودن به مقایسه" });
+  const add = page.getByRole("button", { name: "مقایسه", exact: true, pressed: false });
   await add.nth(0).click();
-  await expect(page.getByRole("link", { name: /مقایسه فروشنده‌ها/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /مقایسه .* فروشنده/ })).toHaveCount(0);
   await add.nth(0).click();
   await add.nth(0).click();
-  await expect(page.getByRole("button", { name: "حذف از مقایسه" })).toHaveCount(3);
+  await expect(page.getByRole("button", { name: "مقایسه", exact: true, pressed: true })).toHaveCount(3);
   // a fourth seller cannot be added
   await expect(add).toBeDisabled();
   expect(await noOverflow(page)).toBe(0);
-  await page.getByRole("link", { name: "مقایسه فروشنده‌ها (۳)" }).click();
+  await page.getByRole("link", { name: "مقایسه ۳ فروشنده" }).click();
   await expect(page).toHaveURL(/\/products\/p1\/sellers\/compare\?offer=o1&offer=o2&offer=o3$/);
   await expect(page.getByRole("heading", { name: "مقایسه فروشنده‌ها" })).toBeVisible();
 });
