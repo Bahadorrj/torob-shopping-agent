@@ -1,4 +1,4 @@
-// A stand-in for the FastAPI /agent endpoint: answers every AG-UI run with text, product cards and chips.
+// A stand-in for the FastAPI /agent endpoint: answers every AG-UI run with text, product cards, chips and a shortlist.
 import { createServer } from "node:http";
 
 const product = {
@@ -6,9 +6,21 @@ const product = {
   price: { trust_level: "listed", min_toman: 1690000, max_toman: 3500000, per_meter: false, last_price_changed_at: null, price_age_days: 13, price_age_bucket: "8-30" },
   price_flags: [], score_parts: [], meaning_match: false,
 };
+const pick = (product_id, title, tradeoffs) => ({
+  product_id, title, brand: null, category: null, image_url: null,
+  key_specs: [{ key: "نسخه بلوتوث", value: "5.3" }], price: product.price, seller_count: 4, tradeoffs,
+});
 const blocks = [
   { block: "product_cards", query: "هدفون", items: [product] },
   { block: "chips", field: "area", question: "کجا می‌خواهید بروید؟", options: ["نزدیک من", "فردوسی", "علاالدین"] },
+  {
+    block: "model_shortlist",
+    need: "هندزفری ورزشی",
+    models: [
+      pick("p2", "هندزفری بلوتوثی انکر R50i NC", ["گران‌ترین گزینه", "قابلیت حذف نویز (ANC): دارد"]),
+      pick("p3", "هدفون بی سیم کیو سی وای T13x", ["ارزان‌ترین گزینه", "مقاومت در برابر آب (IP): (مقاوم در برابر واترجت اسپری) IPX5"]),
+    ],
+  },
 ];
 
 createServer((req, res) => {
