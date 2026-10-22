@@ -5,6 +5,7 @@ const TOOLS = {
   visit_plan: "plan_visit",
   directions: "get_directions",
   alternatives: "find_alternatives",
+  seller_list: "find_sellers",
 };
 
 export function runEvents({ threadId, runId, messages }, blocks, text) {
