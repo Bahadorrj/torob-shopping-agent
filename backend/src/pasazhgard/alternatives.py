@@ -1,4 +1,4 @@
-"""find_alternatives: where else to ask when an inquiry falls through (PRD F6, F7)."""
+"""find_alternatives: where else to ask when an inquiry falls through."""
 
 import datetime as dt
 from typing import Literal
@@ -40,7 +40,7 @@ class Alternative(BaseModel):
 
 
 class Alternatives(BaseModel):
-    """The `alternatives` block: the top 2 places to ask instead, in PRD F6 order."""
+    """The `alternatives` block: the top 2 places to ask instead, best first."""
 
     inquiry_id: int
     reason: Reason
@@ -71,7 +71,7 @@ def _tradeoff(a: Alternative) -> str:
 def find_alternatives(conn, sid: str, inquiry_id: int, now: dt.datetime) -> Alternatives | None:
     """None when the session has no such inquiry; ValueError when the inquiry has not fallen through.
 
-    Order (F6): the same product at another open shop near the plan, same pasaj first; a similar product (same
+    Order: the same product at another open shop near the plan, same pasaj first; a similar product (same
     category, a spec in common, within budget) nearby; shops of the category that do not list it, to ask; shops
     that deliver fast. Shops already asked about the item are left out, and so are shops closed now, except
     fast-delivery ones.

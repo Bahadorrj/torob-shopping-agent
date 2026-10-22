@@ -23,7 +23,7 @@ Question = Literal["available", "price", "hold", "installments"]
 
 
 class Reply(BaseModel):
-    """A seller reply in the parsed shape (PRD 6.4); the inquiry keeps the merge of every reply."""
+    """A seller reply in the parsed shape; the inquiry keeps the merge of every reply."""
 
     available: Literal["yes", "no", "unknown"] = "unknown"
     latest_price_toman: int | None = None

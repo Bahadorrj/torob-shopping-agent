@@ -1,4 +1,4 @@
-"""The orchestrator (PRD 6.2, ADR-0002): a LangGraph tool loop over the shopping tools, served as AG-UI at /agent.
+"""The orchestrator: a LangGraph tool loop over the shopping tools, served as AG-UI at /agent.
 
 A turn: patch the session's brief from the user's words (structured output), then call tools until the model
 answers. Every block the UI renders is a tool result: a JSON object whose `block` names its renderer.

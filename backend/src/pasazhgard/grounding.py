@@ -1,4 +1,4 @@
-"""Grounding check (PRD 6.7): prices, shop ids and availability the agent states must come from tool output."""
+"""Grounding check: prices, shop ids and availability the agent states must come from tool output."""
 
 import json
 import re
