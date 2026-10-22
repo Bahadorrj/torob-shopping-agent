@@ -67,14 +67,14 @@ test("a website price shows with its fetch time and no stock claim; an unavailab
 
   const table = page.getByRole("table");
   const row = (name: string) => table.getByRole("row").filter({ has: page.getByRole("rowheader", { name }) });
-  await expect(row("آخرین قیمت")).toContainText("۵۸۰٬۰۰۰ تومان");
+  await expect(row("آخرین قیمت")).toContainText("۵۸۰٫۰۰۰ تومان");
   await expect(row("آخرین قیمت")).toContainText("سایت فروشنده - ساعت ۱۲:۰۵");
   await expect(row("آخرین قیمت")).toContainText("موجودی تأیید نشده");
   await expect(row("اعتبار قیمت")).toContainText("قیمت سایت");
 
   const tracker = page.getByRole("region", { name: "استعلام‌ها" });
   await expect(tracker.getByRole("heading", { name: "قیمت سایت فروشنده‌ها" })).toBeVisible();
-  await expect(tracker).toContainText("قیمت سایت: ۵۸۰٬۰۰۰ تومان - ساعت ۱۲:۰۵ - موجودی تأیید نشده");
+  await expect(tracker).toContainText("قیمت سایت: ۵۸۰٫۰۰۰ تومان - ساعت ۱۲:۰۵ - موجودی تأیید نشده");
   await expect(tracker).toContainText("قیمت سایت در دسترس نبود");
   await tracker.getByRole("button", { name: "استعلام از نیین ماهیس" }).click();
   await expect.poll(() => composed).toEqual([{ offer_ids: [], asks: [{ product_id: "p1", shop_id: "shop_b" }] }]);

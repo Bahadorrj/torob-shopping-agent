@@ -127,7 +127,7 @@ export function Seller({ s, children }: { s: SellerRow; children?: ReactNode }) 
           <>
             <Badge variant="secondary">قیمت ثبت‌شده</Badge>
             {s.per_meter && <Badge variant="outline">قیمت هر متر</Badge>}
-            <span>{priceAge(s.price_age_days)}</span>
+            <span>آخرین تغییر قیمت: {priceAge(s.price_age_days)}</span>
             {s.price_age_bucket === ">30" && <span className="text-amber-700">قیمت قدیمی، استعلام بگیرید</span>}
           </>
         ) : (

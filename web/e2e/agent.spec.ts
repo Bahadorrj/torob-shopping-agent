@@ -14,7 +14,7 @@ test("the agent sheet renders blocks at 360 px and a chip answers the question",
   await expect(sheet.getByText("کجا می‌خواهید بروید؟")).toBeVisible();
   // visit_plan: the stops in order with open-at-ETA, and a link to the plan screen
   await expect(sheet.getByText("دیسورا پاکیار")).toBeVisible();
-  await expect(sheet.getByText("ساعت کاری ثبت نشده")).toBeVisible();
+  await expect(sheet.getByText("ساعت کاری: نامشخص")).toBeVisible();
   await expect(sheet.getByRole("link", { name: "دیدن برنامه روی نقشه" })).toHaveAttribute(
     "href",
     "/plan?shop_id=shop_a&shop_id=shop_b&lat=35.69&lon=51.42&mode=walk&depart_at=2026-10-22T13%3A35%3A00%2B03%3A30&session_id=s1",

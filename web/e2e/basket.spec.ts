@@ -64,7 +64,7 @@ test("a pasted list opens basket mode: stops, per-meter totals, category-only fl
 
   const stops = page.getByRole("listitem").filter({ has: page.getByRole("heading", { level: 3 }) });
   await expect(stops).toHaveCount(2);
-  await expect(stops.nth(0)).toContainText("قیمت هر متر ۲۸٬۰۰۰ تومان، جمع ۵٬۶۰۰٬۰۰۰ تومان");
+  await expect(stops.nth(0)).toContainText("قیمت هر متر ۲۸٫۰۰۰ تومان، جمع ۵٫۶۰۰٫۰۰۰ تومان");
   await expect(stops.nth(0)).toContainText("(۲۰۰ متر)");
   await expect(stops.nth(1)).toContainText("فقط دسته‌بندی فروشگاه");
   await expect(page.getByRole("region", { name: "پیدا نشد" })).toContainText("زززز");

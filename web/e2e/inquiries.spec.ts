@@ -129,13 +129,13 @@ test("ask three sellers: drafts first, send on consent, replies update the track
   cols[0].inquiry = { inquiry_id: 1, status: "confirmed", available: "yes", latest_price_toman: 3400000, hold_until: "17:00:00", installments: true, replied_at: AT };
 
   await expect(tracker.getByText("موجودی تأیید شد")).toBeVisible();
-  await expect(tracker).toContainText("قیمت تأییدشده توسط فروشنده: ۳٬۴۰۰٬۰۰۰ تومان - ساعت ۱۲:۰۵");
+  await expect(tracker).toContainText("قیمت تأییدشده توسط فروشنده: ۳٫۴۰۰٫۰۰۰ تومان - ساعت ۱۲:۰۵");
   await expect(tracker).toContainText("نگه می‌دارد تا ساعت ۱۷:۰۰");
   await expect(tracker).toContainText("۱۲:۰۵ - فروشنده: موجود است");
 
   const table = page.getByRole("table");
   const row = (name: string) => table.getByRole("row").filter({ has: page.getByRole("rowheader", { name }) });
-  await expect(row("آخرین قیمت")).toContainText("۳٬۴۰۰٬۰۰۰ تومان");
+  await expect(row("آخرین قیمت")).toContainText("۳٫۴۰۰٫۰۰۰ تومان");
   await expect(row("آخرین قیمت")).toContainText("تأیید فروشنده - ساعت ۱۲:۰۵");
   await expect(row("موجودی")).toContainText("موجود است - ساعت ۱۲:۰۵");
   await expect(row("پرداخت و اقساط")).toContainText("اقساط یا ترب‌پی (تأیید فروشنده)");
@@ -174,7 +174,7 @@ test("seller console: simulated label, incoming message and quick replies at 360
 
   await page.getByRole("button", { name: "موجود است" }).click();
   await page.getByLabel("قیمت امروز به تومان").fill("۳۴۰۰۰۰۰");
-  await page.getByRole("button", { name: "قیمت امروز: ۳٬۴۰۰٬۰۰۰" }).click();
+  await page.getByRole("button", { name: "قیمت امروز: ۳٫۴۰۰٫۰۰۰" }).click();
   await page.getByLabel("نگه داشتن تا ساعت").fill("17:00");
   await page.getByRole("button", { name: "تا ساعت ... نگه می‌دارم" }).click();
   await page.getByRole("button", { name: "اقساط و ترب‌پی قبول می‌کنم" }).click();

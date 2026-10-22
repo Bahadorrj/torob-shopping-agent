@@ -33,13 +33,13 @@ test("pasaj view groups shops by floor, unknown floors last, at 360 px", async (
   await page.goto(`/pasajs/${encodeURIComponent("علاالدین 2")}?product=p1`);
   await expect(page.getByRole("heading", { name: "پاساژ علاالدین ۲" })).toBeVisible();
 
-  await expect(page.getByRole("heading", { level: 2 })).toHaveText(["طبقه زیر همکف", "طبقه ۲", "طبقه ثبت نشده"]);
+  await expect(page.getByRole("heading", { level: 2 })).toHaveText(["طبقه زیر همکف", "طبقه ۲", "طبقه: نامشخص"]);
   const first = page.getByRole("region", { name: "طبقه زیر همکف" }).getByRole("listitem").first();
   await expect(first.getByRole("link", { name: "دیسیلا مانسا" })).toHaveAttribute("href", "/shops/shop_a");
   await expect(first).toContainText("واحد ۴۴");
-  await expect(first).toContainText("۳٬۵۰۰٬۰۰۰ تومان");
-  await expect(page.getByRole("region", { name: "طبقه ۲" })).toContainText("قیمت ثبت نشده");
-  await expect(page.getByRole("region", { name: "طبقه ثبت نشده" })).toContainText("دیسآرا مانوش");
+  await expect(first).toContainText("۳٫۵۰۰٫۰۰۰ تومان");
+  await expect(page.getByRole("region", { name: "طبقه ۲" })).toContainText("قیمت: نامشخص");
+  await expect(page.getByRole("region", { name: "طبقه: نامشخص" })).toContainText("دیسآرا مانوش");
   expect(await noOverflow(page)).toBe(0);
 
   // the brief rides along, so the view matches its items too
@@ -92,6 +92,6 @@ test("pasaj view still shows when no session can be made", async ({ page }) => {
   await page.route("**/api/sessions**", (route) => route.fulfill({ status: 500, json: {} }));
   const asked = await fakePasaj(page);
   await page.goto(`/pasajs/${encodeURIComponent("علاالدین 2")}?product=p1`);
-  await expect(page.getByRole("heading", { level: 2 })).toHaveText(["طبقه زیر همکف", "طبقه ۲", "طبقه ثبت نشده"]);
+  await expect(page.getByRole("heading", { level: 2 })).toHaveText(["طبقه زیر همکف", "طبقه ۲", "طبقه: نامشخص"]);
   expect(asked.at(-1)!.searchParams.has("session_id")).toBe(false);
 });

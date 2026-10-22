@@ -4,7 +4,7 @@ import { TrayToggle } from "@/components/compare-tray";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { PriceFlag, PriceRange, ProductCard as Product } from "@/lib/api";
-import { faDigits, faText, priceAge, toman } from "@/lib/format";
+import { faDigits, faText, fromToman, priceAge, toman } from "@/lib/format";
 
 const FLAG_LABELS: Partial<Record<PriceFlag, string>> = {
   placeholder: "قیمت صوری کنار گذاشته شد",
@@ -17,6 +17,8 @@ function joinFa(words: string[]) {
 }
 
 // one sentence from the card's own data, so it claims nothing the search did not return
+const range = (min: number, max: number) => (min === max ? toman(min) : fromToman(min));
+
 function whySentence(p: Product) {
   const words = p.score_parts.filter((s) => s.matched).map((s) => `«${faText(s.word)}»`);
   const found =
@@ -29,7 +31,7 @@ function whySentence(p: Product) {
   const { price } = p;
   const priced =
     price.trust_level === "listed" && price.min_toman !== null && price.max_toman !== null
-      ? `با قیمت ${toman(price.min_toman, price.max_toman)}${price.per_meter ? " برای هر متر" : ""}`
+      ? `با قیمت ${range(price.min_toman, price.max_toman)}${price.per_meter ? " برای هر متر" : ""}`
       : "بدون قیمت";
   return `${found}${faDigits(p.offer_count)} فروشنده آن را ${priced} ثبت کرده‌اند.`;
 }
@@ -42,12 +44,12 @@ export function ListedPrice({ price }: { price: PriceRange }) {
   return (
     <>
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-sm font-bold">{toman(price.min_toman, price.max_toman)}</span>
+        <span className="text-sm font-bold">{range(price.min_toman, price.max_toman)}</span>
         {price.per_meter && <Badge variant="outline">قیمت هر متر</Badge>}
       </div>
       <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
         <Badge variant="secondary">قیمت ثبت‌شده</Badge>
-        <span>{priceAge(price.price_age_days)}</span>
+        <span>آخرین تغییر قیمت: {priceAge(price.price_age_days)}</span>
         {price.price_age_bucket === ">30" && <span className="text-amber-700">قیمت قدیمی، استعلام بگیرید</span>}
       </div>
     </>

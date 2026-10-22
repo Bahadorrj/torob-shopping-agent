@@ -52,7 +52,7 @@ test("why this shows score parts as chips and one sentence from the card data", 
   await first.getByText("چرا این؟").click();
   await expect(first.getByText("مطابق: هدفون")).toBeVisible();
   await expect(first.getByText("نیامده: ورزش")).toBeVisible();
-  await expect(first.getByText("«هدفون» و «انکر» در نام، برند یا مدل این کالا آمده و ۸ فروشنده آن را با قیمت ۱٬۰۰۰٬۰۰۰ تا ۲٬۰۰۰٬۰۰۰ تومان ثبت کرده‌اند.")).toBeVisible();
+  await expect(first.getByText("«هدفون» و «انکر» در نام، برند یا مدل این کالا آمده و ۸ فروشنده آن را با قیمت از ۱٫۰۰۰٫۰۰۰ تومان ثبت کرده‌اند.")).toBeVisible();
   expect(await noOverflow(page)).toBe(0);
 });
 
@@ -63,7 +63,7 @@ test("why this says when a product matched by meaning, not by query words", asyn
   const first = result(page, "کالای ه");
   await first.getByText("چرا این؟").click();
   await expect(first.getByText("هم‌معنا با جستجو")).toBeVisible();
-  await expect(first.getByText("این کالا از نظر معنا به جستجوی شما نزدیک است و ۸ فروشنده آن را با قیمت ۱٬۰۰۰٬۰۰۰ تا ۲٬۰۰۰٬۰۰۰ تومان ثبت کرده‌اند.")).toBeVisible();
+  await expect(first.getByText("این کالا از نظر معنا به جستجوی شما نزدیک است و ۸ فروشنده آن را با قیمت از ۱٫۰۰۰٫۰۰۰ تومان ثبت کرده‌اند.")).toBeVisible();
   expect(await noOverflow(page)).toBe(0);
 });
 
