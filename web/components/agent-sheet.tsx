@@ -3,12 +3,13 @@
 import type { Message, ToolMessage } from "@ag-ui/client";
 import { CopilotKitProvider, useAgent, useConfigureSuggestions, useCopilotKit, useRenderToolCall, useSuggestions } from "@copilotkit/react-core/v2";
 import { ArrowUp, X } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Fragment, useEffect, useState } from "react";
 
 import { AGENT_SEND, ToolRenderers } from "@/components/agent-blocks";
 import { useBrief } from "@/components/brief-provider";
 import { CompareTrayBar } from "@/components/compare-tray";
+import { CATEGORIES } from "@/components/home-start";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerClose, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
@@ -16,10 +17,11 @@ import { getThread } from "@/lib/api";
 
 export { AGENT_SEND };
 export const HELP_CHOOSE = "کمکم کن انتخاب کنم";
+const GREETING = "چه چیزی می‌خواهید حضوری بخرید؟";
 
 // suggestion chips keyed by the kind of the thread's last block; "" is before the first message
 const SUGGESTIONS: Record<string, { title: string; message: string }[]> = {
-  "": [{ title: HELP_CHOOSE, message: HELP_CHOOSE }],
+  "": [HELP_CHOOSE, ...CATEGORIES].map((c) => ({ title: c, message: c })),
   product_cards: [
     { title: "مقایسه این دو", message: "این دو مدل را مقایسه کن" },
     { title: "فقط فروشگاه‌های باز", message: "فقط فروشگاه‌هایی که الان باز هستند" },
@@ -42,7 +44,8 @@ function lastBlock(messages: Message[]) {
   }
 }
 
-// The agent drawer (PRD 9): one sentence in, blocks out. The agent's thread is the brief's session.
+// The agent (PRD 9): one sentence in, blocks out. The agent's thread is the brief's session.
+// Home shows the thread inline under its app bar; other routes keep it in a drawer behind the agent bar.
 export function AgentSheet() {
   const { session } = useBrief();
   // the session only exists in the browser, which also keeps the provider (it reads the clock) out of prerender
@@ -64,6 +67,7 @@ function Sheet({ threadId }: { threadId: string }) {
   const [text, setText] = useState("");
   const [thread, setThread] = useState<Message[]>([]);
   const pathname = usePathname();
+  const router = useRouter();
   const [shownPath, setShownPath] = useState(pathname);
 
   const kind = agent.messages.length ? lastBlock(agent.messages) : "";
@@ -76,7 +80,7 @@ function Sheet({ threadId }: { threadId: string }) {
     setOpen(false);
   }
 
-  // the thread is checkpointed on the server; a reload or another route reads it back, and waits for a tap
+  // the thread is checkpointed on the server; a reload or another route reads it back (the drawer waits for a tap)
   useEffect(() => {
     getThread(threadId).then(setThread, () => {});
   }, [threadId]);
@@ -106,6 +110,73 @@ function Sheet({ threadId }: { threadId: string }) {
   });
 
   const results = new Map(agent.messages.filter((m): m is ToolMessage => m.role === "tool").map((m) => [m.toolCallId, m]));
+  const body = (
+    <>
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto py-2">
+        {agent.messages.length === 0 && <p className="text-sm leading-6">{GREETING}</p>}
+        {agent.messages.map((m) =>
+          m.role === "user" ? (
+            <p key={m.id} className="self-start rounded-lg bg-primary px-3 py-1.5 text-sm text-primary-foreground">
+              {String(m.content)}
+            </p>
+          ) : m.role === "assistant" ? (
+            <Fragment key={m.id}>
+              {m.content && <p className="text-sm leading-6">{String(m.content)}</p>}
+              {m.toolCalls?.map((toolCall) => renderToolCall({ toolCall, toolMessage: results.get(toolCall.id) }))}
+            </Fragment>
+          ) : null,
+        )}
+        {agent.isRunning ? (
+          <p className="text-xs text-muted-foreground">در حال فکر کردن...</p>
+        ) : (
+          suggestions.length > 0 && (
+            <div role="group" aria-label="پیشنهادها" className="flex flex-wrap gap-1.5">
+              {suggestions.map((s) => (
+                <Button key={s.title} variant="outline" size="sm" className="h-9 bg-card px-3" onClick={() => send(s.message)}>
+                  {s.title}
+                </Button>
+              ))}
+            </div>
+          )
+        )}
+      </div>
+      <CompareTrayBar />
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          send(text);
+        }}
+      >
+        <Input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          // a one-line input drops newlines, so a pasted multi-line list goes to basket mode before it lands
+          onPaste={(e) => {
+            const pasted = e.clipboardData.getData("text");
+            if (!pasted.trim().includes("\n")) return;
+            e.preventDefault();
+            router.push(`/basket?${new URLSearchParams({ text: pasted })}`);
+          }}
+          placeholder="بپرسید یا شرط اضافه کنید"
+          aria-label="پیام به دستیار"
+          className="h-10"
+        />
+        <Button type="submit" variant="buy" size="icon" className="size-10" aria-label="بفرست" disabled={agent.isRunning}>
+          <ArrowUp />
+        </Button>
+      </form>
+    </>
+  );
+
+  if (pathname === "/") {
+    return (
+      // fills the screen under home's 56 px app bar, with the input at the bottom
+      <section aria-label="دستیار" className="fixed inset-x-0 top-14 bottom-0 mx-auto flex w-full max-w-xl flex-col gap-2 px-4 pb-3">
+        {body}
+      </section>
+    );
+  }
 
   return (
     <>
@@ -129,52 +200,7 @@ function Sheet({ threadId }: { threadId: string }) {
                 <X />
               </DrawerClose>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto py-2">
-              {agent.messages.map((m) =>
-                m.role === "user" ? (
-                  <p key={m.id} className="self-start rounded-lg bg-primary px-3 py-1.5 text-sm text-primary-foreground">
-                    {String(m.content)}
-                  </p>
-                ) : m.role === "assistant" ? (
-                  <Fragment key={m.id}>
-                    {m.content && <p className="text-sm leading-6">{String(m.content)}</p>}
-                    {m.toolCalls?.map((toolCall) => renderToolCall({ toolCall, toolMessage: results.get(toolCall.id) }))}
-                  </Fragment>
-                ) : null,
-              )}
-              {agent.isRunning ? (
-                <p className="text-xs text-muted-foreground">در حال فکر کردن...</p>
-              ) : (
-                suggestions.length > 0 && (
-                  <div role="group" aria-label="پیشنهادها" className="flex flex-wrap gap-1.5">
-                    {suggestions.map((s) => (
-                      <Button key={s.title} variant="outline" size="sm" className="h-9 bg-card px-3" onClick={() => send(s.message)}>
-                        {s.title}
-                      </Button>
-                    ))}
-                  </div>
-                )
-              )}
-            </div>
-            <CompareTrayBar />
-            <form
-              className="flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                send(text);
-              }}
-            >
-              <Input
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="بپرسید یا شرط اضافه کنید"
-                aria-label="پیام به دستیار"
-                className="h-10"
-              />
-              <Button type="submit" variant="buy" size="icon" className="size-10" aria-label="بفرست" disabled={agent.isRunning}>
-                <ArrowUp />
-              </Button>
-            </form>
+            {body}
           </section>
         </DrawerContent>
       </Drawer>

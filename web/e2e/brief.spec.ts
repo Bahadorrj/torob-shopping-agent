@@ -169,9 +169,11 @@ test("the chip bar is not on routes that do not filter", async ({ page }) => {
 test("a product link opens its sellers with the brief kept, and back keeps it too", async ({ page }) => {
   const { patches } = await fakeSessions(page, { sellers });
   await fakeAgent(page, [cards]);
-  await page.goto("/");
+  await page.goto("/search");
   await chip(page, "محدوده").click();
   await drawer(page, "محدوده").getByRole("button", { name: "فردوسی", exact: true }).click();
+  await expect(chip(page, "محدوده")).toContainText("فردوسی");
+  await page.getByRole("link", { name: "بازگشت" }).click();
   await askHome(page, "x");
   await sheet(page).getByRole("link", { name: "دیدن فروشنده‌ها" }).click();
 
@@ -181,10 +183,8 @@ test("a product link opens its sellers with the brief kept, and back keeps it to
   expect(patches.at(-1)).toEqual({ step: { kind: "sellers", product_id: "p1" } });
 
   await page.goBack();
-  // the link closed the sheet; the thread is still there
-  await page.getByRole("button", { name: "دستیار خرید" }).click();
+  // home shows the thread inline again
   await expect(sheet(page).getByRole("link", { name: "دیدن فروشنده‌ها" })).toBeVisible();
-  await expect(chip(page, "محدوده")).toContainText("فردوسی");
 });
 
 test("a shared product link opens straight into its sellers", async ({ page }) => {
@@ -194,39 +194,15 @@ test("a shared product link opens straight into its sellers", async ({ page }) =
   await expect(bar(page)).toBeVisible();
 });
 
-test("home offers recent sessions and near me from the area sheet", async ({ page }) => {
-  const thread = [
-    { id: "u1", role: "user", content: "شارژر اپل" },
-    { id: "a1", role: "assistant", content: "", toolCalls: [{ id: "c1", type: "function", function: { name: "search_products", arguments: "{}" } }] },
-    { id: "t1", role: "tool", toolCallId: "c1", content: JSON.stringify(cards) },
-  ];
-  const { patches } = await fakeSessions(page, { sellers }, {
-    old1: { brief: { need: "شارژر اپل" }, step: { kind: "search" }, messages: thread },
-    old2: { step: { kind: "sellers", product_id: "p1", title: "کالای الف" } },
-  });
-  await page.addInitScript(() => localStorage.setItem("pasazhgard.sessions", JSON.stringify(["old1", "old2"])));
-  await page.goto("/");
-
-  const recent = page.getByRole("region", { name: "جلسه‌های اخیر" });
-  await expect(recent.getByRole("button", { name: "شارژر اپل" })).toBeVisible();
-  await expect(recent.getByRole("button", { name: "کالای الف" })).toBeVisible();
-  expect(await noOverflow(page)).toBe(0);
-
+test("search offers near me from the area sheet", async ({ page }) => {
+  const { patches } = await fakeSessions(page, { sellers });
+  await page.goto("/search");
   await chip(page, "محدوده").click();
   await drawer(page, "محدوده").getByRole("button", { name: "نزدیک من، ۱ کیلومتر" }).click();
   await expect.poll(() => patches.at(-1)?.brief?.area).toEqual({ radius_m: 1000 });
   expect(patches.at(-1)?.brief?.origin).toEqual({ lat: 35.6948, lon: 51.4115 });
   await expect(chip(page, "محدوده")).toContainText("نزدیک من");
-
-  await recent.getByRole("button", { name: "کالای الف" }).click();
-  await expect(page).toHaveURL(/\/products\/p1\/sellers$/);
-
-  await page.goto("/");
-  await page.getByRole("region", { name: "جلسه‌های اخیر" }).getByRole("button", { name: "شارژر اپل" }).click();
-  // the resumed session has its own thread behind the agent bar
-  await page.getByRole("button", { name: "دستیار خرید" }).click();
-  await expect(sheet(page).getByText("شارژر اپل")).toBeVisible();
-  await expect(sheet(page).getByRole("link", { name: "دیدن فروشنده‌ها" })).toBeVisible();
+  expect(await noOverflow(page)).toBe(0);
 });
 
 test.describe("without geolocation", () => {

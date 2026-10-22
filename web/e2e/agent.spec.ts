@@ -8,7 +8,6 @@ const overflow = (page: Page) => page.evaluate(() => document.documentElement.sc
 test("the agent sheet renders blocks at 360 px and a chip answers the question", async ({ page }) => {
   await fakeSessions(page, {});
   await page.goto("/");
-  await openAgent(page);
   const sheet = page.getByRole("region", { name: "دستیار" });
   await sheet.getByLabel("پیام به دستیار").fill("هدفون انکر");
   await sheet.getByRole("button", { name: "بفرست" }).click();
@@ -43,13 +42,9 @@ test("the agent sheet renders blocks at 360 px and a chip answers the question",
 test("help me choose on the home screen shows the model shortlist at 360 px", async ({ page }) => {
   await fakeSessions(page, {});
   await page.goto("/");
-  await openAgent(page);
   const sheet = page.getByRole("region", { name: "دستیار" });
-  // the sheet offers the same entry before the first message
-  await expect(sheet.getByRole("button", { name: "کمکم کن انتخاب کنم" })).toBeVisible();
-  await sheet.getByRole("button", { name: "بستن" }).click();
-
-  await page.getByRole("main").getByRole("button", { name: "کمکم کن انتخاب کنم" }).click();
+  // the thread offers it as a starter before the first message
+  await sheet.getByRole("button", { name: "کمکم کن انتخاب کنم" }).click();
 
   await expect(sheet.getByText("کمکم کن انتخاب کنم")).toBeVisible();
   await expect(sheet.getByText("هندزفری بلوتوثی انکر R50i NC")).toBeVisible();
@@ -82,7 +77,6 @@ test("an inquiry_status block sends its drafts only on the user's tap and then t
     return route.fulfill({ contentType: "text/event-stream", body: `retry: 100\ndata: ${JSON.stringify({ inquiries: [inquiry] })}\n\n` });
   });
   await page.goto("/");
-  await openAgent(page);
   const sheet = page.getByRole("region", { name: "دستیار" });
   await sheet.getByLabel("پیام به دستیار").fill("از این فروشنده بپرس");
   await sheet.getByRole("button", { name: "بفرست" }).click();
@@ -115,7 +109,6 @@ test("a stored thread waits behind the agent bar on the sellers route", async ({
 test("a running tool shows its skeleton until its block arrives", async ({ page }) => {
   await fakeSessions(page, {});
   await page.goto("/");
-  await openAgent(page);
   const sheet = page.getByRole("region", { name: "دستیار" });
   // fake-agent.mjs holds this find_sellers result back for two seconds
   await sheet.getByLabel("پیام به دستیار").fill("فروشنده‌ها را پیدا کن");
@@ -141,7 +134,6 @@ test("product cards end in suggestion chips that send their message", async ({ p
   };
   await fakeAgent(page, [{ block: "product_cards", query: "x", items: [product] }], "", ({ messages }) => sent.push(String(messages.at(-1)?.content)));
   await page.goto("/");
-  await openAgent(page);
   const sheet = page.getByRole("region", { name: "دستیار" });
   await sheet.getByLabel("پیام به دستیار").fill("کالای الف");
   await sheet.getByRole("button", { name: "بفرست" }).click();
@@ -158,7 +150,7 @@ test("product cards end in suggestion chips that send their message", async ({ p
 
 test("the drawer has a handle, closes by swipe or the close button and keeps the top of the page in view", async ({ page }) => {
   await fakeSessions(page, {});
-  await page.goto("/");
+  await page.goto("/search");
   const sheet = page.getByRole("region", { name: "دستیار" });
 
   await openAgent(page);
