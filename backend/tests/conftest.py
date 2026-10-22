@@ -111,6 +111,8 @@ class Agent:
     def __init__(self, client):
         self.client = client
         self.session_id = client.post("/sessions").json()["session_id"]
+        # CopilotKit sends the whole thread every run, as the last MESSAGES_SNAPSHOT left it
+        self.history: list[dict] = []
 
     def script(self, *replies: AIMessage | str):
         """The model's replies, in call order. Each turn starts with one `brief(...)` reply."""
@@ -133,7 +135,7 @@ class Agent:
                 "threadId": self.session_id,
                 "runId": uuid.uuid4().hex,
                 "state": {},
-                "messages": [{"id": uuid.uuid4().hex, "role": "user", "content": text}],
+                "messages": [*self.history, {"id": uuid.uuid4().hex, "role": "user", "content": text}],
                 "tools": [],
                 "context": [],
                 "forwardedProps": {},
@@ -149,7 +151,7 @@ class Agent:
             [json.loads(e["content"]) for e in events if e["type"] == "TOOL_CALL_RESULT"],
         )
         # every turn of every test is checked against what its tools returned
-        snapshot = [e for e in events if e["type"] == "MESSAGES_SNAPSHOT"][-1]["messages"]
+        snapshot = self.history = [e for e in events if e["type"] == "MESSAGES_SNAPSHOT"][-1]["messages"]
         last_user = max(i for i, m in enumerate(snapshot) if m["role"] == "user")
         this_turn = snapshot[last_user:]
         claims = [m.get("content") or "" for m in this_turn if m["role"] == "assistant"]

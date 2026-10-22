@@ -148,13 +148,15 @@ def test_no_question_about_a_field_the_brief_already_has(agent):
 
 
 def test_the_thread_keeps_earlier_turns(agent):
-    agent.script(agent.brief(), "سلام!", agent.brief(), "بله.")
+    agent.script(agent.brief(), agent.call("search_products", query="هدفون"), "سلام!", agent.brief(), "بله.")
 
-    agent.turn("سلام")
+    agent.turn("سلام، هدفون")
     turn = agent.turn("هستی؟")
 
+    # the client resends the whole thread; the checkpointer neither loses nor duplicates it
     snapshot = next(e for e in turn.events if e["type"] == "MESSAGES_SNAPSHOT")["messages"]
-    assert [m["content"] for m in snapshot if m["role"] == "user"] == ["سلام", "هستی؟"]
+    assert [m["content"] for m in snapshot if m["role"] == "user"] == ["سلام، هدفون", "هستی؟"]
+    assert len([m for m in snapshot if m["role"] == "tool"]) == 1
 
 
 def test_a_price_from_tool_output_is_grounded(agent):
