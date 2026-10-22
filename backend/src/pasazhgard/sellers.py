@@ -66,6 +66,9 @@ class SellerRow(BaseModel):
     pasaj: str | None
     floor: str | None
     unit: str | None
+    # the shop's location, for the map; None when not recorded
+    lat: float | None
+    lon: float | None
     distance_m: int | None
     price_toman: int | None
     per_meter: bool
@@ -143,7 +146,7 @@ def _row(offer: dict, distance: int | None, now: datetime) -> SellerRow:
         shop_id=offer["shop_id"],
         shop_name=offer["name"],
         area=offer["location_label"],
-        **{k: offer[k] for k in ("pasaj", "floor", "unit")},
+        **{k: offer[k] for k in ("pasaj", "floor", "unit", "lat", "lon")},
         distance_m=distance,
         price_toman=price.min_toman,
         per_meter=price.per_meter,
