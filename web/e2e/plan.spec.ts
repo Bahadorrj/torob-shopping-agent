@@ -25,6 +25,7 @@ const stop = (shop_id: string, shop_name: string, extra: object) => ({
 const plan = {
   origin: { lat: 35.69, lon: 51.42 },
   depart_at: "2026-10-22T13:35:00+03:30",
+  nudges: [],
   mode: "walk",
   stops: [
     stop("shop_a", "آذرنوش دیسیس", {}),
@@ -199,4 +200,33 @@ test("a session's plan the server refuses to stream says why", async ({ page }) 
   await fakeStream(page, null);
   await page.goto(`/plan?${query}&session_id=gone`);
   await expect(page.getByText("فروشگاه‌های این برنامه پیدا نشدند.")).toBeVisible();
+});
+
+test("nudges warn of a shop closing before the ETA with a swap, and of a changed price with the budget at 360 px", async ({ page }) => {
+  await page.route("**/tile.openstreetmap.org/**", (r) => r.abort());
+  await fakeSessions(page, {});
+  const swap = { shop_id: "shop_d", shop_name: "دیسیلا مانسا", offer_id: "o4", price_toman: 3_500_000, distance_m: 9 };
+  const nudges = [
+    { kind: "closing", shop_id: "shop_b", shop_name: "دیسورا پاکیار", closes_at: "2026-10-22T14:00:00+03:30", leave_by: "2026-10-22T13:15:00+03:30", swap },
+    { kind: "closing", shop_id: "shop_c", shop_name: "روین فریسا", closes_at: "2026-10-22T14:30:00+03:30", leave_by: "2026-10-22T13:33:00+03:30", swap: null },
+    { kind: "price", shop_id: "shop_a", shop_name: "آذرنوش دیسیس", product_id: "p1", product_title: "هندزفری", listed_price_toman: 3_500_000, latest_price_toman: 3_700_000, price_delta_toman: 200_000, trust_level: "confirmed", over_budget: true },
+    { kind: "price", shop_id: "shop_c", shop_name: "روین فریسا", product_id: "p2", product_title: "کابل", listed_price_toman: 524_000, latest_price_toman: 500_000, price_delta_toman: -24_000, trust_level: "website_price", over_budget: false },
+  ];
+  await fakeStream(page, { ...plan, nudges });
+  await page.goto(`/plan?${query}&session_id=s9`);
+
+  const alerts = page.getByRole("region", { name: "هشدارها" }).getByRole("listitem");
+  await expect(alerts).toHaveCount(4);
+  await expect(alerts.nth(0)).toContainText("دیسورا پاکیار پنجشنبه تا ۱۴:۰۰ باز است؛ تا ۱۳:۱۵ حرکت کنید");
+  // the swap is the same plan with the closing shop replaced
+  await expect(alerts.nth(0).getByRole("link", { name: "جایگزین: دیسیلا مانسا" })).toHaveAttribute(
+    "href",
+    `/plan?${query.replace("shop_b", "shop_d")}&session_id=s9`,
+  );
+  await expect(alerts.nth(1).getByRole("link")).toHaveCount(0);
+  await expect(alerts.nth(2)).toContainText("آذرنوش دیسیس: قیمت تأییدشده ۳٬۷۰۰٬۰۰۰ تومان، ۲۰۰٬۰۰۰ تومان گران‌تر از قیمت ثبت‌شده");
+  await expect(alerts.nth(2)).toContainText("بیشتر از بودجه");
+  await expect(alerts.nth(3)).toContainText("روین فریسا: قیمت سایت فروشگاه ۵۰۰٬۰۰۰ تومان، ۲۴٬۰۰۰ تومان ارزان‌تر از قیمت ثبت‌شده");
+  await expect(alerts.nth(3)).toContainText("در بودجه");
+  expect(await noOverflow(page)).toBe(0);
 });
