@@ -65,6 +65,24 @@ export async function getShop(shopId: string): Promise<ShopDetails | null> {
 }
 
 // Mirrors SellerList in backend/src/pasazhgard/sellers.py.
+export type PasajShop = {
+  shop_id: string;
+  shop_name: string;
+  unit: string | null;
+  products: { product_id: string; title: string; price_toman: number | null }[];
+};
+
+// `floor` null groups the shops whose floor is not recorded
+export type PasajView = { pasaj: string; count: number; floors: { floor: string | null; level: number | null; shops: PasajShop[] }[] };
+
+export async function getPasaj(pasaj: string, productIds: string[], sessionId: string): Promise<PasajView | null> {
+  const q = new URLSearchParams([...productIds.map((id) => ["product_id", id]), ["session_id", sessionId]]);
+  const r = await fetch(`/api/pasajs/${encodeURIComponent(pasaj)}?${q}`);
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`pasaj failed: ${r.status}`);
+  return r.json();
+}
+
 export type Priority = "cheapest" | "closest" | "most_reliable";
 
 export type Reason = {
