@@ -71,6 +71,20 @@ def test_an_accepted_alternative_takes_the_stop_it_stands_in_for(client, clock, 
     assert order(plan(client, sid, MAHIS_SHOP, MANSA_SHOP)) == [MANSA_SHOP, MAHIS_SHOP]
 
 
+def test_the_agent_asks_an_alternative_in_place_of_the_inquiry_that_fell_through(agent, client, clock, now):
+    sid = agent.session_id
+    [mansa] = ids(confirm(client, sid, *ids(compose(client, sid, MANSA))))
+    clock(now + dt.timedelta(minutes=3))
+    first = alternatives(client, sid, mansa)["alternatives"][0]
+    agent.script(agent.brief(), agent.call("contact_seller", offer_ids=[first["offer_id"]], instead_of=mansa), "پیش‌نویس آماده است.")
+
+    [draft] = agent.turn("از این یکی بپرس").blocks[0]["inquiries"]
+
+    assert draft["instead_of"] == mansa
+    confirm(client, sid, draft["inquiry_id"])
+    assert order(plan(client, sid, MAHIS_SHOP, MANSA_SHOP)) == [AZAR_SHOP, MAHIS_SHOP]
+
+
 def test_an_alternative_stands_in_for_an_inquiry_of_the_same_session(client):
     sid, other = new_session(client), new_session(client)
     [mansa] = ids(confirm(client, sid, *ids(compose(client, sid, MANSA))))

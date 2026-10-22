@@ -287,19 +287,20 @@ def build_graph(ports: Ports) -> StateGraph:
         return block("chips", {"field": field, "question": question, "options": options})
 
     @tool
-    def contact_seller(offer_ids: list[str], config: RunnableConfig) -> str:
+    def contact_seller(offer_ids: list[str], config: RunnableConfig, instead_of: int | None = None) -> str:
         """Draft one short Persian inquiry per offer (1-3 offers): available now, today's price, hold, installments.
-        Nothing is sent: the user sends the drafts with a tap. Shows the inquiry tracker."""
+        Nothing is sent: the user sends the drafts with a tap. Shows the inquiry tracker.
+        `instead_of`: when asking one alternative from find_alternatives, the inquiry it replaces in the visit plan."""
         sid = session_of(config)
         try:
-            change = Compose(offer_ids=offer_ids)
+            change = Compose(offer_ids=offer_ids, instead_of=instead_of)
             with ports.connect() as conn:
                 return block("inquiry_status", _contact_seller(conn, sid, change, ports.now()))
         except LookupError:
-            return error("offer not found")
+            return error("offer or inquiry not found")
         except ValueError:
             # pydantic's ValidationError is a ValueError too
-            return error("give 1-3 distinct offer ids; an item has at most 3 open inquiries")
+            return error("give 1-3 distinct offer ids, one with instead_of; an item has at most 3 open inquiries")
 
     @tool
     def get_inquiries(config: RunnableConfig) -> str:
@@ -351,7 +352,8 @@ def build_graph(ports: Ports) -> StateGraph:
             - Never say an item is in stock unless a seller confirmed it.
             - contact_seller only drafts messages; the user sends them with the button under the drafts. Never say a message
               was sent or a seller answered unless get_inquiries shows it.
-            - When an inquiry turns unavailable, no_reply or closed, call find_alternatives for it."""
+            - When an inquiry turns unavailable, no_reply or closed, call find_alternatives for it; to ask an alternative,
+              call contact_seller with its offer id and instead_of set to that inquiry."""
         )
         prompt = SystemMessage(prompt.format(now=ports.now().isoformat(), brief=brief.model_dump_json()))
         return {"messages": [ports.model().bind_tools(tools).invoke([prompt, *state["messages"]])]}
