@@ -13,6 +13,7 @@ from fastapi.sse import EventSourceResponse
 from psycopg.rows import dict_row
 from pydantic import BaseModel, ValidationError
 
+from pasazhgard.alternatives import Alternatives, find_alternatives
 from pasazhgard.brief import Session, SessionPatch, create_session, get_session, patch_session
 from pasazhgard.compare import Product, ProductCompare, ProductCompareQuery, compare_products, get_product
 from pasazhgard.embeddings import Embedder, embedder_from_env
@@ -241,6 +242,17 @@ def inquiries_read(session_id: str, conn=Depends(get_conn), now: datetime = Depe
     if status is None:
         raise HTTPException(404, "session not found")
     return status
+
+
+@app.get("/sessions/{session_id}/inquiries/{inquiry_id}/alternatives")
+def inquiries_alternatives(session_id: str, inquiry_id: int, conn=Depends(get_conn), now: datetime = Depends(get_now)) -> Alternatives:
+    try:
+        block = find_alternatives(conn, session_id, inquiry_id, now)
+    except ValueError:
+        raise HTTPException(409, "inquiry has not fallen through") from None
+    if block is None:
+        raise HTTPException(404, "inquiry not found")
+    return block
 
 
 @app.get("/console/shops/{shop_id}/inquiries")
