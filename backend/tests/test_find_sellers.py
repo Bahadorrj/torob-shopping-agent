@@ -156,3 +156,26 @@ def test_empty_radius_suggests_the_nearest_covered_area(client):
 def test_unknown_area_still_suggests_one(client):
     nearest = sellers(client, PUMP, area="تجریش")["nearest_covered"]
     assert (nearest["area"], nearest["distance_m"]) == ("بهارستان", None)
+
+
+def test_per_meter_prices_do_not_beat_per_piece_ones(database_url, now):
+    import psycopg
+    from psycopg.rows import dict_row
+
+    from pasazhgard.sellers import SellerQuery, find_sellers
+
+    cable = "product_5533cda8594ee03ac993685a"  # two per-meter offers: 436,000 and 3,600,000 a meter
+    with psycopg.connect(database_url, row_factory=dict_row) as conn:
+        only_meters = find_sellers(conn, cable, SellerQuery(), now).sellers
+        assert [(r.price_toman, "cheapest" in kinds(r.model_dump())) for r in only_meters] == [(436000, True), (3600000, False)]
+        # a whole roll from another shop: a dearer number, but not comparable with a meter price
+        conn.execute(
+            "INSERT INTO offers (offer_id, product_id, shop_id, seller_title, price_toman, price_flags)"
+            " VALUES ('offer_roll', %s, 'shop_c060bc5ea37b78e00ece4bdb', 'حلقه 100 متری', 5000000, '{}')",
+            [cable],
+        )
+        rows = find_sellers(conn, cable, SellerQuery(), now).sellers
+        conn.rollback()
+    assert [(r.price_toman, r.per_meter) for r in rows] == [(5000000, False), (436000, True), (3600000, True)]
+    # the meter prices are not compared with the roll, and the roll has no per-piece rival
+    assert [r.shop_id for r in rows if "cheapest" in kinds(r.model_dump())] == []

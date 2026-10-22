@@ -203,7 +203,8 @@ def _reliability(r: SellerRow) -> int:
 
 def _rank(rows: list[SellerRow], priority: str) -> None:
     def by_price(r):
-        return (r.price_toman is None, r.price_toman or 0, r.shop_id)
+        # a meter price is not comparable with a piece price, so per-piece offers rank first
+        return (r.price_toman is None, r.per_meter, r.price_toman or 0, r.shop_id)
 
     if priority == "closest":
         rows.sort(key=lambda r: (r.distance_m is None, r.distance_m or 0, *by_price(r)))
@@ -214,13 +215,16 @@ def _rank(rows: list[SellerRow], priority: str) -> None:
 
 
 def _add_reasons(rows: list[SellerRow], provider: str | None) -> None:
-    prices = [r.price_toman for r in rows if r.price_toman is not None]
+    priced = [r for r in rows if r.price_toman is not None]
+    # "cheapest" compares one unit: per-piece prices, or per-meter ones when no seller prices a piece
+    unit = all(r.per_meter for r in priced)
+    prices = [r.price_toman for r in priced if r.per_meter == unit]
     distances = [r.distance_m for r in rows if r.distance_m is not None]
     for r in rows:
         # "closest" and "cheapest" compare sellers, so a lone seller does not get them
         if len(distances) > 1 and r.distance_m == min(distances):
             r.reasons.append(Reason(kind="closest"))
-        if len(prices) > 1 and r.price_toman == min(prices):
+        if len(prices) > 1 and r.per_meter == unit and r.price_toman == min(prices):
             r.reasons.append(Reason(kind="cheapest"))
         if r.open_now:
             r.reasons.append(Reason(kind="open_now"))
