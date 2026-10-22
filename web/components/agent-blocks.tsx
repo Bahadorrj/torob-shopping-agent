@@ -8,16 +8,20 @@ import { InquiryTracker } from "@/components/inquiry-tracker";
 import { ProductCard } from "@/components/product-card";
 import { Seller } from "@/components/seller-list";
 import { Button } from "@/components/ui/button";
+import { clock, OpenBadge, RouteDetails } from "@/components/visit-plan";
 import {
   confirmInquiries,
   inquiriesStreamUrl,
+  type Directions,
   type Inquiry,
   type InquiryStatus,
   type ProductCard as Product,
   type ProductCompare,
   type SellerCompare,
   type SellerList,
+  type VisitPlan,
 } from "@/lib/api";
+import { faDigits } from "@/lib/format";
 import { useEventStream } from "@/lib/use-event-stream";
 
 // One renderer per block type. A block is an agent tool result: `{ block: "<type>", ...tool output }`
@@ -35,6 +39,16 @@ function Inquiries({ initial }: { initial: Inquiry[] }) {
   const inquiries = live ? live.inquiries.filter((i) => ids.has(i.inquiry_id)) : initial;
   return <InquiryTracker inquiries={inquiries} onConfirm={(inquiryIds) => confirmInquiries(sid, inquiryIds)} />;
 }
+
+// the plan screen's query asks the backend for the same plan, so it is also the share link
+const planHref = (p: VisitPlan) =>
+  `/plan?${new URLSearchParams([
+    ...p.stops.map((s) => ["shop_id", s.shop_id]),
+    ["lat", String(p.origin.lat)],
+    ["lon", String(p.origin.lon)],
+    ["mode", p.mode],
+    ["depart_at", p.depart_at],
+  ])}`;
 
 const linkClass = "text-sm font-medium text-primary underline-offset-4 hover:underline";
 
@@ -81,6 +95,29 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
     </div>
   ),
   inquiry_status: (d: InquiryStatus) => <Inquiries initial={d.inquiries} />,
+  visit_plan: (d: VisitPlan) => (
+    <div className="flex flex-col gap-1.5 text-sm">
+      <ol className="flex flex-col gap-1">
+        {d.stops.map((s, i) => (
+          <li key={s.shop_id} className="flex flex-wrap items-center gap-1.5">
+            <span>
+              {faDigits(i + 1)}. {s.shop_name}، رسیدن {clock(s.eta)}
+            </span>
+            <OpenBadge open={s.open_at_eta} />
+          </li>
+        ))}
+      </ol>
+      <Link href={planHref(d)} className={linkClass}>
+        دیدن برنامه روی نقشه
+      </Link>
+    </div>
+  ),
+  directions: (d: Directions) => (
+    <div className="flex flex-col gap-1.5 text-sm">
+      <p className="font-semibold">{d.shop_name}</p>
+      <RouteDetails d={d} />
+    </div>
+  ),
   chips: (d: Chips, send) => (
     <div className="flex flex-col gap-2">
       <p className="text-sm">{d.question}</p>

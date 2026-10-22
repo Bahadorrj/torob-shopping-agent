@@ -7,16 +7,16 @@ import { MODES } from "@/components/brief-bar";
 import { SellerMap, type Pin } from "@/components/seller-map";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { getVisitPlan, type Stop, type VisitPlan as Plan } from "@/lib/api";
+import { getVisitPlan, type Directions, type Stop, type VisitPlan as Plan } from "@/lib/api";
 import { distance, faDigits, faText } from "@/lib/format";
 
 // times come in Tehran's fixed +03:30 offset, so the clock time is read off the string
-const clock = (iso: string) => faText(iso.slice(11, 16));
+export const clock = (iso: string) => faText(iso.slice(11, 16));
 
 const day = (iso: string) =>
   new Date(iso).toLocaleDateString("fa-IR-u-ca-persian", { timeZone: "Asia/Tehran", weekday: "long", day: "numeric", month: "long" });
 
-function OpenBadge({ open }: { open: boolean | null }) {
+export function OpenBadge({ open }: { open: boolean | null }) {
   if (open === null) return <Badge variant="outline" className="text-muted-foreground">ساعت کاری ثبت نشده</Badge>;
   return open ? <Badge variant="secondary">باز در زمان رسیدن</Badge> : <Badge variant="destructive">بسته در زمان رسیدن</Badge>;
 }
@@ -37,6 +37,42 @@ function planPins(stops: Stop[]): Pin<Stop>[] {
     else out.push({ key: s.shop_id, label: s.last_leg.pasaj ? faText(`پاساژ ${s.last_leg.pasaj}`) : s.shop_name, lat: s.lat, lon: s.lon, rows: [s], text: faDigits(i + 1) });
   });
   return out;
+}
+
+// the route to one shop, on a plan stop and in the agent's directions block
+export function RouteDetails({ d }: { d: Directions }) {
+  return (
+    <>
+      <p className="text-muted-foreground">
+        {distance(d.route.distance_m)}، {faDigits(d.route.duration_min)} دقیقه
+        {d.route.source === "straight_line" && " (تخمین خط مستقیم)"}
+      </p>
+      <p>{lastLeg(d.last_leg)}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {(
+          [
+            ["نشان", d.links.neshan],
+            ["بلد", d.links.balad],
+            ["گوگل مپ", d.links.google],
+          ] as const
+        ).map(([name, href]) => (
+          <a
+            key={name}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`باز کردن در ${name}`}
+            className={buttonVariants({ size: "xs", variant: "outline" })}
+          >
+            {name}
+          </a>
+        ))}
+        <Link href={`/shops/${d.shop_id}`} className={buttonVariants({ size: "xs", variant: "ghost" })}>
+          صفحه فروشگاه
+        </Link>
+      </div>
+    </>
+  );
 }
 
 type State = { status: "loading" } | { status: "error" } | { status: "missing" } | { status: "done"; plan: Plan };
@@ -95,34 +131,7 @@ export function VisitPlan({ query }: { query: string }) {
               <span>رسیدن {clock(s.eta)}</span>
               <OpenBadge open={s.open_at_eta} />
             </div>
-            <p className="text-muted-foreground">
-              {distance(s.route.distance_m)}، {faDigits(s.route.duration_min)} دقیقه
-              {s.route.source === "straight_line" && " (تخمین خط مستقیم)"}
-            </p>
-            <p>{lastLeg(s.last_leg)}</p>
-            <div className="flex flex-wrap gap-1.5">
-              {(
-                [
-                  ["نشان", s.links.neshan],
-                  ["بلد", s.links.balad],
-                  ["گوگل مپ", s.links.google],
-                ] as const
-              ).map(([name, href]) => (
-                <a
-                  key={name}
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={`باز کردن در ${name}`}
-                  className={buttonVariants({ size: "xs", variant: "outline" })}
-                >
-                  {name}
-                </a>
-              ))}
-              <Link href={`/shops/${s.shop_id}`} className={buttonVariants({ size: "xs", variant: "ghost" })}>
-                صفحه فروشگاه
-              </Link>
-            </div>
+            <RouteDetails d={s} />
           </li>
         ))}
       </ol>

@@ -31,11 +31,15 @@ from pasazhgard.embeddings import Embedder
 from pasazhgard.inquiries import Compose
 from pasazhgard.inquiries import contact_seller as _contact_seller
 from pasazhgard.inquiries import get_inquiries as _get_inquiries
+from pasazhgard.routing import Router
 from pasazhgard.search import search_products as _search_products
 from pasazhgard.seller_compare import CompareQuery
 from pasazhgard.seller_compare import compare_sellers as _compare_sellers
 from pasazhgard.sellers import area_options
 from pasazhgard.sellers import find_sellers as _find_sellers
+from pasazhgard.visit import DirectionsQuery, PlanQuery
+from pasazhgard.visit import get_directions as _get_directions
+from pasazhgard.visit import plan_visit as _plan_visit
 
 
 def chat_model_from_env(small: bool = False) -> BaseChatModel | None:
@@ -59,6 +63,7 @@ class Ports:
     model: Callable[[], BaseChatModel | None]
     now: Callable[[], datetime]
     embedder: Callable[[], Embedder | None]
+    router: Callable[[], Router]
     # a connection that commits on exit
     connect: Callable[[], AbstractContextManager]
 
@@ -174,6 +179,38 @@ def build_graph(ports: Ports) -> StateGraph:
         return block("seller_compare", result) if result else error("product or offer not found")
 
     @tool
+    def plan_visit(shop_ids: list[str], config: RunnableConfig) -> str:
+        """Order 1-6 shops into a visit from the user's location: ETAs, open at arrival, floor and unit. Shows the plan."""
+        brief, now = brief_of(config), ports.now()
+        if brief.origin is None:
+            return error("the brief has no origin: ask the user to share their location")
+        try:
+            q = PlanQuery(
+                shop_id=shop_ids,
+                lat=brief.origin.lat,
+                lon=brief.origin.lon,
+                mode=brief.travel_mode or "walk",
+                # the brief's visit time, else now, as the plan link in seller compare does; only .arrival is read
+                depart_at=seller_query(brief, "", now).arrival,
+            )
+        except ValueError:
+            return error("give 1-6 distinct shop ids")
+        with ports.connect() as conn:
+            result = _plan_visit(conn, q, now, ports.router())
+        return block("visit_plan", result) if result else error("shop not found")
+
+    @tool
+    def get_directions(shop_id: str, config: RunnableConfig) -> str:
+        """Route from the user's location to one shop, map app links, then pasaj, floor and unit. Shows directions."""
+        brief = brief_of(config)
+        if brief.origin is None:
+            return error("the brief has no origin: ask the user to share their location")
+        q = DirectionsQuery(lat=brief.origin.lat, lon=brief.origin.lon, mode=brief.travel_mode or "walk")
+        with ports.connect() as conn:
+            result = _get_directions(conn, shop_id, q, ports.router())
+        return block("directions", result) if result else error("shop not found")
+
+    @tool
     def ask_user(
         field: CHIP_FIELDS,
         question: str,
@@ -233,7 +270,9 @@ def build_graph(ports: Ports) -> StateGraph:
         with ports.connect() as conn:
             return block("inquiry_status", _get_inquiries(conn, sid))
 
-    tools = [search_products, compare_products, find_sellers, compare_sellers, ask_user, contact_seller, get_inquiries]
+    tools = [
+        search_products, compare_products, find_sellers, compare_sellers, plan_visit, get_directions, ask_user, contact_seller, get_inquiries
+    ]
 
     def patch_brief(state: MessagesState, config: RunnableConfig) -> dict:
         sid, brief = _session(config), brief_of(config)
