@@ -1,5 +1,6 @@
 """search_products: hybrid product search, lexical over normalized titles merged with semantic neighbours."""
 
+import logging
 import re
 from datetime import UTC, datetime
 from typing import Literal
@@ -10,6 +11,8 @@ from pydantic import BaseModel
 from pasazhgard.clean import BAD_PRICE_FLAGS, PriceFlag
 from pasazhgard.embeddings import Embedder
 from pasazhgard.normalize import normalize
+
+log = logging.getLogger(__name__)
 
 PriceAgeBucket = Literal["<=7", "8-30", ">30"]
 
@@ -137,7 +140,12 @@ def _semantic(conn, query: str, embedder: Embedder | None, pool: int) -> list[st
         return []
     # text-embedding-3-small puts related products above about 0.3 cosine similarity, unrelated ones below
     max_distance = 0.7
-    vector = embedder.embed([query])[0]
+    try:
+        vector = embedder.embed([query])[0]
+    except Exception:
+        # degraded mode: any provider failure leaves the lexical results
+        log.warning("query embedding failed, searching lexically", exc_info=True)
+        return []
     rows = conn.execute(
         "SELECT product_id, embedding <=> %s::vector AS distance FROM products ORDER BY distance LIMIT %s",
         [str(vector), pool],

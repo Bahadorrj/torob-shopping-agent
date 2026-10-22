@@ -62,3 +62,19 @@ def test_products_of_the_named_brand_rank_first(hybrid):
 def test_products_in_the_named_category_rank_first(client):
     # "سیم" is also in every "هدفون بی سیم" title; wire is what the categories call "سیم"
     assert set(ids(client, "سیم")[:2]) == {"product_91fc2714e7673b537827ec61", "product_bd777713ec013d56cf083c9a"}
+
+
+class DownEmbedder:
+    name, dimensions = "fake/2", 2
+
+    def embed(self, texts):
+        raise TimeoutError("provider unreachable")
+
+
+def test_search_is_lexical_when_the_provider_is_down(client):
+    lexical = ids(client, "هندزفری ورزشی")
+    app.dependency_overrides[get_embedder] = DownEmbedder
+    try:
+        assert ids(client, "هندزفری ورزشی") == lexical
+    finally:
+        app.dependency_overrides[get_embedder] = lambda: None
