@@ -131,3 +131,21 @@ test("home offers examples, a near-me chip and recent sessions", async ({ page }
   await expect(page.getByLabel("جستجوی کالا")).toHaveValue("شارژر اپل");
   await expect(page.getByRole("link", { name: "دیدن فروشنده‌ها" })).toBeVisible();
 });
+
+test.describe("without geolocation", () => {
+  test.use({ permissions: [] });
+
+  test("a covered pasaj can be the radius origin instead of the user's position at 360 px", async ({ page }) => {
+    const { patches } = await fakeSessions(page, { sellers });
+    await page.goto("/products/p1/sellers");
+    await chip(page, "محدوده").click();
+    await page.getByLabel("مرکز شعاع").selectOption({ label: "مرکز شعاع: پاساژ علاالدین" });
+    await expect.poll(() => patches.at(-1)).toEqual({ brief: { origin: { lat: 35.6949, lon: 51.4113 } } });
+
+    await page.getByLabel("انتخاب محدوده").selectOption({ label: "۱ کیلومتر از پاساژ علاالدین" });
+    await expect.poll(() => patches.at(-1)).toEqual({ brief: { area: { radius_m: 1000 } } });
+    await expect(chip(page, "محدوده")).toContainText("۱ کیلومتر از پاساژ علاالدین");
+    await expect(page.getByText("۱ فروشنده")).toBeVisible();
+    expect(await noOverflow(page)).toBe(0);
+  });
+});

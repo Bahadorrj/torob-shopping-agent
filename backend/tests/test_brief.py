@@ -74,6 +74,20 @@ def test_area_patch_reruns_the_sellers_and_is_kept(client):
     assert session["results"]["count"] == 7
 
 
+def test_a_covered_area_or_pasaj_center_can_be_the_radius_origin(client):
+    sid = new_session(client)
+    centers = {(c["kind"], c["name"]): c for c in client.get(f"/sessions/{sid}").json()["centers"]}
+    assert {("area", "فردوسی"), ("pasaj", "علاالدین")} <= set(centers)
+    aladdin = centers["pasaj", "علاالدین"]
+    # the mean of the pasaj's shops, a few meters from the shop at ALADDIN
+    assert abs(aladdin["lat"] - ALADDIN["lat"]) < 0.002 and abs(aladdin["lon"] - ALADDIN["lon"]) < 0.002
+    patch(client, sid, {"step": {"kind": "sellers", "product_id": ANKER}})
+    origin = {"lat": aladdin["lat"], "lon": aladdin["lon"]}
+    session = patch(client, sid, {"brief": {"origin": origin, "area": {"radius_m": 300}}})
+    assert session["centers"] == list(centers.values())
+    assert 0 < session["results"]["count"] < 8
+
+
 def test_priority_patch_reranks(client):
     sid = new_session(client)
     patch(client, sid, {"step": {"kind": "sellers", "product_id": ANKER}, "brief": {"origin": ALADDIN}})

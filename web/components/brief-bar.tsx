@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useBrief } from "@/components/brief-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { Brief, MustHave, PaymentKind, Priority, SessionPatch, TravelMode } from "@/lib/api";
+import type { Brief, Center, MustHave, PaymentKind, Priority, SessionPatch, TravelMode } from "@/lib/api";
 import { distance, faDigits, faText, localDate, locate } from "@/lib/format";
 
 const RADII = [500, 1000, 2000, 5000];
@@ -19,10 +19,19 @@ const MUST_HAVE: Record<keyof MustHave, string> = { warranty: "گارانتی", 
 
 type Field = "area" | "budget" | "visit" | "travel" | "payment" | "must_have" | "priority";
 
-function areaLabel(area: Brief["area"]) {
+function placeLabel(kind: "area" | "pasaj", name: string) {
+  return kind === "area" ? name : `پاساژ ${faText(name)}`;
+}
+
+// `from` is the picked center the radius is drawn around; none means the user's own position
+function radiusLabel(m: number, from: Center | undefined) {
+  return from ? `${distance(m)} از ${placeLabel(from.kind, from.name)}` : `نزدیک من، ${distance(m)}`;
+}
+
+function areaLabel(area: Brief["area"], from: Center | undefined) {
   if (!area) return "همه مناطق";
-  if (area.radius_m !== null) return `نزدیک من، ${distance(area.radius_m)}`;
-  return area.name ?? `پاساژ ${faText(area.pasaj ?? "")}`;
+  if (area.radius_m !== null) return radiusLabel(area.radius_m, from);
+  return area.name ?? placeLabel("pasaj", area.pasaj ?? "");
 }
 
 function visitLabel(v: Brief["visit_window"]) {
@@ -57,6 +66,21 @@ export function BriefBar() {
   if (!session) return null;
   const { brief } = session;
   const set = (b: SessionPatch["brief"]) => patch({ brief: b });
+  const { origin } = brief;
+  const { centers } = session;
+  const center = origin ? centers.find((c) => c.lat === origin.lat && c.lon === origin.lon) : undefined;
+
+  async function pickOrigin(v: string) {
+    const picked = centers.find((c) => `${c.kind}:${c.name}` === v);
+    if (picked) return set({ origin: { lat: picked.lat, lon: picked.lon } });
+    try {
+      const here = await locate();
+      setGeoError(false);
+      set({ origin: here });
+    } catch {
+      setGeoError(true);
+    }
+  }
 
   // geolocation first when a choice needs the origin; the origin is kept for later radius and distance use
   async function withOrigin(b: NonNullable<SessionPatch["brief"]>) {
@@ -80,7 +104,7 @@ export function BriefBar() {
   }
 
   const chips: { field: Field; label: string; value: string }[] = [
-    { field: "area", label: "محدوده", value: areaLabel(brief.area) },
+    { field: "area", label: "محدوده", value: areaLabel(brief.area, center) },
     {
       field: "budget",
       label: "بودجه",
@@ -116,16 +140,32 @@ export function BriefBar() {
 
         {open === "area" && (
           <select
+            aria-label="مرکز شعاع"
+            value={center ? `${center.kind}:${center.name}` : origin ? "me" : ""}
+            onChange={(e) => pickOrigin(e.target.value)}
+            className="h-9 min-w-0 rounded-lg border bg-background px-2 text-sm"
+          >
+            {!origin && <option value="">مرکز شعاع: انتخاب نشده</option>}
+            <option value="me">مرکز شعاع: موقعیت من</option>
+            {centers.map((c) => (
+              <option key={`${c.kind}:${c.name}`} value={`${c.kind}:${c.name}`}>
+                مرکز شعاع: {placeLabel(c.kind, c.name)}
+              </option>
+            ))}
+          </select>
+        )}
+        {open === "area" && (
+          <select
             aria-label="انتخاب محدوده"
             value={areaValue(brief.area)}
             onChange={(e) => pickArea(e.target.value)}
             className="h-9 min-w-0 rounded-lg border bg-background px-2 text-sm"
           >
             <option value="all">همه مناطق پوشش‌داده‌شده</option>
-            <optgroup label="نزدیک من">
+            <optgroup label={center ? "شعاع" : "نزدیک من"}>
               {RADII.map((r) => (
                 <option key={r} value={`near:${r}`}>
-                  نزدیک من، {distance(r)}
+                  {radiusLabel(r, center)}
                 </option>
               ))}
             </optgroup>

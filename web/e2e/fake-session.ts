@@ -23,6 +23,11 @@ type Results = {
   sellers?: (brief: Brief, productId: string) => object;
 };
 
+export const centers = [
+  { kind: "area", name: "فردوسی", lat: 35.6905, lon: 51.4172 },
+  { kind: "pasaj", name: "علاالدین", lat: 35.6949, lon: 51.4113 },
+];
+
 // In-page stand-in for the /sessions API: keeps briefs, merges patches and re-runs the step through `results`.
 export async function fakeSessions(page: Page, results: Results, seed: Record<string, { brief?: Brief; step?: Step }> = {}) {
   const sessions = new Map(Object.entries(seed).map(([id, s]) => [id, { brief: { ...emptyBrief(), ...s.brief }, step: s.step ?? null }]));
@@ -36,7 +41,7 @@ export async function fakeSessions(page: Page, results: Results, seed: Record<st
       out = results.sellers?.(s.brief, s.step.product_id) ?? null;
       s.step.title = (out as { title?: string } | null)?.title ?? null;
     }
-    return { session_id: id, brief: s.brief, step: s.step, areas: ["بهارستان", "شیخ هادی", "فردوسی"], pasajs: ["علاالدین"], results: out };
+    return { session_id: id, brief: s.brief, step: s.step, areas: ["بهارستان", "شیخ هادی", "فردوسی"], pasajs: ["علاالدین"], centers, results: out };
   };
   await page.route("**/api/sessions**", async (route) => {
     const req = route.request();

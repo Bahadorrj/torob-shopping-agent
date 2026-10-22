@@ -137,6 +137,8 @@ export type Brief = {
   inquiries: unknown[];
 };
 
+export type Center = { kind: "area" | "pasaj"; name: string; lat: number; lon: number };
+
 export type Step = { kind: "search" } | { kind: "sellers"; product_id: string; title?: string | null };
 
 export type Session = {
@@ -145,6 +147,8 @@ export type Session = {
   step: Step | null;
   areas: string[];
   pasajs: string[];
+  // radius origins without a map: a covered area or pasaj, at the mean position of its shops
+  centers: Center[];
   results: SellerList | { query: string; items: ProductCard[] } | null;
 };
 

@@ -98,6 +98,15 @@ class SellersStep(BaseModel):
 Step = Annotated[SearchStep | SellersStep, Field(discriminator="kind")]
 
 
+class Center(BaseModel):
+    """A covered area or pasaj as a radius origin: the mean position of its shops."""
+
+    kind: Literal["area", "pasaj"]
+    name: str
+    lat: float
+    lon: float
+
+
 class Session(BaseModel):
     session_id: str
     brief: Brief
@@ -105,6 +114,8 @@ class Session(BaseModel):
     # area chip options: every covered area and pasaj
     areas: list[str]
     pasajs: list[str]
+    # radius origins picked without a map, beside geolocation
+    centers: list[Center]
     # the current step re-run against the brief; only on patch
     results: SellerList | SearchResult | None = None
 
@@ -119,7 +130,16 @@ def get_session(conn, sid: str) -> Session | None:
     row = conn.execute("SELECT brief, step FROM sessions WHERE session_id = %s", [sid]).fetchone()
     if row is None:
         return None
-    return Session(session_id=sid, brief=row["brief"], step=row["step"], **area_options(conn))
+    centers = conn.execute(
+        """
+        SELECT 'area' AS kind, location_label AS name, avg(lat) AS lat, avg(lon) AS lon FROM shops
+        WHERE location_label IS NOT NULL AND lat IS NOT NULL GROUP BY location_label
+        UNION ALL
+        SELECT 'pasaj', pasaj, avg(lat), avg(lon) FROM shops WHERE pasaj IS NOT NULL AND lat IS NOT NULL GROUP BY pasaj
+        ORDER BY kind, name
+        """
+    ).fetchall()
+    return Session(session_id=sid, brief=row["brief"], step=row["step"], centers=centers, **area_options(conn))
 
 
 class SessionPatch(BaseModel):
