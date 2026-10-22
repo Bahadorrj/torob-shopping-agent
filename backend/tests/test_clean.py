@@ -147,6 +147,7 @@ def test_clean_product_record():
         "image_urls": ["https://image.torob.com/a.jpg", "https://image.torob.com/b.jpg"],
         "specs": [{"key": "نوع اتصال", "value": "بی سیم"}, {"key": "رنگ", "value": "مشکی"}],
         "search_text": "هدفون بی سیم انکر مدل soundcore r50i انکر",
+        "brand_terms": ["انکر"],
     }
 
 

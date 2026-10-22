@@ -115,6 +115,8 @@ def clean_product(row: dict) -> dict:
         "image_urls": _json_list(row["image_urls"]),
         "specs": [{"key": s["key"], "value": s["value"]} for s in _json_list(row["specs"])],
         "search_text": normalize(" ".join(filter(None, [title, brand, model]))),
+        # the names a query can call the brand by, for the brand boost
+        "brand_terms": [normalize(brand)] if brand else [],
     }
 
 
@@ -136,6 +138,7 @@ def add_brand_aliases(products: list[dict]) -> None:
     for p in products:
         if p["brand"] in aliases:
             p["search_text"] += " " + " ".join(aliases[p["brand"]])
+            p["brand_terms"] += aliases[p["brand"]]
 
 
 WEEK = ["sat", "sun", "mon", "tue", "wed", "thu", "fri"]

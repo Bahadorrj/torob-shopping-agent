@@ -26,17 +26,17 @@ def now():
 class FakeEmbedder:
     """The embedding port in tests: texts that name the same concept point the same way."""
 
-    name = "fake/3"
+    name = "fake/2"
     concepts = [("هدفون", "هندزفری", "ایرفون", "هدست"), ("ورزش",)]
-    dimensions = len(concepts) + 1
+    dimensions = len(concepts)
 
     def __init__(self):
         self.calls = []
 
     def embed(self, texts):
         self.calls.append(texts)
-        # the constant last axis keeps texts without a concept off the zero vector
-        return [[float(any(w in normalize(t) for w in c)) for c in self.concepts] + [0.1] for t in texts]
+        # a text without a concept is the zero vector, which is no text's neighbour
+        return [[float(any(w in normalize(t) for w in c)) for c in self.concepts] for t in texts]
 
 
 @pytest.fixture(scope="session")

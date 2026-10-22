@@ -1,5 +1,6 @@
 """search_products: hybrid product search, lexical over normalized titles merged with semantic neighbours."""
 
+import re
 from datetime import UTC, datetime
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -149,18 +150,27 @@ def search_products(conn, query: str, now: datetime, limit: int = 20, embedder: 
     pool = 40
     # reciprocal rank fusion: a product high in either list ranks high, one in both ranks higher
     rrf_k = 10
+    # a product of the brand the query names beats a few ranks; one in the named category, fewer
+    brand_boost, category_boost = 0.05, 0.025
     score: dict[str, float] = {}
     for ranked in (_lexical(conn, query, pool), _semantic(conn, query, embedder, pool)):
         for rank, product_id in enumerate(ranked, 1):
             score[product_id] = score.get(product_id, 0) + 1 / (rrf_k + rank)
-    top = sorted(score, key=lambda p: (-score[p], p))[:limit]
     found = {
         p["product_id"]: p
         for p in conn.execute(
-            "SELECT product_id, title, brand, category, image_urls, specs FROM products WHERE product_id = ANY(%s)", [top]
+            "SELECT product_id, title, brand, category, image_urls, specs, brand_terms FROM products WHERE product_id = ANY(%s)",
+            [list(score)],
         )
     }
-    products = [found[p] for p in top]
+    padded = f" {normalize(query)} "
+    words = {w for w in padded.split() if len(w) >= 3}
+    for product_id, p in found.items():
+        if any(f" {term} " in padded for term in p["brand_terms"]):
+            score[product_id] += brand_boost
+        if words & set(re.findall(r"\w+", normalize(p["category"] or ""))):
+            score[product_id] += category_boost
+    products = [found[p] for p in sorted(score, key=lambda p: (-score[p], p))[:limit]]
     offers = conn.execute(
         "SELECT product_id, price_toman, last_price_changed_at, price_flags FROM offers WHERE product_id = ANY(%s)",
         [[p["product_id"] for p in products]],

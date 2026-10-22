@@ -99,6 +99,7 @@ def ingest(data_dir: Path, database_url: str, embedder: Embedder | None = None) 
         image_urls text[] NOT NULL,
         specs jsonb NOT NULL,
         search_text text NOT NULL,
+        brand_terms text[] NOT NULL,
         embedding vector{dimensions}
     );
     CREATE TABLE offers (
@@ -156,12 +157,12 @@ def ingest(data_dir: Path, database_url: str, embedder: Embedder | None = None) 
                 for c in map(clean_shop, _rows(data_dir / "shops.csv"))
             ),
         )
-        product_cols = ["product_id", "title", "brand", "category", "model", "image_urls", "specs", "search_text"]
+        product_cols = ["product_id", "title", "brand", "category", "model", "image_urls", "specs", "search_text", "brand_terms"]
         _copy(
             cur,
             "products",
             product_cols,
-            ["text", "text", "text", "text", "text", "text[]", "jsonb", "text"],
+            ["text", "text", "text", "text", "text", "text[]", "jsonb", "text", "text[]"],
             (
                 tuple(Jsonb(p[k]) if k == "specs" else p[k] for k in product_cols)
                 for p in products

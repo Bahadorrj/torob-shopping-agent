@@ -52,3 +52,13 @@ ANKER = {R50I, "product_13f930f4c1400c7ab7bfa61f", "product_e372fa27c7d7c5c171c1
 )
 def test_english_and_persian_brand_names_match(client, query, expected):
     assert set(ids(client, query)[: len(expected)]) == expected
+
+
+def test_products_of_the_named_brand_rank_first(hybrid):
+    # every headphone is a semantic match for "هندزفری"; the Anker ones are what the query names
+    assert set(ids(hybrid, "هندزفری انکر")[:3]) == ANKER
+
+
+def test_products_in_the_named_category_rank_first(client):
+    # "سیم" is also in every "هدفون بی سیم" title; wire is what the categories call "سیم"
+    assert set(ids(client, "سیم")[:2]) == {"product_91fc2714e7673b537827ec61", "product_bd777713ec013d56cf083c9a"}
