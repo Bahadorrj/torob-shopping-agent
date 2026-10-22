@@ -153,6 +153,8 @@ def test_tracker_updates_over_sse(client):
     sid, [mansa] = sent(client, MANSA)
     with client.stream("GET", f"/sessions/{sid}/inquiries/stream") as r:
         assert r.headers["content-type"].startswith("text/event-stream")
+        # the web proxy compresses, and so holds back, events unless told not to transform them
+        assert "no-transform" in r.headers["cache-control"]
         updates = events(r)
         assert next(updates)["inquiries"][0]["status"] == "sent"
         reply(client, mansa, available="yes")
@@ -225,3 +227,11 @@ def test_confirmed_price_and_installments_count_in_the_seller_list(client, now):
     # a seller who says no installments is dropped
     reply(client, mansa, installments=False)
     assert "دیسیلا مانسا" not in names(seller_list(client, sid)["sellers"] + seller_list(client, sid)["ask_them"])
+
+
+def test_the_hold_question_names_the_visit_time(client):
+    sid = new_session(client)
+    client.patch(f"/sessions/{sid}", json={"brief": {"visit_window": {"earliest_arrival": "17:00"}}})
+    [draft] = compose(client, sid, MANSA, questions=["hold"])["inquiries"]
+    assert "تا ساعت ۱۷:۰۰ برایم نگه می‌دارید؟" in draft["message"]
+    assert "قیمت" not in draft["message"]

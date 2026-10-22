@@ -242,13 +242,18 @@ async def _changes[T: BaseModel](load: Callable[[psycopg.Connection], T]) -> Asy
             await anyio.sleep(0.5)
 
 
-@app.get("/sessions/{session_id}/inquiries/stream", response_class=EventSourceResponse)
+def _no_transform(response: Response) -> None:
+    # the Next.js proxy gzips, and so buffers, any response whose Cache-Control lacks no-transform
+    response.headers["Cache-Control"] = "no-cache, no-transform"
+
+
+@app.get("/sessions/{session_id}/inquiries/stream", response_class=EventSourceResponse, dependencies=[Depends(_no_transform)])
 async def inquiries_stream(session_id: str, _=Depends(inquiries_read)) -> AsyncIterable[InquiryStatus]:
     async for status in _changes(lambda conn: get_inquiries(conn, session_id)):
         yield status
 
 
-@app.get("/console/shops/{shop_id}/inquiries/stream", response_class=EventSourceResponse)
+@app.get("/console/shops/{shop_id}/inquiries/stream", response_class=EventSourceResponse, dependencies=[Depends(_no_transform)])
 async def console_stream(shop_id: str, _=Depends(console_read)) -> AsyncIterable[ConsoleInbox]:
     async for inbox in _changes(lambda conn: console_inbox(conn, shop_id)):
         yield inbox
