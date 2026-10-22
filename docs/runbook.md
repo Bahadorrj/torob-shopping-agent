@@ -92,6 +92,12 @@ leaves the old data in place. The new tables are built in a staging schema, so s
 old data and wait only for the final swap (well under a second). Take a backup first (next section) if the
 current data matters.
 
+With `LLM_API_KEY` set (plus the optional `LLM_BASE_URL`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`), the load
+also embeds product title + brand + category for semantic search. Vectors are kept in `embedding_cache`
+across reloads, so only new or changed texts are sent to the provider; a failed run keeps the batches it
+already paid for. Load without the key and search is lexical only. The embedding settings must match the
+app's.
+
 1. Turn on public access for `torob-db`.
 2. From a machine that has the full CSVs in `dataset/`:
    ```
@@ -101,6 +107,8 @@ current data matters.
    ```
 3. Turn public access off.
 4. Check: `curl "https://<domain>/api/products/search?q=%D9%87%D8%AF%D9%81%D9%88%D9%86"` (هدفون) returns items.
+5. Optional quality check: `uv run python eval/search.py` against the same `DATABASE_URL` prints the top-5
+   hit rate over `backend/eval/search_queries.json` (hybrid with `LLM_API_KEY`, lexical without).
 
 ## Back up and restore a snapshot
 
