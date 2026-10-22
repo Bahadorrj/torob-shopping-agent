@@ -62,6 +62,18 @@ const ROWS: [string, (s: SellerColumn) => React.ReactNode][] = [
   ["اعتبار قیمت", (s) => s.trust_level === "listed" && <Badge variant="secondary">ثبت‌شده</Badge>],
 ];
 
+// the visit plan for the compared shops; the brief's visit time, else now, is when the trip starts
+function planLink(b: Brief, shopIds: string[]) {
+  if (!b.origin) return null;
+  const { lat, lon, mode, arrival } = params(b);
+  const q = new URLSearchParams(shopIds.map((id) => ["shop_id", id]));
+  q.set("lat", String(lat));
+  q.set("lon", String(lon));
+  q.set("mode", mode ?? "walk");
+  q.set("depart_at", arrival ?? new Date().toISOString());
+  return `/plan?${q}`;
+}
+
 // buttons do not wrap by default, which overflows a narrow column
 const WRAP = "h-auto whitespace-normal py-1";
 
@@ -87,6 +99,7 @@ export function SellerCompare({ productId, offerIds }: { productId: string; offe
   if (state.status === "missing") return <p className="text-sm text-muted-foreground">فروشنده‌های انتخاب‌شده پیدا نشدند.</p>;
 
   const { compare } = state;
+  const plan = session && planLink(session.brief, [...new Set(compare.sellers.map((s) => s.shop_id))]);
   return (
     <article className="flex flex-col gap-3">
       <h1 className="text-lg font-bold leading-7">مقایسه فروشنده‌ها</h1>
@@ -142,6 +155,13 @@ export function SellerCompare({ productId, offerIds }: { productId: string; offe
       <p className="text-xs text-muted-foreground">
         زمان رسیدن با فرض خط مستقیم و {MODES[compare.travel_mode]} تخمین زده شده است.
       </p>
+      {plan ? (
+        <Link href={plan} className={buttonVariants({ size: "lg", className: "self-center" })}>
+          برنامه مراجعه
+        </Link>
+      ) : (
+        <p className="text-xs text-muted-foreground">برای برنامه مراجعه، مبدأ را در خلاصه خرید انتخاب کنید.</p>
+      )}
     </article>
   );
 }
