@@ -1,6 +1,5 @@
 """plan_visit and get_directions: getting from the origin to the shops, down to floor and unit."""
 
-import re
 from datetime import datetime, time, timedelta
 from itertools import permutations
 from typing import Annotated, Literal, get_args
@@ -11,7 +10,8 @@ from pasazhgard.alternatives import Reason
 from pasazhgard.brief import Brief, Point, seller_query
 from pasazhgard.clean import weekday_key
 from pasazhgard.inquiries import Outcome, get_inquiries, latest_price, outcome
-from pasazhgard.normalize import distinct, normalize
+from pasazhgard.normalize import distinct
+from pasazhgard.pasaj import floor_level
 from pasazhgard.routing import LatLon, Route, Router, TravelMode, straight_line
 from pasazhgard.sellers import _over_budget, distance_m, find_sellers
 from pasazhgard.shops import TEHRAN, open_at
@@ -168,23 +168,6 @@ class VisitPlan(BaseModel):
     mode: TravelMode
     stops: list[Stop]
     nudges: list[Annotated[ClosingNudge | PriceNudge, Field(discriminator="kind")]] = []
-
-
-def floor_level(floor: str | None) -> int | None:
-    """A floor text as a number for ordering: basement -1, ground 0, then up; None when unreadable."""
-    if not floor:
-        return None
-    f = normalize(floor).replace(" ", "")
-    digits = re.search(r"\d+", f)
-    words = {"اول": 1, "یک": 1, "دو": 2, "سوم": 3, "سه": 3, "چهار": 4, "پنج": 5, "شش": 6, "هفت": 7, "هشت": 8, "نهم": 9, "دهم": 10}
-    n = int(digits[0]) if digits else next((v for w, v in words.items() if w in f), None)
-    if "زیر" in f or "منفی" in f or "-" in f:
-        return -(n or 1)
-    if n is not None:
-        return n
-    if "همکف" in f:
-        return 1 if "بالا" in f else 0
-    return None
 
 
 def _order(origin: LatLon, shops: list[dict]) -> list[dict]:

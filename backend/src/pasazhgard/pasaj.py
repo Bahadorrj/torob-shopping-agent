@@ -26,8 +26,8 @@ def floor_level(floor: str | None) -> int | None:
     if floor is None:
         return None
     # a tatweel before a number ("ـ۱") is a typed minus, and normalize would drop it
-    text = normalize(floor.replace("ـ", "-")).removeprefix("ی ").strip()
-    if _BASEMENT.match(text):
+    text = normalize(floor.replace("ـ", "-")).removeprefix("ی ").strip().replace("هم کف", "همکف")
+    if re.match(r"^(زیر ?همکف|زیر ?زمین|زیرین)\b", text):
         return -1
     m = _LEVEL.match(text)
     if m is None:
