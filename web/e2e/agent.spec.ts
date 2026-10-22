@@ -1,10 +1,14 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-import { fakeSessions } from "./fake-session";
+import { fakeAgent, fakeSessions } from "./fake-session";
+
+const openAgent = (page: Page) => page.getByRole("button", { name: "دستیار خرید" }).click();
+const overflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
 test("the agent sheet renders blocks at 360 px and a chip answers the question", async ({ page }) => {
   await fakeSessions(page, {});
   await page.goto("/");
+  await openAgent(page);
   const sheet = page.getByRole("region", { name: "دستیار" });
   await sheet.getByLabel("پیام به دستیار").fill("هدفون انکر");
   await sheet.getByRole("button", { name: "بفرست" }).click();
@@ -39,9 +43,11 @@ test("the agent sheet renders blocks at 360 px and a chip answers the question",
 test("help me choose on the home screen shows the model shortlist at 360 px", async ({ page }) => {
   await fakeSessions(page, {});
   await page.goto("/");
+  await openAgent(page);
   const sheet = page.getByRole("region", { name: "دستیار" });
   // the sheet offers the same entry before the first message
   await expect(sheet.getByRole("button", { name: "کمکم کن انتخاب کنم" })).toBeVisible();
+  await sheet.getByRole("button", { name: "بستن" }).click();
 
   await page.getByRole("main").getByRole("button", { name: "کمکم کن انتخاب کنم" }).click();
 
@@ -76,6 +82,7 @@ test("an inquiry_status block sends its drafts only on the user's tap and then t
     return route.fulfill({ contentType: "text/event-stream", body: `retry: 100\ndata: ${JSON.stringify({ inquiries: [inquiry] })}\n\n` });
   });
   await page.goto("/");
+  await openAgent(page);
   const sheet = page.getByRole("region", { name: "دستیار" });
   await sheet.getByLabel("پیام به دستیار").fill("از این فروشنده بپرس");
   await sheet.getByRole("button", { name: "بفرست" }).click();
@@ -88,4 +95,91 @@ test("an inquiry_status block sends its drafts only on the user's tap and then t
   await tracker.getByRole("button", { name: "ارسال به ۱ فروشنده" }).click();
   await expect(tracker.getByText("ارسال شد، منتظر پاسخ")).toBeVisible();
   expect(confirmed).toEqual([[7]]);
+});
+
+test("a stored thread waits behind the agent bar on the sellers route", async ({ page }) => {
+  await fakeSessions(page, {}, { old: { step: { kind: "sellers", product_id: "x" }, messages: [{ id: "u1", role: "user", content: "شارژر اپل" }] } });
+  await page.addInitScript(() => localStorage.setItem("pasazhgard.session", "old"));
+  const thread = page.waitForResponse("**/api/sessions/old/messages");
+  await page.goto("/products/x/sellers");
+  await thread;
+  const sheet = page.getByRole("region", { name: "دستیار" });
+  await expect(page.getByRole("button", { name: "دستیار خرید" })).toBeVisible();
+  await expect(sheet).toHaveCount(0);
+
+  await openAgent(page);
+  await expect(sheet.getByText("شارژر اپل")).toBeVisible();
+  expect(await overflow(page)).toBeLessThanOrEqual(0);
+});
+
+test("a running tool shows its skeleton until its block arrives", async ({ page }) => {
+  await fakeSessions(page, {});
+  await page.goto("/");
+  await openAgent(page);
+  const sheet = page.getByRole("region", { name: "دستیار" });
+  // fake-agent.mjs holds this find_sellers result back for two seconds
+  await sheet.getByLabel("پیام به دستیار").fill("فروشنده‌ها را پیدا کن");
+  await sheet.getByRole("button", { name: "بفرست" }).click();
+
+  const busy = sheet.getByRole("status").filter({ hasText: "در حال یافتن فروشنده‌ها" });
+  await expect(busy).toBeVisible();
+  await expect(busy.locator("[data-slot=skeleton]").first()).toBeVisible();
+  expect(await overflow(page)).toBeLessThanOrEqual(0);
+
+  await expect(sheet.getByText("دیسیلا مانسا")).toBeVisible();
+  await expect(busy).toHaveCount(0);
+  expect(await overflow(page)).toBeLessThanOrEqual(0);
+});
+
+test("product cards end in suggestion chips that send their message", async ({ page }) => {
+  await fakeSessions(page, {});
+  const sent: string[] = [];
+  const product = {
+    product_id: "p1", title: "کالای الف", brand: null, category: null, image_url: null, key_specs: [], offer_count: 2,
+    price: { trust_level: "listed", min_toman: 1000000, max_toman: 1000000, per_meter: false, last_price_changed_at: null, price_age_days: null, price_age_bucket: null },
+    price_flags: [], score_parts: [], meaning_match: false,
+  };
+  await fakeAgent(page, [{ block: "product_cards", query: "x", items: [product] }], "", ({ messages }) => sent.push(String(messages.at(-1)?.content)));
+  await page.goto("/");
+  await openAgent(page);
+  const sheet = page.getByRole("region", { name: "دستیار" });
+  await sheet.getByLabel("پیام به دستیار").fill("کالای الف");
+  await sheet.getByRole("button", { name: "بفرست" }).click();
+
+  await expect(sheet.getByText("کالای الف").last()).toBeVisible();
+  const chips = sheet.getByRole("group", { name: "پیشنهادها" }).getByRole("button");
+  await expect(chips.first()).toBeVisible();
+  expect(await chips.count()).toBeGreaterThanOrEqual(3);
+  expect(await overflow(page)).toBeLessThanOrEqual(0);
+
+  await chips.filter({ hasText: "مقایسه این دو" }).click();
+  await expect.poll(() => sent).toEqual(["کالای الف", "این دو مدل را مقایسه کن"]);
+});
+
+test("the drawer has a handle, closes by swipe or the close button and keeps the top of the page in view", async ({ page }) => {
+  await fakeSessions(page, {});
+  await page.goto("/");
+  const sheet = page.getByRole("region", { name: "دستیار" });
+
+  await openAgent(page);
+  await expect(sheet).toBeVisible();
+  const handle = page.locator("[data-slot=drawer-swipe-handle]");
+  await expect(handle).toBeVisible();
+  // snap point 0.9: the top tenth of the 740 px screen (the app bar) stays visible
+  const popup = await page.locator("[data-slot=drawer-popup]").boundingBox();
+  expect(popup!.y).toBeGreaterThanOrEqual(73);
+  expect(await overflow(page)).toBeLessThanOrEqual(0);
+  await sheet.getByRole("button", { name: "بستن" }).click();
+  await expect(sheet).toHaveCount(0);
+
+  await openAgent(page);
+  await expect(sheet).toBeVisible();
+  // a drag that starts while the drawer still slides in is not a swipe
+  await page.waitForFunction(() => document.querySelector("[data-slot=drawer-popup]")?.getAnimations().length === 0);
+  const box = (await handle.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  for (let dy = 40; dy <= 480; dy += 40) await page.mouse.move(box.x + box.width / 2, box.y + dy);
+  await page.mouse.up();
+  await expect(sheet).toHaveCount(0);
 });

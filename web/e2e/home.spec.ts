@@ -32,6 +32,7 @@ test("the home input asks the agent, the sheet opens on its chips and the brief 
 
   await sheet(page).getByRole("button", { name: "تا ۱ میلیون تومان" }).click();
   await expect.poll(() => sent).toEqual([SENTENCE, "تا ۱ میلیون تومان"]);
+  await sheet(page).getByRole("button", { name: "بستن" }).click();
 
   // a bare product name goes to the agent too
   await page.getByLabel("خرید شما در یک جمله").fill("هدفون انکر");
@@ -50,9 +51,12 @@ test("a reload or another route shows the session's thread again", async ({ page
   await page.addInitScript(() => localStorage.setItem("pasazhgard.session", "old"));
 
   await page.goto("/");
+  // a restored thread waits for a tap on the agent bar
+  await page.getByRole("button", { name: "دستیار خرید" }).click();
   await expect(sheet(page).getByText("شارژر اپل")).toBeVisible();
   await expect(sheet(page).getByRole("button", { name: "فرقی نمی‌کند" })).toBeVisible();
 
   await page.goto("/compare?ids=p1,p2");
+  await page.getByRole("button", { name: "دستیار خرید" }).click();
   await expect(sheet(page).getByText("تا چه قیمتی؟")).toBeVisible();
 });
