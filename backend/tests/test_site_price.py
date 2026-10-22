@@ -1,4 +1,5 @@
 import httpx
+import pytest
 
 CABLE = "product_0a040d1b11770040095cec15"  # کابل افشان 4x2.5 خراسان افشارنژاد
 MAHDI_OFFER = "offer_e423de52b01ad2a4173e6ad5"  # listed at 524,000
@@ -55,3 +56,46 @@ def test_the_tracker_lists_the_sessions_website_prices(client, site):
     price = fetch(client, sid)
     tracked = client.get(f"/sessions/{sid}/inquiries").json()
     assert tracked == {"inquiries": [], "site_prices": [price]}
+
+
+@pytest.mark.parametrize(
+    "pages, parses",
+    [
+        ({"https://mahdicable.ir/": httpx.ReadTimeout("slow")}, []),
+        ({"https://mahdicable.ir/": httpx.ConnectError("blocked")}, []),
+        # the page loads but shows no price for the product
+        ({"https://mahdicable.ir/": PAGE}, [{"price_toman": None}]),
+    ],
+    ids=["timeout", "error", "no_price"],
+)
+def test_a_failed_fetch_is_unavailable_and_leaves_the_seller_to_ask(client, site, pages, parses):
+    site(pages, *parses)
+    sid = new_session(client)
+    price = fetch(client, sid)
+    assert (price["status"], price["price_toman"]) == ("unavailable", None)
+    assert compared(client, sid)["latest_price"]["status"] == "not_asked"
+    assert client.get(f"/sessions/{sid}/inquiries").json()["site_prices"] == [price]
+    # the inquiry it offers instead goes through as usual
+    r = client.post(f"/sessions/{sid}/inquiries", json={"offer_ids": [MAHDI_OFFER]})
+    assert r.status_code == 201, r.text
+
+
+def test_without_a_model_the_price_is_unavailable(client):
+    sid = new_session(client)
+    assert fetch(client, sid)["status"] == "unavailable"
+
+
+def test_a_newer_fetch_replaces_the_older_one(client, site):
+    site({"https://mahdicable.ir/": PAGE}, {"price_toman": 580000}, {"price_toman": None})
+    sid = new_session(client)
+    fetch(client, sid)
+    fetch(client, sid)
+    assert [p["status"] for p in client.get(f"/sessions/{sid}/inquiries").json()["site_prices"]] == ["unavailable"]
+
+
+def test_a_shop_without_a_website_or_an_unknown_id_is_refused(client):
+    sid = new_session(client)
+    fetch(client, sid, shop_id="shop_e31a5b73908ea869f50af78e", product_id="product_92ac53fa75e18e8e73f20b56", status=409)
+    fetch(client, sid, shop_id="shop_nope", status=404)
+    fetch(client, sid, product_id="product_nope", status=404)
+    fetch(client, "no-such-session", status=404)

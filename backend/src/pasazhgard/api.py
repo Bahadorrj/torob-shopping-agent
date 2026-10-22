@@ -62,6 +62,8 @@ async def lifespan(app: FastAPI):
             now=lambda: _resolve(get_now),
             embedder=lambda: _resolve(get_embedder),
             router=lambda: _resolve(get_router),
+            small_model=lambda: _resolve(get_small_model),
+            web=lambda: _resolve(get_web_fetch),
             connect=lambda: _connect(row_factory=dict_row),
         )
         graph = build_graph(ports).compile(checkpointer=checkpointer)
