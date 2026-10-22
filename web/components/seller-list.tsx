@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { useBrief } from "@/components/brief-provider";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import type { Condition, Reason, SellerRow } from "@/lib/api";
 import { distance, faDigits, faText, priceAge } from "@/lib/format";
@@ -18,6 +18,8 @@ const UNKNOWN: Record<Condition, string> = {
   test_in_presence: "تست در حضور مشتری",
   fast_delivery: "ارسال سریع",
 };
+
+const COMPARE_MAX = 3;
 
 const COVERAGE = "داده‌ها بخشی از فروشگاه‌های تهران، بیشتر مرکز شهر، را پوشش می‌دهند.";
 
@@ -50,7 +52,10 @@ function place(s: { area: string | null; pasaj: string | null; floor?: string | 
   return s.distance_m === null ? text : `${text} · ${distance(s.distance_m)}`;
 }
 
-function Seller({ s }: { s: SellerRow }) {
+type Pick = { picked: string[]; toggle: (offerId: string) => void };
+
+function Seller({ s, pick }: { s: SellerRow; pick: Pick }) {
+  const picked = pick.picked.includes(s.offer_id);
   return (
     <Card className="gap-1.5 p-3">
       <div className="flex items-start justify-between gap-2">
@@ -93,12 +98,27 @@ function Seller({ s }: { s: SellerRow }) {
           ))}
         </div>
       )}
+      <Button
+        variant="outline"
+        size="sm"
+        className="self-start"
+        aria-pressed={picked}
+        disabled={!picked && pick.picked.length >= COMPARE_MAX}
+        onClick={() => pick.toggle(s.offer_id)}
+      >
+        {picked ? "حذف از مقایسه" : "افزودن به مقایسه"}
+      </Button>
     </Card>
   );
 }
 
 export function SellerList({ productId }: { productId: string }) {
   const { session, pending, error, patch } = useBrief();
+  const [picked, setPicked] = useState<string[]>([]);
+  const pick: Pick = {
+    picked,
+    toggle: (id) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id].slice(0, COMPARE_MAX))),
+  };
 
   // entering this step keeps the brief; the response carries this product's sellers filtered by it
   useEffect(() => {
@@ -145,7 +165,7 @@ export function SellerList({ productId }: { productId: string }) {
         <ul className="flex flex-col gap-3">
           {list.sellers.map((s) => (
             <li key={s.offer_id}>
-              <Seller s={s} />
+              <Seller s={s} pick={pick} />
             </li>
           ))}
         </ul>
@@ -160,7 +180,7 @@ export function SellerList({ productId }: { productId: string }) {
           <ul className="flex flex-col gap-3">
             {list.ask_them.map((s) => (
               <li key={s.offer_id}>
-                <Seller s={s} />
+                <Seller s={s} pick={pick} />
               </li>
             ))}
           </ul>
@@ -187,6 +207,15 @@ export function SellerList({ productId }: { productId: string }) {
             ))}
           </ul>
         </section>
+      )}
+
+      {picked.length >= 2 && (
+        <Link
+          href={`/products/${productId}/sellers/compare?${new URLSearchParams(picked.map((id) => ["offer", id]))}`}
+          className={buttonVariants({ size: "lg", className: "sticky bottom-4 self-center shadow-md" })}
+        >
+          مقایسه فروشنده‌ها ({faDigits(picked.length)})
+        </Link>
       )}
     </article>
   );

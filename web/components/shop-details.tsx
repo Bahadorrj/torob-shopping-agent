@@ -16,9 +16,9 @@ const DAY_NAMES: Record<Day, string> = {
   fri: "جمعه",
 };
 
-const DELIVERY = { yes: "دارد", no: "ندارد", unknown: null };
+export const DELIVERY = { yes: "دارد", no: "ندارد", unknown: null };
 
-function NotRecorded({ text = "ثبت نشده" }: { text?: string }) {
+export function NotRecorded({ text = "ثبت نشده" }: { text?: string }) {
   return <span className="text-muted-foreground">{text}</span>;
 }
 

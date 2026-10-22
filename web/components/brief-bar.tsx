@@ -11,7 +11,7 @@ import { distance, faDigits, faText, localDate, locate } from "@/lib/format";
 const RADII = [500, 1000, 2000, 5000];
 
 const PRIORITIES: Record<Priority, string> = { cheapest: "ارزان‌ترین", closest: "نزدیک‌ترین", most_reliable: "معتبرترین" };
-const MODES: Record<TravelMode, string> = { walk: "پیاده", transit: "مترو و اتوبوس", car: "خودرو" };
+export const MODES: Record<TravelMode, string> = { walk: "پیاده", transit: "مترو و اتوبوس", car: "خودرو" };
 const PAYMENTS: Record<PaymentKind, string> = { any: "هر روشی", cash: "نقدی", torob_pay: "ترب‌پی حضوری", installment: "اقساطی" };
 
 const PROVIDERS = ["ترب‌پی", "اسنپ‌پی", "دیجی‌پی", "تارا", "ازکی‌وام"];

@@ -177,3 +177,32 @@ export async function patchSession(id: string, change: SessionPatch): Promise<Se
   if (!r.ok) throw new Error(`patch failed: ${r.status}`);
   return r.json();
 }
+
+// Mirrors SellerCompare in backend/src/pasazhgard/seller_compare.py.
+export type SellerColumn = SellerRow & {
+  // only not_asked until inquiries and website fetch exist
+  latest_price: { status: "not_asked"; price_toman: number | null; trust_level: "unknown"; at: string | null };
+  travel_min: number | null;
+  arrival_at: string;
+  open_at_arrival: boolean | null;
+  fast_delivery: "yes" | "no" | "unknown";
+};
+
+export type SellerCompare = {
+  product_id: string;
+  title: string;
+  travel_mode: TravelMode;
+  travel_estimate: "straight_line";
+  sellers: SellerColumn[];
+};
+
+export type CompareParams = { lat?: number; lon?: number; mode?: TravelMode; arrival?: string };
+
+export async function compareSellers(productId: string, offerIds: string[], p: CompareParams): Promise<SellerCompare | null> {
+  const q = new URLSearchParams(offerIds.map((id) => ["offer_id", id]));
+  for (const [k, v] of Object.entries(p)) if (v !== undefined) q.set(k, String(v));
+  const r = await fetch(`/api/products/${encodeURIComponent(productId)}/sellers/compare?${q}`);
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`compare failed: ${r.status}`);
+  return r.json();
+}
