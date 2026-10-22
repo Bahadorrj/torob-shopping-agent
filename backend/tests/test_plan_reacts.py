@@ -172,57 +172,83 @@ def test_the_plan_stream_needs_a_session(client):
             assert r.status_code == status
 
 
-def test_anchor_scenario_a(client, clock, embedder):
+def test_anchor_scenario_a(agent, client, clock, embedder):
     from pasazhgard.api import app, get_embedder
 
+    def say(text, *replies):
+        agent.script(*replies)
+        return agent.turn(text).blocks
+
     # Tuesday 15:00; نیکورا ویوان opens at 16:00 on Tuesdays
-    clock(dt.datetime(2026, 10, 20, 15, 0, tzinfo=ZoneInfo("Asia/Tehran")))
+    clock(TUESDAY_15)
     jomhouri = {"lat": 35.6955, "lon": 51.4135}
-    sid = new_session(client)
-    # "a bluetooth headset for the gym, not sure which model; going to Jomhouri this evening, installments preferred",
-    # then the two chip answers: budget and in-ear
-    brief = {
-        "need": "هندزفری بلوتوثی ورزشی",
-        "use": "باشگاه",
-        "features": ["توگوشی"],
-        "budget": {"max_per_item_toman": 5_000_000},
-        "origin": jomhouri,
-        "area": {"radius_m": 1000},
-        "visit_window": {"date": "2026-10-20", "earliest_arrival": "17:00:00"},
-        "payment": {"kind": "installment"},
-    }
-    assert client.patch(f"/sessions/{sid}", json={"brief": brief}).status_code == 200
-    at_17 = {**jomhouri, "radius_m": 1000, "max_per_item_toman": 5_000_000, "payment": "installment", "arrival": "2026-10-20T17:00:00+03:30"}
+    sid = agent.session_id
+    # the user shares their location in the brief bar, at Jomhouri
+    assert client.patch(f"/sessions/{sid}", json={"brief": {"origin": jomhouri}}).status_code == 200
+
+    # a vague need: two chip questions, budget then in-ear vs over-ear
+    [chips] = say(
+        "یه هندزفری بلوتوثی برای باشگاه می‌خوام، نمی‌دونم کدوم مدل. امروز عصر میرم جمهوری، قسطی هم باشه بهتره.",
+        agent.brief(
+            need="هندزفری بلوتوثی ورزشی",
+            use="باشگاه",
+            area={"radius_m": 1000},
+            visit_window={"date": "2026-10-20", "earliest_arrival": "17:00"},
+            payment={"kind": "installment"},
+        ),
+        agent.call("ask_user", field="budget", question="تا چه قیمتی؟"),
+    )
+    assert (chips["block"], chips["field"]) == ("chips", "budget")
+    [chips] = say(
+        "تا ۵ میلیون",
+        agent.brief(budget={"max_per_item_toman": 5_000_000}),
+        agent.call("ask_user", field="features", question="توگوشی یا روگوشی؟", options=["توگوشی", "روگوشی"]),
+    )
+    assert (chips["block"], chips["field"], chips["options"]) == ("chips", "features", ["توگوشی", "روگوشی"])
 
     app.dependency_overrides[get_embedder] = lambda: embedder
     try:
-        shortlist = client.get("/products/suggest", params={"need": brief["need"], **at_17}).json()["models"]
+        [shortlist] = say(
+            "توگوشی", agent.brief(features=["توگوشی"]), agent.call("suggest_models", need="هندزفری بلوتوثی ورزشی توگوشی"), "این مدل‌ها نزدیک شما هستند."
+        )
     finally:
         app.dependency_overrides[get_embedder] = lambda: None
-    top = [m["product_id"] for m in shortlist][:2]
-    assert top[0] == R50I_NC and len(shortlist) >= 2
+    top = [m["product_id"] for m in shortlist["models"]][:2]
+    assert top[0] == R50I_NC and len(shortlist["models"]) >= 2
 
-    compared = client.patch(f"/sessions/{sid}", json={"step": {"kind": "compare", "product_ids": top}}).json()["results"]
+    [compared] = say("مقایسه‌شون کن", agent.brief(), agent.call("compare_products", product_ids=top), "جدول مقایسه.")
     assert [p["product_id"] for p in compared["products"]] == top
 
-    sellers = client.patch(f"/sessions/{sid}", json={"step": {"kind": "sellers", "product_id": R50I_NC}}).json()["results"]
-    # installments declared vs "ask them"
-    declared = {s["offer_id"] for s in sellers["sellers"]}
-    ask_them = {s["offer_id"] for s in sellers["ask_them"]}
-    assert R50I_NC_MAHIS in declared and {R50I_NC_MANSA, R50I_NC_VIVAN} <= ask_them
+    # sellers near Jomhouri, open at 17:00, installments declared vs "ask them"
+    [sellers] = say("فروشنده‌های اولی", agent.brief(), agent.call("find_sellers", product_id=R50I_NC), "فروشنده‌ها.")
+    assert all(r["distance_m"] <= 1000 for r in sellers["sellers"] + sellers["ask_them"])
+    # a listed seller is open at 17:00 and declares installments; "ask them" lacks a record of one of these
+    assert all(not r["unknown"] for r in sellers["sellers"])
+    assert R50I_NC_MAHIS in {r["offer_id"] for r in sellers["sellers"]}
+    assert {R50I_NC_MANSA, R50I_NC_VIVAN} <= {r["offer_id"] for r in sellers["ask_them"]}
+    three = [R50I_NC_MAHIS, R50I_NC_MANSA, R50I_NC_VIVAN]
+    [columns] = say("این سه تا رو مقایسه کن", agent.brief(), agent.call("compare_sellers", product_id=R50I_NC, offer_ids=three), "مقایسه.")
+    assert {(c["arrival_at"], c["open_at_arrival"]) for c in columns["sellers"]} == {("2026-10-20T17:00:00+03:30", True)}
 
-    mahis, mansa, vivan = ids(compose(client, sid, R50I_NC_MAHIS, R50I_NC_MANSA, R50I_NC_VIVAN))
+    # three inquiries: one confirms a new price, one stays silent, one is closed
+    [drafts] = say("ازشون قیمت بپرس", agent.brief(), agent.call("contact_seller", offer_ids=three), "پیش‌نویس‌ها آماده است.")
+    mahis, mansa, vivan = ids(drafts)
     sent = confirm(client, sid, mahis, mansa, vivan)["inquiries"]
     assert [i["status"] for i in sent] == ["sent", "sent", "closed"]
-    # one confirms a new price, listed at 4,499,000; one stays silent
+    # listed at 4,499,000
     reply(client, mahis, latest_price_toman=5_200_000, available="yes")
-    clock(dt.datetime(2026, 10, 20, 15, 3, tzinfo=ZoneInfo("Asia/Tehran")))
+    clock(TUESDAY_15 + dt.timedelta(minutes=3))
 
-    alternative = alternatives(client, sid, mansa)["alternatives"][0]
+    # an alternative in the same pasaj takes the silent shop's stop
+    [found] = say("دیسیلا مانسا جواب نداد", agent.brief(), agent.call("find_alternatives", inquiry_id=mansa), "جایگزین‌ها.")
+    alternative = found["alternatives"][0]
     assert (alternative["shop_id"], alternative["same_pasaj"]) == (AZAR_SHOP, True)
-    confirm(client, sid, *ids(compose(client, sid, alternative["offer_id"], instead_of=mansa)))
+    [asked] = say(
+        "از اولی بپرس", agent.brief(), agent.call("contact_seller", offer_ids=[alternative["offer_id"]], instead_of=mansa), "پیش‌نویس آماده است."
+    )
+    confirm(client, sid, *ids(asked))
 
-    updated = plan(client, sid, MAHIS_SHOP, MANSA_SHOP, VIVAN_SHOP, **jomhouri, depart_at="2026-10-20T17:00:00+03:30")
+    [updated] = say("برنامه رو بچین", agent.brief(), agent.call("plan_visit", shop_ids=[MAHIS_SHOP, MANSA_SHOP, VIVAN_SHOP]), "برنامهٔ مراجعه.")
     stops = [(s["shop_id"], s["inquiry"]["status"], s["open_at_eta"]) for s in updated["stops"]]
     # the confirmed shop first, then Aladdin by floor with the alternative in the silent shop's place
     assert stops == [(MAHIS_SHOP, "confirmed", True), (VIVAN_SHOP, "closed", True), (AZAR_SHOP, "sent", True)]
@@ -230,5 +256,5 @@ def test_anchor_scenario_a(client, clock, embedder):
     assert (confirmed["listed_price_toman"], confirmed["latest_price_toman"], confirmed["price_delta_toman"]) == (4_499_000, 5_200_000, 701_000)
     assert confirmed["over_budget"] is True and confirmed["replied_at"] == "2026-10-20T15:00:00+03:30"
 
-    r = client.get(f"/shops/{AZAR_SHOP}/directions", params=jomhouri)
-    assert r.json()["last_leg"] == {"pasaj": "علاالدین", "landmark": "رو‌به‌روی پاساژ چهارسو", "floor": "۲", "unit": "۲۱۶"}
+    [directions] = say("مسیر جایگزین", agent.brief(), agent.call("get_directions", shop_id=AZAR_SHOP), "مسیر.")
+    assert directions["last_leg"] == {"pasaj": "علاالدین", "landmark": "رو‌به‌روی پاساژ چهارسو", "floor": "۲", "unit": "۲۱۶"}
