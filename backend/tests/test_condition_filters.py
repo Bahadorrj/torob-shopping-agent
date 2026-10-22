@@ -40,7 +40,10 @@ def test_open_at_arrival_handles_shifts_breaks_thursday_and_friday(client):
     assert sellers(client, CABLE, **at("2026-10-25", "19:30"))["sellers"] == []
     # Thursday early close
     assert names(sellers(client, CABLE, **at("2026-10-22", "15:30"))["sellers"]) == ["راموان مهریلا"]
-    assert sellers(client, CABLE, **at("2026-10-23", "12:00"))["sellers"] == []
+    friday = sellers(client, CABLE, **at("2026-10-23", "12:00"))
+    assert friday["sellers"] == [] and friday["ask_them"] == []
+    # the area has sellers, they are just closed: no other area to suggest
+    assert friday["nearest_covered"] is None
 
 
 def test_arrival_without_a_date_is_today(client):

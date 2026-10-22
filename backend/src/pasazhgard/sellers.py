@@ -271,12 +271,15 @@ def find_sellers(conn, product_id: str, q: SellerQuery, now: datetime) -> Seller
     best = {}
     for o in sorted(offers, key=lambda o: (not _usable([o]), o["price_toman"] or 0, o["offer_id"])):
         best.setdefault(o["shop_id"], o)
-    rows, ask_them = [], []
+    rows, ask_them, in_area = [], [], False
     for o in best.values():
         d = _distance(q, o)
+        if not _in_area(q, o, d):
+            continue
+        in_area = True
         row = _row(o, d, now)
         met = _conditions(q, o)
-        if False in met.values() or not _in_area(q, o, d):
+        if False in met.values():
             continue
         if q.max_price_toman and row.price_toman and row.price_toman > q.max_price_toman:
             continue
@@ -307,6 +310,7 @@ def find_sellers(conn, product_id: str, q: SellerQuery, now: datetime) -> Seller
         sellers=rows,
         ask_them=ask_them,
         category_only=category_only,
-        nearest_covered=None if rows or ask_them else _nearest_covered(conn, q, list(best.values())),
+        # only an area without sellers suggests another; a filter that empties the list does not
+        nearest_covered=None if in_area else _nearest_covered(conn, q, list(best.values())),
         **area_options(conn),
     )
