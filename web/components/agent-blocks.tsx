@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { AgentAlternatives } from "@/components/alternatives";
+import { BasketView } from "@/components/basket";
 import { useBrief } from "@/components/brief-provider";
 import { InquiryTracker } from "@/components/inquiry-tracker";
 import { ListedPrice, ProductCard } from "@/components/product-card";
@@ -15,6 +16,7 @@ import {
   confirmInquiries,
   inquiriesStreamUrl,
   type Alternatives,
+  type Basket,
   type Directions,
   type Inquiry,
   type InquiryStatus,
@@ -176,6 +178,7 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
     </div>
   ),
   alternatives: (d: Alternatives) => <AgentAlternatives block={d} />,
+  basket: (d: Basket) => <BasketView basket={d} />,
   chips: (d: Chips, send) => (
     <div className="flex flex-col gap-2">
       <p className="text-sm">{d.question}</p>

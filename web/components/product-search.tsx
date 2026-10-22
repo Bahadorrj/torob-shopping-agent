@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { useBrief } from "@/components/brief-provider";
@@ -13,6 +14,7 @@ const EXAMPLES = ["هندزفری انکر R50i", "شارژر اپل ۲۰ وات
 export function ProductSearch() {
   const { session, pending, error, patch } = useBrief();
   const [query, setQuery] = useState("");
+  const router = useRouter();
   const sid = session?.session_id;
   const need = session?.brief.need;
 
@@ -49,6 +51,13 @@ export function ProductSearch() {
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          // a one-line input drops newlines, so a pasted multi-line list goes to basket mode before it lands
+          onPaste={(e) => {
+            const text = e.clipboardData.getData("text");
+            if (!text.trim().includes("\n")) return;
+            e.preventDefault();
+            router.push(`/basket?${new URLSearchParams({ text })}`);
+          }}
           placeholder="نام کالا را بنویسید"
           aria-label="جستجوی کالا"
           className="h-11"

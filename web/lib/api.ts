@@ -424,3 +424,32 @@ export async function getVisitPlan(query: string): Promise<VisitPlan | null> {
   if (!r.ok) throw new Error(`plan failed: ${r.status}`);
   return r.json();
 }
+
+// Mirrors Basket in backend/src/pasazhgard/basket.py.
+export type BasketItem = { line: string; product_id: string | null; title: string | null; category: string | null; quantity: number; unit: "piece" | "meter" };
+export type BasketStopItem = {
+  item: number;
+  offer_id: string | null;
+  price_toman: number | null;
+  per_meter: boolean;
+  total_toman: number | null;
+  trust_level: "listed" | "unknown" | "category_only";
+};
+export type BasketStop = {
+  shop_id: string;
+  shop_name: string;
+  address: string | null;
+  pasaj: string | null;
+  floor: string | null;
+  unit: string | null;
+  items: BasketStopItem[];
+  total_toman: number;
+};
+export type Basket = { items: BasketItem[]; stops: BasketStop[]; missing: number[]; total_toman: number };
+
+export async function optimizeBasket(text: string, b: Brief): Promise<Basket> {
+  const area = { lat: b.origin?.lat, lon: b.origin?.lon, radius_m: b.area?.radius_m, area: b.area?.name, pasaj: b.area?.pasaj };
+  const r = await fetch("/api/basket", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, ...area }) });
+  if (!r.ok) throw new Error(`basket failed: ${r.status}`);
+  return r.json();
+}
