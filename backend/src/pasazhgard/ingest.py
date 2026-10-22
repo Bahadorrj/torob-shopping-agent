@@ -158,6 +158,7 @@ def ingest(data_dir: Path, database_url: str, embedder: Embedder | None = None) 
     CREATE TABLE IF NOT EXISTS site_prices (
         session_id text NOT NULL REFERENCES sessions ON DELETE CASCADE,
         shop_id text NOT NULL,
+        shop_name text NOT NULL,
         product_id text NOT NULL,
         status text NOT NULL,
         price_toman bigint,

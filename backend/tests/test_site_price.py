@@ -21,7 +21,7 @@ def test_the_sites_search_page_gives_a_website_price_with_its_fetch_time(client,
     web = site({"https://mahdicable.ir/": PAGE}, {"price_toman": 580000})
     sid = new_session(client)
     price = fetch(client, sid)
-    assert (price["shop_id"], price["product_id"], price["status"]) == (MAHDI, CABLE, "found")
+    assert (price["shop_id"], price["shop_name"], price["product_id"], price["status"]) == (MAHDI, "سیم و کابل مهدی", CABLE, "found")
     assert (price["price_toman"], price["trust_level"]) == (580000, "website_price")
     assert price["fetched_at"] == now.isoformat()
     # the site's own search for the product title

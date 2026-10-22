@@ -38,6 +38,7 @@ class SitePrice(BaseModel):
     """A website price: `unavailable` when the site failed, timed out or showed no price; ask the seller instead."""
 
     shop_id: str
+    shop_name: str
     product_id: str
     status: Literal["found", "unavailable"]
     price_toman: int | None
@@ -85,7 +86,7 @@ def fetch_site_price(conn, sid: str, q: FetchQuery, web: WebFetch, model, now: d
     """
     if conn.execute("SELECT 1 FROM sessions WHERE session_id = %s", [sid]).fetchone() is None:
         return None
-    shop = conn.execute("SELECT website_url FROM shops WHERE shop_id = %s", [q.shop_id]).fetchone()
+    shop = conn.execute("SELECT name, website_url FROM shops WHERE shop_id = %s", [q.shop_id]).fetchone()
     product = conn.execute("SELECT title FROM products WHERE product_id = %s", [q.product_id]).fetchone()
     if shop is None or product is None:
         return None
@@ -99,16 +100,16 @@ def fetch_site_price(conn, sid: str, q: FetchQuery, web: WebFetch, model, now: d
     except Exception:
         log.warning("site price fetch failed for %s", url, exc_info=True)
     result = SitePrice(
-        shop_id=q.shop_id, product_id=q.product_id, status="found" if price else "unavailable", price_toman=price, fetched_at=now, url=url
+        shop_id=q.shop_id, shop_name=shop["name"], product_id=q.product_id, status="found" if price else "unavailable", price_toman=price, fetched_at=now, url=url
     )
     conn.execute(
         """
-        INSERT INTO site_prices (session_id, shop_id, product_id, status, price_toman, fetched_at, url)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO site_prices (session_id, shop_id, shop_name, product_id, status, price_toman, fetched_at, url)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (session_id, shop_id, product_id) DO UPDATE
         SET status = excluded.status, price_toman = excluded.price_toman, fetched_at = excluded.fetched_at, url = excluded.url
         """,
-        [sid, *result.model_dump(include={"shop_id", "product_id", "status", "price_toman", "fetched_at", "url"}).values()],
+        [sid, *result.model_dump(include={"shop_id", "shop_name", "product_id", "status", "price_toman", "fetched_at", "url"}).values()],
     )
     return result
 
