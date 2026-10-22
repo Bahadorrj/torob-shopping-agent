@@ -9,7 +9,8 @@ from typing import Annotated
 import anyio
 import psycopg
 from ag_ui_langgraph import LangGraphAgent, add_langgraph_fastapi_endpoint
-from fastapi import Depends, FastAPI, HTTPException, Query, Response
+from ag_ui_langgraph.utils import langchain_messages_to_agui
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.sse import EventSourceResponse
 from langchain_core.language_models import BaseChatModel
@@ -61,7 +62,7 @@ async def lifespan(app: FastAPI):
             router=lambda: _resolve(get_router),
             connect=lambda: _connect(row_factory=dict_row),
         )
-        graph = build_graph(ports).compile(checkpointer=checkpointer)
+        graph = app.state.graph = build_graph(ports).compile(checkpointer=checkpointer)
         add_langgraph_fastapi_endpoint(app, LangGraphAgent(name="pasazhgard", graph=graph, emit_raw_events=False), "/agent")
         yield
 
@@ -250,6 +251,14 @@ def sessions_read(session_id: str, conn=Depends(get_conn)) -> Session:
     if session is None:
         raise HTTPException(404, "session not found")
     return session
+
+
+@app.get("/sessions/{session_id}/messages")
+async def sessions_messages(session_id: str, request: Request) -> list[dict]:
+    """The session's agent thread as AG-UI messages, so a reloaded page shows it again."""
+    state = await request.app.state.graph.aget_state({"configurable": {"thread_id": session_id}})
+    messages = langchain_messages_to_agui(state.values.get("messages", []))
+    return [m.model_dump(mode="json", by_alias=True, exclude_none=True) for m in messages]
 
 
 @app.patch("/sessions/{session_id}")

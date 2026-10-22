@@ -250,7 +250,7 @@ def build_graph(ports: Ports) -> StateGraph:
         options: list[str] | None = None,
     ) -> str:
         """Ask the user one short Persian question about a missing brief field, answered with chips.
-        `options`: the chips for use and features; other fields get theirs from the data."""
+        `options`: 3-5 short chips for need, use, features and budget; other fields get theirs from the data."""
         asks = [c for c in state["messages"][-1].tool_calls if c["name"] == "ask_user"]
         if asks[0]["id"] != call_id:
             return error("one question per turn")
@@ -274,9 +274,15 @@ def build_graph(ports: Ports) -> StateGraph:
         waiting = takewhile(lambda r: r.get("block") in ("chips", None), reversed(results))
         if sum(r.get("block") == "chips" for r in waiting) >= 3:
             return error("at most 3 questions before results: show them now")
-        # the model writes the chips only for use and features
-        options = (options or []) if field in ("use", "features") else []
-        if field == "area":
+        # every question is chips: the model writes them for need, use, features and budget
+        options = (options or []) if field in ("need", "use", "features", "budget") else []
+        if not options and field in ("need", "use", "features"):
+            return error("give 3-5 short options")
+        if field == "budget":
+            options = options or ["تا ۱ میلیون تومان", "تا ۵ میلیون تومان", "تا ۲۰ میلیون تومان", "فرقی نمی‌کند"]
+        elif field == "quantity":
+            options = ["۱", "۲", "۳"]
+        elif field == "area":
             with ports.connect() as conn:
                 found = area_options(conn)
             options = ["نزدیک من", *found["areas"], *found["pasajs"]]
@@ -344,7 +350,7 @@ def build_graph(ports: Ports) -> StateGraph:
             - Use tools for every product, shop, price and hour. Never state a price, shop or stock that no tool returned;
               the UI shows tool results as cards, so refer to them instead of repeating numbers.
             - If a missing brief field would change the answer, call ask_user for that one field and stop.
-              Ask one question per turn, and none when the answer would not change the result.
+              Ask one question per turn, and none when the answer would not change the result. Never ask in the reply text.
             - Guided discovery: when the user names a need or category rather than a model, or asks for help choosing
               ("کمکم کن انتخاب کنم"), shortlist models with suggest_models before any find_sellers. First ask about use,
               features and budget, at most these three and only what the brief lacks; give use and features 3-5 short options.
@@ -356,7 +362,19 @@ def build_graph(ports: Ports) -> StateGraph:
               call contact_seller with its offer id and instead_of set to that inquiry."""
         )
         prompt = SystemMessage(prompt.format(now=ports.now().isoformat(), brief=brief.model_dump_json()))
-        return {"messages": [ports.model().bind_tools(tools).invoke([prompt, *state["messages"]])]}
+        messages = [prompt, *state["messages"]]
+        # the text is held back until it is known not to be a question; tool calls still stream
+        held = {"metadata": {"emit-messages": False}}
+        reply = ports.model().bind_tools(tools).invoke(messages, config=held)
+        turn = list(takewhile(lambda m: not isinstance(m, HumanMessage), reversed(state["messages"])))
+        asked = any(isinstance(m, ToolMessage) and m.name == "ask_user" for m in turn)
+        in_prose = ("؟" in reply.content or "?" in reply.content) and not any(c["name"] == "ask_user" for c in reply.tool_calls)
+        # a question in prose is asked again as chips, once per turn so a refused ask cannot loop
+        if in_prose and not asked:
+            reply = ports.model().bind_tools(tools, tool_choice="ask_user").invoke(messages, config=held)
+        if reply.content:
+            dispatch_custom_event("manually_emit_message", {"message_id": reply.id, "message": reply.content}, config=config)
+        return {"messages": [reply]}
 
     def degraded(state: MessagesState, config: RunnableConfig) -> dict:
         """No model: search the user's words and say so in template text."""
