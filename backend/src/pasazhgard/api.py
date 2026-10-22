@@ -1,7 +1,8 @@
 import os
+import time
 from collections.abc import AsyncIterable, Callable
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import cache
 from typing import Annotated
 
@@ -18,6 +19,7 @@ from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel, ValidationError
 
 from pasazhgard.agent import Ports, build_graph, chat_model_from_env
+from pasazhgard.alternatives import Alternatives, find_alternatives
 from pasazhgard.brief import Session, SessionPatch, create_session, get_session, patch_session
 from pasazhgard.compare import Product, ProductCompare, ProductCompareQuery, compare_products, get_product
 from pasazhgard.embeddings import Embedder, embedder_from_env
@@ -278,16 +280,27 @@ def inquiries_confirm(
 
 
 @app.get("/sessions/{session_id}/inquiries")
-def inquiries_read(session_id: str, conn=Depends(get_conn)) -> InquiryStatus:
-    status = get_inquiries(conn, session_id)
+def inquiries_read(session_id: str, conn=Depends(get_conn), now: datetime = Depends(get_now)) -> InquiryStatus:
+    status = get_inquiries(conn, session_id, now)
     if status is None:
         raise HTTPException(404, "session not found")
     return status
 
 
+@app.get("/sessions/{session_id}/inquiries/{inquiry_id}/alternatives")
+def inquiries_alternatives(session_id: str, inquiry_id: int, conn=Depends(get_conn), now: datetime = Depends(get_now)) -> Alternatives:
+    try:
+        block = find_alternatives(conn, session_id, inquiry_id, now)
+    except ValueError:
+        raise HTTPException(409, "inquiry has not fallen through") from None
+    if block is None:
+        raise HTTPException(404, "inquiry not found")
+    return block
+
+
 @app.get("/console/shops/{shop_id}/inquiries")
-def console_read(shop_id: str, conn=Depends(get_conn)) -> ConsoleInbox:
-    inbox = console_inbox(conn, shop_id)
+def console_read(shop_id: str, conn=Depends(get_conn), now: datetime = Depends(get_now)) -> ConsoleInbox:
+    inbox = console_inbox(conn, shop_id, now)
     if inbox is None:
         raise HTTPException(404, "shop not found")
     return inbox
@@ -309,13 +322,13 @@ def console_reply(
         raise HTTPException(409, "inquiry not sent") from None
 
 
-async def _changes[T: BaseModel](load: Callable[[psycopg.Connection], T]) -> AsyncIterable[T]:
-    """`load(conn)` now and again each time its result changes."""
-    last = None
+async def _changes[T: BaseModel](load: Callable[[psycopg.Connection, datetime], T], now: datetime) -> AsyncIterable[T]:
+    """`load(conn, at)` now and again each time its result changes; `at` is the request's clock, running on."""
+    last, start = None, time.monotonic()
     # shortcut: polls the store twice a second; move to LISTEN/NOTIFY if many trackers stay open
     with _connect(row_factory=dict_row, autocommit=True) as conn:
         while True:
-            current = await anyio.to_thread.run_sync(load, conn)
+            current = await anyio.to_thread.run_sync(load, conn, now + timedelta(seconds=time.monotonic() - start))
             if current != last:
                 yield current
                 last = current
@@ -328,12 +341,14 @@ def _no_transform(response: Response) -> None:
 
 
 @app.get("/sessions/{session_id}/inquiries/stream", response_class=EventSourceResponse, dependencies=[Depends(_no_transform)])
-async def inquiries_stream(session_id: str, _=Depends(inquiries_read)) -> AsyncIterable[InquiryStatus]:
-    async for status in _changes(lambda conn: get_inquiries(conn, session_id)):
+async def inquiries_stream(
+    session_id: str, _=Depends(inquiries_read), now: datetime = Depends(get_now)
+) -> AsyncIterable[InquiryStatus]:
+    async for status in _changes(lambda conn, at: get_inquiries(conn, session_id, at), now):
         yield status
 
 
 @app.get("/console/shops/{shop_id}/inquiries/stream", response_class=EventSourceResponse, dependencies=[Depends(_no_transform)])
-async def console_stream(shop_id: str, _=Depends(console_read)) -> AsyncIterable[ConsoleInbox]:
-    async for inbox in _changes(lambda conn: console_inbox(conn, shop_id)):
+async def console_stream(shop_id: str, _=Depends(console_read), now: datetime = Depends(get_now)) -> AsyncIterable[ConsoleInbox]:
+    async for inbox in _changes(lambda conn, at: console_inbox(conn, shop_id, at), now):
         yield inbox

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { AgentAlternatives } from "@/components/alternatives";
 import { useBrief } from "@/components/brief-provider";
 import { InquiryTracker } from "@/components/inquiry-tracker";
 import { ProductCard } from "@/components/product-card";
@@ -12,6 +13,7 @@ import { clock, OpenBadge, RouteDetails } from "@/components/visit-plan";
 import {
   confirmInquiries,
   inquiriesStreamUrl,
+  type Alternatives,
   type Directions,
   type Inquiry,
   type InquiryStatus,
@@ -37,7 +39,7 @@ function Inquiries({ initial }: { initial: Inquiry[] }) {
   const live = useEventStream<InquiryStatus>(inquiriesStreamUrl(sid));
   const ids = new Set(initial.map((i) => i.inquiry_id));
   const inquiries = live ? live.inquiries.filter((i) => ids.has(i.inquiry_id)) : initial;
-  return <InquiryTracker inquiries={inquiries} onConfirm={(inquiryIds) => confirmInquiries(sid, inquiryIds)} />;
+  return <InquiryTracker sessionId={sid} inquiries={inquiries} onConfirm={(inquiryIds) => confirmInquiries(sid, inquiryIds)} />;
 }
 
 // the plan screen's query asks the backend for the same plan, so it is also the share link
@@ -118,6 +120,7 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
       <RouteDetails d={d} />
     </div>
   ),
+  alternatives: (d: Alternatives) => <AgentAlternatives block={d} />,
   chips: (d: Chips, send) => (
     <div className="flex flex-col gap-2">
       <p className="text-sm">{d.question}</p>

@@ -25,6 +25,7 @@ from langgraph.prebuilt import InjectedState, ToolNode
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field
 
+from pasazhgard.alternatives import find_alternatives as _find_alternatives
 from pasazhgard.brief import Area, Brief, Budget, Item, Payment, VisitWindow, seller_query
 from pasazhgard.compare import compare_products as _compare_products
 from pasazhgard.embeddings import Embedder
@@ -123,7 +124,8 @@ Now: {now} (Asia/Tehran). Shopping Brief: {brief}
   Ask one question per turn, and none when the answer would not change the result.
 - Never say an item is in stock unless a seller confirmed it.
 - contact_seller only drafts messages; the user sends them with the button under the drafts. Never say a message
-  was sent or a seller answered unless get_inquiries shows it."""
+  was sent or a seller answered unless get_inquiries shows it.
+- When an inquiry turns unavailable, no_reply or closed, call find_alternatives for it."""
 
 CHIP_FIELDS = Literal["area", "budget", "visit_window", "payment", "quantity", "need"]
 
@@ -211,6 +213,16 @@ def build_graph(ports: Ports) -> StateGraph:
         return block("directions", result) if result else error("shop not found")
 
     @tool
+    def find_alternatives(inquiry_id: int, config: RunnableConfig) -> str:
+        """The top 2 places to ask instead when a seller inquiry is unavailable, no_reply or closed. Shows them with trade-offs."""
+        with ports.connect() as conn:
+            try:
+                result = _find_alternatives(conn, _session(config), inquiry_id, ports.now())
+            except ValueError:
+                return error("that inquiry has not fallen through")
+        return block("alternatives", result) if result else error("inquiry not found")
+
+    @tool
     def ask_user(
         field: CHIP_FIELDS,
         question: str,
@@ -268,10 +280,11 @@ def build_graph(ports: Ports) -> StateGraph:
         # creates the session row a thread may start without
         brief_of(config)
         with ports.connect() as conn:
-            return block("inquiry_status", _get_inquiries(conn, sid))
+            return block("inquiry_status", _get_inquiries(conn, sid, ports.now()))
 
     tools = [
-        search_products, compare_products, find_sellers, compare_sellers, plan_visit, get_directions, ask_user, contact_seller, get_inquiries
+        search_products, compare_products, find_sellers, compare_sellers, plan_visit, get_directions, find_alternatives,
+        ask_user, contact_seller, get_inquiries,
     ]
 
     def patch_brief(state: MessagesState, config: RunnableConfig) -> dict:

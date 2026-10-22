@@ -270,3 +270,27 @@ def test_get_directions_shows_the_route_and_last_leg(agent, client):
     assert (d["block"], d["shop_id"]) == ("directions", DISIS)
     assert d["route"]["source"] == "straight_line"
     assert d["last_leg"] == {"pasaj": "علاالدین", "landmark": "رو‌به‌روی پاساژ چهارسو", "floor": "۲", "unit": "۲۱۶"}
+
+
+def test_find_alternatives_shows_where_else_to_ask_for_an_inquiry_that_fell_through(agent, client):
+    sid = agent.session_id
+    [draft] = client.post(f"/sessions/{sid}/inquiries", json={"offer_ids": [MANSA]}).json()["inquiries"]
+    client.post(f"/sessions/{sid}/inquiries/confirm", json={"inquiry_ids": [draft["inquiry_id"]]})
+    client.post(f"/console/inquiries/{draft['inquiry_id']}/replies", json={"available": "no"})
+    other = client.post("/sessions").json()["session_id"]
+    agent.script(
+        agent.brief(),
+        agent.call("find_alternatives", inquiry_id=draft["inquiry_id"]),
+        "این دو فروشنده را هم می‌شود پرسید.",
+    )
+
+    turn = agent.turn("موجود نداشت، حالا چی؟")
+
+    alt = turn.blocks[0]
+    assert (alt["block"], alt["inquiry_id"], alt["reason"]) == ("alternatives", draft["inquiry_id"], "unavailable")
+    assert [a["shop_name"] for a in alt["alternatives"]] == ["آذرنوش دیسیس", "نیکورا ویوان"]
+    # another session's inquiry is not this thread's
+    agent.session_id = other
+    agent.history = []
+    agent.script(agent.brief(), agent.call("find_alternatives", inquiry_id=draft["inquiry_id"]), "پیدا نشد.")
+    assert "block" not in agent.turn("جایگزین؟").blocks[0]

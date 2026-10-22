@@ -1,20 +1,36 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+import { Alternatives } from "@/components/alternatives";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { ConsoleReply, Inquiry, InquiryState } from "@/lib/api";
+import { askAlternative, confirmInquiries, getAlternatives, type Alternatives as Block, type ConsoleReply, type Inquiry, type InquiryState } from "@/lib/api";
 import { faDigits, faText } from "@/lib/format";
 
 export const STATUS: Record<InquiryState, string> = {
   draft: "پیش‌نویس",
+  closed: "فروشگاه الان بسته است",
+  queued: "هنگام باز شدن فرستاده می‌شود",
   sent: "ارسال شد، منتظر پاسخ",
   replied: "پاسخ داد",
   confirmed: "موجودی تأیید شد",
   unavailable: "موجود نیست",
+  no_reply: "پاسخ نداد",
 };
+
+const FELL_THROUGH: InquiryState[] = ["unavailable", "no_reply", "closed"];
+
+// shown as soon as an inquiry falls through; fetched again only when its status changes
+function FallenThrough({ sessionId, inquiry }: { sessionId: string; inquiry: Inquiry }) {
+  const [block, setBlock] = useState<Block | null>(null);
+  const { inquiry_id, status } = inquiry;
+  useEffect(() => {
+    getAlternatives(sessionId, inquiry_id).then(setBlock, () => setBlock(null));
+  }, [sessionId, inquiry_id, status]);
+  return block && <Alternatives block={block} onAsk={(a) => askAlternative(sessionId, a)} />;
+}
 
 // an ISO time from the API, in Tehran time, as HH:MM
 export const clock = (at: string) => faText(at.slice(11, 16));
@@ -30,14 +46,14 @@ export function replyText(r: ConsoleReply) {
   return parts.join("، ");
 }
 
-function Sent({ inquiry: i }: { inquiry: Inquiry }) {
+function Sent({ sessionId, inquiry: i }: { sessionId: string; inquiry: Inquiry }) {
   const { reply } = i;
   const repliedAt = i.events.findLast((e) => e.reply)?.at;
   return (
     <li className="flex flex-col gap-1.5 rounded-lg border p-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-semibold">{i.shop_name}</span>
-        <Badge variant={i.status === "confirmed" ? "default" : i.status === "unavailable" ? "destructive" : "secondary"}>
+        <Badge variant={i.status === "confirmed" ? "default" : FELL_THROUGH.includes(i.status) ? "destructive" : "secondary"}>
           {STATUS[i.status]}
         </Badge>
         {i.simulated && <Badge variant="outline">شبیه‌سازی</Badge>}
@@ -60,6 +76,12 @@ function Sent({ inquiry: i }: { inquiry: Inquiry }) {
             </li>
           ))}
       </ol>
+      {i.status === "closed" && (
+        <Button size="xs" variant="outline" className="h-auto self-start py-1 whitespace-normal" onClick={() => confirmInquiries(sessionId, [i.inquiry_id], true)}>
+          هنگام باز شدن بفرست
+        </Button>
+      )}
+      {FELL_THROUGH.includes(i.status) && <FallenThrough sessionId={sessionId} inquiry={i} />}
       {i.simulated && (
         <Link href={`/console/${i.shop_id}`} target="_blank" className="text-xs text-primary underline-offset-4 hover:underline">
           کنسول فروشنده (شبیه‌سازی)
@@ -70,7 +92,15 @@ function Sent({ inquiry: i }: { inquiry: Inquiry }) {
 }
 
 // The inquiry_status block: drafts waiting for consent, then a timeline per shop.
-export function InquiryTracker({ inquiries, onConfirm }: { inquiries: Inquiry[]; onConfirm: (ids: number[]) => Promise<unknown> }) {
+export function InquiryTracker({
+  sessionId,
+  inquiries,
+  onConfirm,
+}: {
+  sessionId: string;
+  inquiries: Inquiry[];
+  onConfirm: (ids: number[]) => Promise<unknown>;
+}) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(false);
   const drafts = inquiries.filter((i) => i.status === "draft");
@@ -113,7 +143,7 @@ export function InquiryTracker({ inquiries, onConfirm }: { inquiries: Inquiry[];
           <h2 className="font-bold">پیگیری استعلام‌ها</h2>
           <ul className="flex flex-col gap-2">
             {sent.map((i) => (
-              <Sent key={i.inquiry_id} inquiry={i} />
+              <Sent key={i.inquiry_id} sessionId={sessionId} inquiry={i} />
             ))}
           </ul>
           {sent.some((i) => i.simulated) && (

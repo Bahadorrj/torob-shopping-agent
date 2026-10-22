@@ -1,3 +1,4 @@
+import datetime as dt
 import json
 
 ANKER = "product_92ac53fa75e18e8e73f20b56"
@@ -6,6 +7,8 @@ MANSA_SHOP = "shop_e31a5b73908ea869f50af78e"
 MANUSH = "offer_73254108e9f0882302b30908"  # دیسآرا مانوش: no price
 PAKYAR = "offer_3c3d14695e8beea205c20a8c"  # دیسورا پاکیار
 MAHIS = "offer_4482530cb944bbe32546da26"  # نیین ماهیس
+AZAR = "offer_1700cc0225d2f15b0456b35a"  # آذرنوش دیسیس: open 10:30-18:00 on Wednesdays
+AZAR_SHOP = "shop_81c53acd00d779578fff4a40"
 
 
 def new_session(client):
@@ -34,8 +37,8 @@ def test_compose_makes_drafts_and_sends_nothing(client):
     for words in ("موجود", "قیمت امروز", "نگه", "اقساط"):
         assert words in mansa["message"]
     assert client.get(f"/sessions/{sid}/inquiries").json()["inquiries"] == drafts
-    # the seller sees nothing before consent
-    assert mansa["inquiry_id"] not in [i["inquiry_id"] for i in inbox(client, MANSA_SHOP)["inquiries"]]
+    # the seller sees nothing before consent; other tests' inquiries may be there
+    assert mansa["inquiry_id"] not in ids(inbox(client, MANSA_SHOP))
 
 
 def confirm(client, sid, *ids, status=200):
@@ -235,3 +238,48 @@ def test_the_hold_question_names_the_visit_time(client):
     [draft] = compose(client, sid, MANSA, questions=["hold"])["inquiries"]
     assert "تا ساعت ۱۷:۰۰ برایم نگه می‌دارید؟" in draft["message"]
     assert "قیمت" not in draft["message"]
+
+
+def statuses(client, sid):
+    return [i["status"] for i in client.get(f"/sessions/{sid}/inquiries").json()["inquiries"]]
+
+
+def test_unanswered_inquiries_turn_no_reply_after_n_minutes(client, clock, now):
+    sid, [mansa, mahis] = sent(client, MANSA, MAHIS)
+    reply(client, mahis, available="yes")
+    clock(now + dt.timedelta(minutes=2) - dt.timedelta(seconds=1))
+    assert statuses(client, sid) == ["sent", "confirmed"]
+    clock(now + dt.timedelta(minutes=5))
+    [late, answered] = client.get(f"/sessions/{sid}/inquiries").json()["inquiries"]
+    assert (late["status"], answered["status"]) == ("no_reply", "confirmed")
+    # the step happened when the wait ran out, not when someone looked
+    assert late["events"][-1] == {"at": (now + dt.timedelta(minutes=2)).isoformat(), "status": "no_reply", "reply": None, "question": None}
+    # a late reply still counts
+    assert reply(client, mansa, available="yes")["status"] == "confirmed"
+
+
+def test_closed_shops_are_not_sent_unless_queued_for_opening(client, clock, now):
+    evening = now.replace(hour=19)
+    clock(evening)
+    sid = new_session(client)
+    azar, mahis, pakyar = ids(compose(client, sid, AZAR, MAHIS, PAKYAR))
+    # hours unknown is not closed, so pakyar is asked
+    assert [i["status"] for i in confirm(client, sid, azar, mahis, pakyar)["inquiries"]] == ["closed", "sent", "sent"]
+    assert azar not in ids(inbox(client, AZAR_SHOP))
+    reply(client, azar, available="yes", status=409)
+    r = client.post(f"/sessions/{sid}/inquiries/confirm", json={"inquiry_ids": [azar], "queue": True})
+    assert r.json()["inquiries"][0]["status"] == "queued"
+    # a queued message holds a place among the item's three
+    compose(client, sid, MANUSH, status=409)
+    clock(evening + dt.timedelta(hours=1))
+    assert azar not in ids(inbox(client, AZAR_SHOP))
+    # Thursday morning, once the shop opens
+    opening = (now + dt.timedelta(days=1)).replace(hour=10, minute=30)
+    clock(opening)
+    [seen] = [i for i in inbox(client, AZAR_SHOP)["inquiries"] if i["inquiry_id"] == azar]
+    assert (seen["inquiry_id"], seen["status"], seen["channel"]) == (azar, "sent", "seller_console")
+    assert [(e["status"], e["at"]) for e in seen["events"]][1:] == [
+        ("closed", evening.isoformat()),
+        ("queued", evening.isoformat()),
+        ("sent", opening.isoformat()),
+    ]
