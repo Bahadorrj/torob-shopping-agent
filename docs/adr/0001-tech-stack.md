@@ -155,6 +155,7 @@ session's inquiries change, with each leg routed once per stream.
 | `INQUIRY_NO_REPLY_SECONDS` | `120` | no |
 | `INQUIRY_MAX_PARALLEL` | `3` | no |
 | `AUTO_RESPONDER_ENABLED` | `false` | no; its rate settings come with #22 |
+| `CONSOLE_SECRET` | long random string | no; signs the Seller Console links (#37), the console is closed without it |
 
 `web` (Next.js):
 
@@ -164,7 +165,7 @@ session's inquiries change, with each leg routed once per stream.
 | `AGENT_URL` | `${API_URL}/agent` | yes |
 | `NEXT_PUBLIC_MAP_TILE_URL` | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | no |
 
-Secrets: `LLM_API_KEY`, `NESHAN_API_KEY`, and the password inside `DATABASE_URL`. They are set in the
+Secrets: `LLM_API_KEY`, `NESHAN_API_KEY`, `CONSOLE_SECRET`, and the password inside `DATABASE_URL`. They are set in the
 Liara console per app and in a gitignored `.env` locally.
 
 ## Differences from the spec

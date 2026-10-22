@@ -32,6 +32,9 @@ The orchestrator and the Seller Liaison run on LangGraph, with LangChain chat mo
   *Amended (#15 wiring):* the interrupt round trip was not proven end to end, so the fallback below is in use:
   `contact_seller` is a plain graph tool that stores drafts and returns the `inquiry_status` block; the block's
   send button calls `POST /sessions/{id}/inquiries/confirm` (`confirm_inquiries`). The model has no send tool.
+  *Amended (#37):* the `interrupt()` spike is dropped and the fallback is the design. There is no separate
+  Seller Liaison sub-agent or subgraph: the orchestrator calls `contact_seller`, and the rest of the liaison
+  is the plain inquiry code below.
 - **State.** Conversation state and pending interrupts are kept by `langgraph-checkpoint-postgres` in the
   existing database.
 - **Outside the graph.** The inquiry store, its state machine (`sent -> no_reply` after N minutes, hours
@@ -61,7 +64,7 @@ The orchestrator and the Seller Liaison run on LangGraph, with LangChain chat mo
 
 - Less of our own code for the loop, streaming and interrupts; more dependency surface. LangChain packages
   change often, hence exact pins.
-- Before #15 relies on it, a spike confirms that an `interrupt()` in `ag-ui-langgraph` round-trips through
-  CopilotKit's human-in-the-loop action and resumes the graph. If it does not, consent falls back to a
-  `confirm_inquiries` tool the user's tap calls, with drafts held in the inquiry store.
+- ~~Before #15 relies on it, a spike confirms that an `interrupt()` in `ag-ui-langgraph` round-trips through
+  CopilotKit's human-in-the-loop action and resumes the graph.~~ Dropped (#37): consent uses the
+  `confirm_inquiries` fallback, with drafts held in the inquiry store.
 - If CopilotKit is dropped (ADR-0001 fallback), the graph and its AG-UI endpoint stay as they are.
