@@ -61,6 +61,18 @@ def card(client, query, product_id):
     return next(c for c in search(client, query) if c["product_id"] == product_id)
 
 
+def test_score_parts_show_which_query_words_matched(client):
+    c = card(client, "هدفون انکر R50i برای ورزش", R50I)
+    # query words are normalized; "برای" and "ورزش" are not in the title
+    assert c["score_parts"] == [
+        {"word": "هدفون", "matched": True},
+        {"word": "انکر", "matched": True},
+        {"word": "r50i", "matched": True},
+        {"word": "برای", "matched": False},
+        {"word": "ورزش", "matched": False},
+    ]
+
+
 def test_missing_price(client):
     c = card(client, "کلید اتوماتیک 160 آمپر زیمنس", "product_c2f4d0a4d9df317cc19b3115")
     assert c["offer_count"] == 3

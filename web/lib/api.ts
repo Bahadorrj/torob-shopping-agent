@@ -21,6 +21,8 @@ export type ProductCard = {
   offer_count: number;
   price: PriceRange;
   price_flags: PriceFlag[];
+  // query words of the match score, and whether the title has each
+  score_parts: { word: string; matched: boolean }[];
 };
 
 export async function searchProducts(q: string): Promise<ProductCard[]> {
@@ -79,6 +81,8 @@ export type SellerRow = {
   pasaj: string | null;
   floor: string | null;
   unit: string | null;
+  lat: number | null;
+  lon: number | null;
   distance_m: number | null;
   price_toman: number | null;
   per_meter: boolean;
@@ -115,6 +119,24 @@ export type SellerList = {
   pasajs: string[];
 };
 
+// Mirrors ProductCompare in backend/src/pasazhgard/compare.py. Nearby means in the brief's area.
+export type CompareColumn = {
+  product_id: string;
+  title: string;
+  brand: string | null;
+  image_url: string | null;
+  price: PriceRange;
+  seller_count: number;
+  // `sellers` with a warranty term, and the longest term
+  warranty: { trust_level: "listed" | "unknown"; sellers: number; max_months: number | null };
+};
+
+export type ProductCompare = {
+  products: CompareColumn[];
+  // one value per product, null where a product does not record the spec
+  specs: { key: string; values: (string | null)[]; differs: boolean }[];
+};
+
 // Mirrors Brief, Session and SessionPatch in backend/src/pasazhgard/brief.py.
 export type Area = { radius_m: number | null; name: string | null; pasaj: string | null };
 export type TravelMode = "walk" | "transit" | "car";
@@ -139,7 +161,10 @@ export type Brief = {
 
 export type Center = { kind: "area" | "pasaj"; name: string; lat: number; lon: number };
 
-export type Step = { kind: "search" } | { kind: "sellers"; product_id: string; title?: string | null };
+export type Step =
+  | { kind: "search" }
+  | { kind: "sellers"; product_id: string; title?: string | null }
+  | { kind: "compare"; product_ids: string[] };
 
 export type Session = {
   session_id: string;
@@ -149,7 +174,7 @@ export type Session = {
   pasajs: string[];
   // radius origins without a map: a covered area or pasaj, at the mean position of its shops
   centers: Center[];
-  results: SellerList | { query: string; items: ProductCard[] } | null;
+  results: SellerList | { query: string; items: ProductCard[] } | ProductCompare | null;
 };
 
 // `brief` replaces the top-level fields it names
@@ -175,5 +200,34 @@ export async function patchSession(id: string, change: SessionPatch): Promise<Se
     body: JSON.stringify(change),
   });
   if (!r.ok) throw new Error(`patch failed: ${r.status}`);
+  return r.json();
+}
+
+// Mirrors SellerCompare in backend/src/pasazhgard/seller_compare.py.
+export type SellerColumn = SellerRow & {
+  // only not_asked until inquiries and website fetch exist
+  latest_price: { status: "not_asked"; price_toman: number | null; trust_level: "unknown"; at: string | null };
+  travel_min: number | null;
+  arrival_at: string;
+  open_at_arrival: boolean | null;
+  fast_delivery: "yes" | "no" | "unknown";
+};
+
+export type SellerCompare = {
+  product_id: string;
+  title: string;
+  travel_mode: TravelMode;
+  travel_estimate: "straight_line";
+  sellers: SellerColumn[];
+};
+
+export type CompareParams = { lat?: number; lon?: number; mode?: TravelMode; arrival?: string };
+
+export async function compareSellers(productId: string, offerIds: string[], p: CompareParams): Promise<SellerCompare | null> {
+  const q = new URLSearchParams(offerIds.map((id) => ["offer_id", id]));
+  for (const [k, v] of Object.entries(p)) if (v !== undefined) q.set(k, String(v));
+  const r = await fetch(`/api/products/${encodeURIComponent(productId)}/sellers/compare?${q}`);
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`compare failed: ${r.status}`);
   return r.json();
 }

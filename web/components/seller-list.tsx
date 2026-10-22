@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
+import { Choices } from "@/components/brief-bar";
 import { useBrief } from "@/components/brief-provider";
+import { pinKey, pins, SellerMap } from "@/components/seller-map";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import type { Condition, Reason, SellerRow } from "@/lib/api";
 import { distance, faDigits, faText, priceAge } from "@/lib/format";
@@ -18,6 +20,8 @@ const UNKNOWN: Record<Condition, string> = {
   test_in_presence: "تست در حضور مشتری",
   fast_delivery: "ارسال سریع",
 };
+
+const COMPARE_MAX = 3;
 
 const COVERAGE = "داده‌ها بخشی از فروشگاه‌های تهران، بیشتر مرکز شهر، را پوشش می‌دهند.";
 
@@ -50,7 +54,7 @@ function place(s: { area: string | null; pasaj: string | null; floor?: string | 
   return s.distance_m === null ? text : `${text} · ${distance(s.distance_m)}`;
 }
 
-function Seller({ s }: { s: SellerRow }) {
+function Seller({ s, children }: { s: SellerRow; children?: ReactNode }) {
   return (
     <Card className="gap-1.5 p-3">
       <div className="flex items-start justify-between gap-2">
@@ -93,12 +97,31 @@ function Seller({ s }: { s: SellerRow }) {
           ))}
         </div>
       )}
+      {children}
     </Card>
+  );
+}
+
+// offers picked for the seller compare
+function CompareToggle({ id, ids, setIds }: { id: string; ids: string[]; setIds: (f: (ids: string[]) => string[]) => void }) {
+  const on = ids.includes(id);
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="self-start"
+      aria-pressed={on}
+      disabled={!on && ids.length >= COMPARE_MAX}
+      onClick={() => setIds((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))}
+    >
+      {on ? "حذف از مقایسه" : "افزودن به مقایسه"}
+    </Button>
   );
 }
 
 export function SellerList({ productId }: { productId: string }) {
   const { session, pending, error, patch } = useBrief();
+  const [compareIds, setCompareIds] = useState<string[]>([]);
 
   // entering this step keeps the brief; the response carries this product's sellers filtered by it
   useEffect(() => {
@@ -108,6 +131,17 @@ export function SellerList({ productId }: { productId: string }) {
   const step = session?.step;
   const results = session?.results;
   const list = step?.kind === "sellers" && step.product_id === productId && results && "sellers" in results ? results : null;
+
+  // view and selected pin live here, so switching views keeps both; filters live in the brief
+  const [view, setView] = useState<"list" | "map">("list");
+  const [selected, setSelected] = useState<string | null>(null);
+  const rows = useMemo(() => (list ? [...list.sellers, ...list.ask_them] : []), [list]);
+  const mapPins = useMemo(() => pins(rows), [rows]);
+  const picked = mapPins.find((p) => p.key === selected);
+  const showMap = view === "map" && rows.length > 0;
+  const unplaced = rows.length - mapPins.reduce((t, p) => t + p.rows.length, 0);
+  // rows of the pin picked on the map
+  const PICKED = "rounded-xl aria-[current=true]:ring-2 aria-[current=true]:ring-primary";
 
   if (list === null) {
     if (error && !pending) return <p className="text-sm text-destructive">فهرست فروشنده‌ها دریافت نشد. دوباره تلاش کنید.</p>;
@@ -124,7 +158,40 @@ export function SellerList({ productId }: { productId: string }) {
         {pending ? "در حال به‌روزرسانی..." : `${faDigits(list.count)} فروشنده`}
       </p>
 
-      {list.count === 0 && nearest === null ? (
+      {rows.length > 0 && <Choices label="نمایش فروشنده‌ها" options={{ list: "فهرست", map: "نقشه" }} value={view} onPick={setView} />}
+
+      {showMap && (
+        <section className="flex flex-col gap-3">
+          <SellerMap pins={mapPins} selected={selected} onSelect={setSelected} />
+          {unplaced > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {faDigits(unplaced)} فروشنده موقعیت ثبت‌شده ندارد و فقط در فهرست است.
+            </p>
+          )}
+          {picked ? (
+            <section aria-labelledby="picked" className="flex flex-col gap-2">
+              <h2 id="picked" className="text-sm font-semibold">
+                {picked.label}
+              </h2>
+              <ul className="flex flex-col gap-3">
+                {picked.rows.map((s) => (
+                  <li key={s.offer_id}>
+                    <Seller s={s}>
+                      <Link href={`/shops/${s.shop_id}`} className={buttonVariants({ size: "sm", variant: "outline", className: "self-start" })}>
+                        صفحه فروشگاه
+                      </Link>
+                    </Seller>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : (
+            <p className="text-xs text-muted-foreground">روی یک نقطه بزنید تا فروشگاه‌های آن را ببینید.</p>
+          )}
+        </section>
+      )}
+
+      {showMap ? null : list.count === 0 && nearest === null ? (
         <p className="rounded-lg border p-3 text-sm">فروشنده‌ای با همه شرایط شما پیدا نشد. شرایط را در نوار بالا تغییر دهید.</p>
       ) : list.count === 0 ? (
         <div className="flex flex-col gap-2 rounded-lg border p-3 text-sm">
@@ -144,14 +211,16 @@ export function SellerList({ productId }: { productId: string }) {
       ) : (
         <ul className="flex flex-col gap-3">
           {list.sellers.map((s) => (
-            <li key={s.offer_id}>
-              <Seller s={s} />
+            <li key={s.offer_id} aria-current={pinKey(s) === selected || undefined} className={PICKED}>
+              <Seller s={s}>
+                <CompareToggle id={s.offer_id} ids={compareIds} setIds={setCompareIds} />
+              </Seller>
             </li>
           ))}
         </ul>
       )}
 
-      {list.ask_them.length > 0 && (
+      {!showMap && list.ask_them.length > 0 && (
         <section aria-labelledby="ask-them" className="flex flex-col gap-2">
           <h2 id="ask-them" className="text-sm font-semibold">
             از فروشنده بپرسید
@@ -159,15 +228,17 @@ export function SellerList({ productId }: { productId: string }) {
           <p className="text-xs text-muted-foreground">این فروشگاه‌ها بعضی از شرایط شما را ثبت نکرده‌اند.</p>
           <ul className="flex flex-col gap-3">
             {list.ask_them.map((s) => (
-              <li key={s.offer_id}>
-                <Seller s={s} />
+              <li key={s.offer_id} aria-current={pinKey(s) === selected || undefined} className={PICKED}>
+                <Seller s={s}>
+                  <CompareToggle id={s.offer_id} ids={compareIds} setIds={setCompareIds} />
+                </Seller>
               </li>
             ))}
           </ul>
         </section>
       )}
 
-      {list.category_only.length > 0 && (
+      {!showMap && list.category_only.length > 0 && (
         <section aria-labelledby="category-only" className="flex flex-col gap-2">
           <h2 id="category-only" className="text-sm font-semibold">
             فروشگاه‌های هم‌دسته
@@ -187,6 +258,15 @@ export function SellerList({ productId }: { productId: string }) {
             ))}
           </ul>
         </section>
+      )}
+
+      {compareIds.length >= 2 && (
+        <Link
+          href={`/products/${productId}/sellers/compare?${new URLSearchParams(compareIds.map((id) => ["offer", id]))}`}
+          className={buttonVariants({ size: "lg", className: "sticky bottom-4 self-center shadow-md" })}
+        >
+          مقایسه فروشنده‌ها ({faDigits(compareIds.length)})
+        </Link>
       )}
     </article>
   );

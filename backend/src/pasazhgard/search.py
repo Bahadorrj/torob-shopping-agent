@@ -14,6 +14,9 @@ from pasazhgard.normalize import normalize
 
 log = logging.getLogger(__name__)
 
+# word_similarity at which a query word counts as present in a product's search text
+WORD_MATCH = 0.6
+
 PriceAgeBucket = Literal["<=7", "8-30", ">30"]
 
 
@@ -34,6 +37,13 @@ class PriceRange(BaseModel):
     price_age_bucket: PriceAgeBucket | None
 
 
+class ScorePart(BaseModel):
+    """One query word of the match score, and whether the title contains it."""
+
+    word: str
+    matched: bool
+
+
 class ProductCard(BaseModel):
     product_id: str
     title: str
@@ -44,6 +54,8 @@ class ProductCard(BaseModel):
     offer_count: int
     price: PriceRange
     price_flags: list[PriceFlag]
+    # why this product was found: shown behind "why this?"
+    score_parts: list[ScorePart]
 
 
 class SearchResult(BaseModel):
@@ -97,9 +109,7 @@ def _price_range(offers: list[dict], now: datetime) -> PriceRange:
     )
 
 
-def _lexical(conn, query: str, pool: int) -> list[str]:
-    # punctuation-only tokens like "-" carry no signal
-    tokens = [t for t in normalize(query).split() if any(ch.isalnum() for ch in t)]
+def _lexical(conn, tokens: list[str], pool: int) -> list[str]:
     # short words like "20" match most rows, so they only rank and do not select
     selective = [t for t in tokens if len(t) >= 3] or tokens
     # each query word is matched on its own, so word order and words in between do not matter.
@@ -130,7 +140,7 @@ def _lexical(conn, query: str, pool: int) -> list[str]:
         ORDER BY score DESC, product_id
         LIMIT %(limit)s
         """,
-        {"tokens": tokens, "selective": selective, "n": len(tokens), "word_match": 0.6, "min_score": 0.5, "limit": pool},
+        {"tokens": tokens, "selective": selective, "n": len(tokens), "word_match": WORD_MATCH, "min_score": 0.5, "limit": pool},
     ).fetchall()
     return [r["product_id"] for r in rows]
 
@@ -160,15 +170,23 @@ def search_products(conn, query: str, now: datetime, limit: int = 20, embedder: 
     rrf_k = 10
     # a product of the brand the query names beats a few ranks; one in the named category, fewer
     brand_boost, category_boost = 0.05, 0.025
+    # punctuation-only tokens like "-" carry no signal
+    tokens = [t for t in normalize(query).split() if any(ch.isalnum() for ch in t)]
+    semantic = _semantic(conn, query, embedder, pool)
     score: dict[str, float] = {}
-    for ranked in (_lexical(conn, query, pool), _semantic(conn, query, embedder, pool)):
+    for ranked in (_lexical(conn, tokens, pool), semantic):
         for rank, product_id in enumerate(ranked, 1):
             score[product_id] = score.get(product_id, 0) + 1 / (rrf_k + rank)
     found = {
         p["product_id"]: p
         for p in conn.execute(
-            "SELECT product_id, title, brand, category, image_urls, specs, brand_terms FROM products WHERE product_id = ANY(%s)",
-            [list(score)],
+            """
+            SELECT product_id, title, brand, category, image_urls, specs, brand_terms,
+                   ARRAY(SELECT word_similarity(t, search_text)
+                         FROM unnest(%s::text[]) WITH ORDINALITY u(t, i) ORDER BY i) AS sims
+            FROM products WHERE product_id = ANY(%s)
+            """,
+            [tokens, list(score)],
         )
     }
     padded = f" {normalize(query)} "
@@ -204,6 +222,7 @@ def search_products(conn, query: str, now: datetime, limit: int = 20, embedder: 
                 offer_count=len(own),
                 price=_price_range(own, now),
                 price_flags=_product_flags(own),
+                score_parts=[ScorePart(word=t, matched=sim >= WORD_MATCH) for t, sim in zip(tokens, p["sims"])],
             )
         )
     return SearchResult(query=query, items=items)
