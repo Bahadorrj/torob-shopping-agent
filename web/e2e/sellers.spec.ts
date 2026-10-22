@@ -166,7 +166,7 @@ test("product card links to its sellers", async ({ page }) => {
   await fakeSessions(page, {
     search: () => ({
       query: "x",
-      items: [{ product_id: "p1", title: "کالای الف", brand: null, category: null, image_url: null, key_specs: [], offer_count: 2, price, price_flags: [] }],
+      items: [{ product_id: "p1", title: "کالای الف", brand: null, category: null, image_url: null, key_specs: [], offer_count: 2, price, price_flags: [], score_parts: [] }],
     }),
   });
   await page.goto("/");

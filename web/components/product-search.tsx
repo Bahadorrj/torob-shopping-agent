@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { useBrief } from "@/components/brief-provider";
+import { CompareTrayBar } from "@/components/compare-tray";
 import { ProductCard } from "@/components/product-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,6 +83,7 @@ export function ProductSearch() {
           ))}
         </ul>
       )}
+      <CompareTrayBar />
     </div>
   );
 }

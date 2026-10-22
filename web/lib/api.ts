@@ -21,6 +21,8 @@ export type ProductCard = {
   offer_count: number;
   price: PriceRange;
   price_flags: PriceFlag[];
+  // query words of the match score, and whether the title has each
+  score_parts: { word: string; matched: boolean }[];
 };
 
 export async function searchProducts(q: string): Promise<ProductCard[]> {
@@ -115,6 +117,24 @@ export type SellerList = {
   pasajs: string[];
 };
 
+// Mirrors ProductCompare in backend/src/pasazhgard/compare.py. Nearby means in the brief's area.
+export type CompareColumn = {
+  product_id: string;
+  title: string;
+  brand: string | null;
+  image_url: string | null;
+  price: PriceRange;
+  seller_count: number;
+  // `sellers` with a warranty term, and the longest term
+  warranty: { trust_level: "listed" | "unknown"; sellers: number; max_months: number | null };
+};
+
+export type ProductCompare = {
+  products: CompareColumn[];
+  // one value per product, null where a product does not record the spec
+  specs: { key: string; values: (string | null)[]; differs: boolean }[];
+};
+
 // Mirrors Brief, Session and SessionPatch in backend/src/pasazhgard/brief.py.
 export type Area = { radius_m: number | null; name: string | null; pasaj: string | null };
 export type TravelMode = "walk" | "transit" | "car";
@@ -139,7 +159,10 @@ export type Brief = {
 
 export type Center = { kind: "area" | "pasaj"; name: string; lat: number; lon: number };
 
-export type Step = { kind: "search" } | { kind: "sellers"; product_id: string; title?: string | null };
+export type Step =
+  | { kind: "search" }
+  | { kind: "sellers"; product_id: string; title?: string | null }
+  | { kind: "compare"; product_ids: string[] };
 
 export type Session = {
   session_id: string;
@@ -149,7 +172,7 @@ export type Session = {
   pasajs: string[];
   // radius origins without a map: a covered area or pasaj, at the mean position of its shops
   centers: Center[];
-  results: SellerList | { query: string; items: ProductCard[] } | null;
+  results: SellerList | { query: string; items: ProductCard[] } | ProductCompare | null;
 };
 
 // `brief` replaces the top-level fields it names
