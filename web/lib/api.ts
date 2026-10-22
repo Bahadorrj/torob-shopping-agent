@@ -329,8 +329,9 @@ export const consoleStreamUrl = (shopId: string) => `/api/console/shops/${encode
 export type Ask = { product_id: string; shop_id: string };
 
 // drafts only: nothing reaches a seller before confirmInquiries
-export const composeInquiries = (sessionId: string, offerIds: string[], asks: Ask[] = []) =>
-  post<InquiryStatus>(inquiriesUrl(sessionId), { offer_ids: offerIds, asks });
+// `insteadOf`: the inquiry that fell through, when asking an alternative; it takes that stop in the visit plan
+export const composeInquiries = (sessionId: string, offerIds: string[], asks: Ask[] = [], insteadOf?: number) =>
+  post<InquiryStatus>(inquiriesUrl(sessionId), { offer_ids: offerIds, asks, instead_of: insteadOf });
 
 // `queue`: a shop closed now gets the message when it opens
 export const confirmInquiries = (sessionId: string, inquiryIds: number[], queue = false) =>
@@ -362,8 +363,13 @@ export async function getAlternatives(sessionId: string, inquiryId: number): Pro
 }
 
 // the one tap on an alternative: the tap is the consent, so the draft is sent straight away
-export async function askAlternative(sessionId: string, a: Alternative) {
-  const { inquiries } = await composeInquiries(sessionId, a.offer_id ? [a.offer_id] : [], a.offer_id ? [] : [{ product_id: a.product_id, shop_id: a.shop_id }]);
+export async function askAlternative(sessionId: string, a: Alternative, insteadOf: number) {
+  const { inquiries } = await composeInquiries(
+    sessionId,
+    a.offer_id ? [a.offer_id] : [],
+    a.offer_id ? [] : [{ product_id: a.product_id, shop_id: a.shop_id }],
+    insteadOf,
+  );
   return confirmInquiries(sessionId, inquiries.map((i) => i.inquiry_id));
 }
 
@@ -382,10 +388,24 @@ export type Directions = {
   last_leg: { pasaj: string | null; landmark: string | null; floor: string | null; unit: string | null };
 };
 
+// the shop's latest sent inquiry in the plan's session
+export type StopInquiry = Outcome & {
+  product_id: string;
+  product_title: string;
+  listed_price_toman: number | null;
+  // the seller's price minus the listed one
+  price_delta_toman: number | null;
+  // the seller's price, else the listed one, against the brief's budget
+  over_budget: boolean;
+};
+
 // `route` is the leg from the previous stop, or from the origin for the first one
-export type Stop = Directions & { eta: string; open_at_eta: boolean | null };
+export type Stop = Directions & { eta: string; open_at_eta: boolean | null; inquiry: StopInquiry | null };
 
 export type VisitPlan = { origin: { lat: number; lon: number }; depart_at: string; mode: TravelMode; stops: Stop[] };
+
+// a plan with a session_id follows the session's inquiries
+export const visitPlanStreamUrl = (query: string) => `/api/visit-plan/stream?${query}`;
 
 // `query` is the plan page's own query string, so a shared link asks for the same plan
 export async function getVisitPlan(query: string): Promise<VisitPlan | null> {
