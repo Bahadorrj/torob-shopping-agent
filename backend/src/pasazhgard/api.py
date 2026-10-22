@@ -1,17 +1,35 @@
 import os
+from collections.abc import AsyncIterable, Callable
 from datetime import datetime
 from functools import cache
 from typing import Annotated
 
+import anyio
 import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.exceptions import RequestValidationError
+from fastapi.sse import EventSourceResponse
 from psycopg.rows import dict_row
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from pasazhgard.brief import Session, SessionPatch, create_session, get_session, patch_session
 from pasazhgard.compare import Product, ProductCompare, ProductCompareQuery, compare_products, get_product
 from pasazhgard.embeddings import Embedder, embedder_from_env
+from pasazhgard.inquiries import (
+    Compose,
+    Confirm,
+    ConsoleInbox,
+    ConsoleReply,
+    Inquiry,
+    InquiryStatus,
+    SellerChannel,
+    SellerConsole,
+    confirm_inquiries,
+    console_inbox,
+    contact_seller,
+    get_inquiries,
+    record_reply,
+)
 from pasazhgard.search import SearchResult, search_products
 from pasazhgard.seller_compare import CompareQuery, SellerCompare, compare_sellers
 from pasazhgard.sellers import SellerList, SellerQuery, find_sellers
@@ -39,6 +57,11 @@ def get_now() -> datetime:
 def get_embedder() -> Embedder | None:
     """The embedding port; None without a key, and search stays lexical."""
     return embedder_from_env()
+
+
+def get_channel() -> SellerChannel:
+    """The seller channel port; the Seller Console is the only adapter."""
+    return SellerConsole()
 
 
 @app.get("/health")
@@ -148,3 +171,84 @@ def sessions_patch(
     if session is None:
         raise HTTPException(404, "session not found")
     return session
+
+
+@app.post("/sessions/{session_id}/inquiries", status_code=201)
+def inquiries_compose(session_id: str, change: Compose, conn=Depends(get_conn), now: datetime = Depends(get_now)) -> InquiryStatus:
+    try:
+        drafts = contact_seller(conn, session_id, change, now)
+    except LookupError:
+        raise HTTPException(404, "offer not found") from None
+    except ValueError:
+        raise HTTPException(409, "at most 3 open inquiries per item") from None
+    if drafts is None:
+        raise HTTPException(404, "session not found")
+    return drafts
+
+
+@app.post("/sessions/{session_id}/inquiries/confirm")
+def inquiries_confirm(
+    session_id: str,
+    change: Confirm,
+    conn=Depends(get_conn),
+    now: datetime = Depends(get_now),
+    channel: SellerChannel = Depends(get_channel),
+) -> InquiryStatus:
+    try:
+        status = confirm_inquiries(conn, session_id, change, channel, now)
+    except LookupError:
+        raise HTTPException(404, "inquiry not found") from None
+    if status is None:
+        raise HTTPException(404, "session not found")
+    return status
+
+
+@app.get("/sessions/{session_id}/inquiries")
+def inquiries_read(session_id: str, conn=Depends(get_conn)) -> InquiryStatus:
+    status = get_inquiries(conn, session_id)
+    if status is None:
+        raise HTTPException(404, "session not found")
+    return status
+
+
+@app.get("/console/shops/{shop_id}/inquiries")
+def console_read(shop_id: str, conn=Depends(get_conn)) -> ConsoleInbox:
+    inbox = console_inbox(conn, shop_id)
+    if inbox is None:
+        raise HTTPException(404, "shop not found")
+    return inbox
+
+
+@app.post("/console/inquiries/{inquiry_id}/replies")
+def console_reply(inquiry_id: int, body: ConsoleReply, conn=Depends(get_conn), now: datetime = Depends(get_now)) -> Inquiry:
+    try:
+        return record_reply(conn, inquiry_id, body, now)
+    except LookupError:
+        raise HTTPException(404, "inquiry not found") from None
+    except ValueError:
+        raise HTTPException(409, "inquiry not sent") from None
+
+
+async def _changes[T: BaseModel](load: Callable[[psycopg.Connection], T]) -> AsyncIterable[T]:
+    """`load(conn)` now and again each time its result changes."""
+    last = None
+    # shortcut: polls the store twice a second; move to LISTEN/NOTIFY if many trackers stay open
+    with _connect(row_factory=dict_row, autocommit=True) as conn:
+        while True:
+            current = await anyio.to_thread.run_sync(load, conn)
+            if current != last:
+                yield current
+                last = current
+            await anyio.sleep(0.5)
+
+
+@app.get("/sessions/{session_id}/inquiries/stream", response_class=EventSourceResponse)
+async def inquiries_stream(session_id: str, _=Depends(inquiries_read)) -> AsyncIterable[InquiryStatus]:
+    async for status in _changes(lambda conn: get_inquiries(conn, session_id)):
+        yield status
+
+
+@app.get("/console/shops/{shop_id}/inquiries/stream", response_class=EventSourceResponse)
+async def console_stream(shop_id: str, _=Depends(console_read)) -> AsyncIterable[ConsoleInbox]:
+    async for inbox in _changes(lambda conn: console_inbox(conn, shop_id)):
+        yield inbox
