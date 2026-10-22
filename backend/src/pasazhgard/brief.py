@@ -7,6 +7,7 @@ from typing import Annotated, Literal, Self
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from pasazhgard.compare import ProductCompare, compare_products
 from pasazhgard.search import SearchResult, search_products
 from pasazhgard.sellers import SellerList, SellerQuery, area_options, find_sellers
 from pasazhgard.shops import TEHRAN
@@ -95,7 +96,19 @@ class SellersStep(BaseModel):
     title: str | None = None
 
 
-Step = Annotated[SearchStep | SellersStep, Field(discriminator="kind")]
+class CompareStep(BaseModel):
+    kind: Literal["compare"] = "compare"
+    product_ids: list[str] = Field(min_length=2, max_length=3)
+
+    @field_validator("product_ids")
+    @classmethod
+    def _distinct(cls, ids: list[str]) -> list[str]:
+        if len(set(ids)) != len(ids):
+            raise ValueError("a product is listed twice")
+        return ids
+
+
+Step = Annotated[SearchStep | SellersStep | CompareStep, Field(discriminator="kind")]
 
 
 class Center(BaseModel):
@@ -117,7 +130,7 @@ class Session(BaseModel):
     # radius origins picked without a map, beside geolocation
     centers: list[Center]
     # the current step re-run against the brief; only on patch
-    results: SellerList | SearchResult | None = None
+    results: SellerList | SearchResult | ProductCompare | None = None
 
 
 def create_session(conn) -> str:
@@ -196,6 +209,10 @@ def patch_session(conn, sid: str, change: SessionPatch, now: dt.datetime) -> Ses
         if session.results is None:
             raise LookupError(step.product_id)
         step.title = session.results.title
+    elif isinstance(step, CompareStep):
+        session.results = compare_products(conn, step.product_ids)
+        if session.results is None:
+            raise LookupError(step.product_ids)
     elif isinstance(step, SearchStep) and session.brief.need:
         session.results = search_products(conn, session.brief.need, now)
     conn.execute(
