@@ -137,8 +137,9 @@ class SessionPatch(BaseModel):
         return brief
 
 
-def seller_query(brief: Brief, now: dt.datetime) -> SellerQuery:
+def seller_query(brief: Brief, product_id: str, now: dt.datetime) -> SellerQuery:
     area, origin, visit = brief.area, brief.origin, brief.visit_window
+    quantity = next((i.quantity for i in brief.items if i.product_id == product_id), 1)
     arrival = None
     if visit.earliest_arrival:
         arrival = dt.datetime.combine(visit.date or now.astimezone(TEHRAN).date(), visit.earliest_arrival, TEHRAN)
@@ -149,7 +150,8 @@ def seller_query(brief: Brief, now: dt.datetime) -> SellerQuery:
         area=area and area.name,
         pasaj=area and area.pasaj,
         priority=brief.priority,
-        max_price_toman=brief.budget.max_per_item_toman or brief.budget.max_total_toman,
+        **brief.budget.model_dump(),
+        quantity=quantity,
         arrival=arrival,
         payment=brief.payment.kind,
         provider=brief.payment.provider,
@@ -170,7 +172,7 @@ def patch_session(conn, sid: str, change: SessionPatch, now: dt.datetime) -> Ses
         session.step = change.step
     step = session.step
     if isinstance(step, SellersStep):
-        session.results = find_sellers(conn, step.product_id, seller_query(session.brief, now), now)
+        session.results = find_sellers(conn, step.product_id, seller_query(session.brief, step.product_id, now), now)
         if session.results is None:
             raise LookupError(step.product_id)
         step.title = session.results.title

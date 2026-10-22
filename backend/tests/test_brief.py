@@ -92,6 +92,19 @@ def test_budget_patch_drops_sellers_above_it(client):
     ]
 
 
+def test_budget_total_counts_the_quantity_and_per_item_the_unit_price(client):
+    sid = new_session(client)
+    items = [{"product_id": ANKER, "quantity": 2}]
+    patch(client, sid, {"step": {"kind": "sellers", "product_id": ANKER}, "brief": {"items": items}})
+    # two at 1,690,000 is over a 1,700,000 total
+    session = patch(client, sid, {"brief": {"budget": {"max_total_toman": 1_700_000}}})
+    assert [s["price_toman"] for s in session["results"]["sellers"]] == [None, None]
+    session = patch(client, sid, {"brief": {"budget": {"max_per_item_toman": 1_700_000}}})
+    assert [s["price_toman"] for s in session["results"]["sellers"]] == [1690000, None, None]
+    session = patch(client, sid, {"brief": {"budget": {"max_total_toman": 3_380_000}}})
+    assert [s["price_toman"] for s in session["results"]["sellers"]] == [1690000, None, None]
+
+
 def test_other_chips_are_kept_in_the_brief(client):
     sid = new_session(client)
     body = {

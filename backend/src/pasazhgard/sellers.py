@@ -20,8 +20,10 @@ class SellerQuery(BaseModel):
     area: str | None = None
     pasaj: str | None = None
     priority: Literal["cheapest", "closest", "most_reliable"] = "cheapest"
-    # budget: drops sellers listed above it; unpriced sellers stay
-    max_price_toman: int | None = Field(None, gt=0)
+    # budget: drops sellers listed above it; unpriced sellers stay. `quantity` is in meters for per-meter offers
+    max_per_item_toman: int | None = Field(None, gt=0)
+    max_total_toman: int | None = Field(None, gt=0)
+    quantity: int = Field(1, gt=0)
     # conditions: a shop that fails one is dropped, a shop whose value is not recorded goes to `ask_them`
     arrival: datetime | None = None
     payment: Literal["any", "cash", "torob_pay", "installment"] = "any"
@@ -183,6 +185,12 @@ def _conditions(q: SellerQuery, offer: dict) -> dict[str, bool | None]:
     return met
 
 
+def _over_budget(q: SellerQuery, price: int | None) -> bool:
+    if price is None:
+        return False
+    return bool(q.max_per_item_toman and price > q.max_per_item_toman or q.max_total_toman and price * q.quantity > q.max_total_toman)
+
+
 def _same_provider(name: str, asked: str | None) -> bool:
     """None asks for any provider; spacing in the name does not matter ("دیجی پی", "دیجی‌پی")."""
     return asked is None or normalize(name).replace(" ", "") == normalize(asked).replace(" ", "")
@@ -281,7 +289,7 @@ def find_sellers(conn, product_id: str, q: SellerQuery, now: datetime) -> Seller
         met = _conditions(q, o)
         if False in met.values():
             continue
-        if q.max_price_toman and row.price_toman and row.price_toman > q.max_price_toman:
+        if _over_budget(q, row.price_toman):
             continue
         row.unknown = [k for k, v in met.items() if v is None]
         (ask_them if row.unknown else rows).append(row)
