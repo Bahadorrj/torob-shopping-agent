@@ -1,3 +1,5 @@
+import type { Message } from "@ag-ui/client";
+
 // Mirrors the backend response models in backend/src/pasazhgard/search.py and PriceFlag in clean.py.
 export type PriceFlag = "missing" | "placeholder" | "invalid" | "per_meter" | "far_from_median";
 
@@ -231,6 +233,13 @@ export async function getSession(id: string): Promise<Session | null> {
   const r = await fetch(`/api/sessions/${encodeURIComponent(id)}`);
   if (r.status === 404) return null;
   if (!r.ok) throw new Error(`session failed: ${r.status}`);
+  return r.json();
+}
+
+// the session's agent thread as AG-UI messages, for the sheet after a reload
+export async function getThread(id: string): Promise<Message[]> {
+  const r = await fetch(`/api/sessions/${encodeURIComponent(id)}/messages`);
+  if (!r.ok) throw new Error(`thread failed: ${r.status}`);
   return r.json();
 }
 

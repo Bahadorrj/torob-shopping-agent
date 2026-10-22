@@ -1,4 +1,7 @@
+import json
+
 import pytest
+from langchain_core.messages import AIMessage
 
 ANKER = "product_92ac53fa75e18e8e73f20b56"
 ANKER_NC = "product_13f930f4c1400c7ab7bfa61f"
@@ -366,3 +369,119 @@ def test_fetch_site_price_for_a_shop_without_a_website_is_for_the_model(agent):
     agent.script(agent.brief(), agent.call("fetch_site_price", shop_id=CHEAPEST_SHOP, product_id="product_92ac53fa75e18e8e73f20b56"), "سایت ندارد.")
 
     assert [b.get("block") for b in agent.turn("قیمت سایتش؟").blocks] == [None]
+
+
+def test_a_question_in_prose_is_asked_again_as_chips(agent):
+    agent.script(
+        agent.brief(need="هندزفری"),
+        "حداکثر بودجه‌تان برای هندزفری چقدر است؟",
+        agent.call("ask_user", field="budget", question="حداکثر بودجه‌تان چقدر است؟"),
+    )
+
+    turn = agent.turn("یه هندزفری بلوتوثی برای باشگاه میخوام")
+
+    assert kinds(turn) == ["chips"]
+    assert turn.blocks[0]["question"] == "حداکثر بودجه‌تان چقدر است؟"
+    # the prose question never reaches the user
+    assert turn.text == ""
+
+
+def test_a_prose_question_after_a_rejected_ask_is_replaced_by_a_statement(agent):
+    # the brief has the area, so ask_user refuses it; the turn ends without a chip-less question
+    agent.script(
+        agent.brief(area={"name": "فردوسی"}),
+        "کجا می‌روید؟",
+        agent.call("ask_user", field="area", question="کجا؟"),
+        "کجا می‌روید؟",
+    )
+
+    turn = agent.turn("هندزفری توی فردوسی")
+
+    assert turn.text
+    assert "؟" not in turn.text and "?" not in turn.text
+
+
+def test_a_question_mark_before_the_last_sentence_is_no_question(agent):
+    text = "مدل Buds? Pro را در https://torob.com/?q=buds ببینید."
+    agent.script(agent.brief(), text)
+
+    turn = agent.turn("هندزفری")
+
+    assert kinds(turn) == []
+    assert turn.text == text
+
+
+def test_a_final_question_in_content_blocks_is_asked_again_as_chips(agent):
+    agent.script(
+        agent.brief(need="هندزفری"),
+        AIMessage([{"type": "text", "text": "بودجه‌تان چقدر است؟ "}], id="q"),
+        agent.call("ask_user", field="budget", question="بودجه‌تان چقدر است؟"),
+    )
+
+    turn = agent.turn("هندزفری")
+
+    assert kinds(turn) == ["chips"]
+    assert turn.text == ""
+
+
+def test_a_refused_ask_keeps_the_reply_before_its_question(agent):
+    reply = "این سه مدل برای باشگاه مناسب‌اند. «کجا می‌روید؟»"
+    agent.script(agent.brief(area={"name": "فردوسی"}), reply, agent.call("ask_user", field="area", question="کجا؟"), reply)
+
+    turn = agent.turn("هندزفری توی فردوسی")
+
+    assert turn.text == "این سه مدل برای باشگاه مناسب‌اند."
+
+
+def test_the_thread_reads_back_after_a_reload(agent, client):
+    agent.script(agent.brief(), agent.call("search_products", query="هدفون"), "این‌ها را پیدا کردم.", agent.brief(), "بله.")
+    agent.turn("هدفون")
+
+    thread = client.get(f"/sessions/{agent.session_id}/messages").json()
+
+    assert [m["role"] for m in thread] == ["user", "assistant", "tool", "assistant"]
+    assert thread[2]["toolCallId"] == thread[1]["toolCalls"][0]["id"]
+    assert json.loads(thread[2]["content"])["block"] == "product_cards"
+    # the reloaded page sends the read-back thread on its next turn; nothing is lost or doubled
+    agent.history = thread
+    turn = agent.turn("هستی؟")
+    snapshot = next(e for e in turn.events if e["type"] == "MESSAGES_SNAPSHOT")["messages"]
+    assert [m["content"] for m in snapshot if m["role"] == "user"] == ["هدفون", "هستی؟"]
+    assert len([m for m in snapshot if m["role"] == "tool"]) == 1
+
+
+def test_a_session_without_a_thread_reads_back_empty(client):
+    sid = client.post("/sessions").json()["session_id"]
+
+    assert client.get(f"/sessions/{sid}/messages").json() == []
+
+
+@pytest.mark.parametrize(
+    ("field", "options"),
+    [
+        ("budget", ["تا ۱ میلیون تومان", "تا ۵ میلیون تومان", "تا ۲۰ میلیون تومان", "فرقی نمی‌کند"]),
+        ("quantity", ["۱", "۲", "۳"]),
+    ],
+)
+def test_a_question_the_model_gave_no_options_still_has_chips(agent, field, options):
+    agent.script(agent.brief(), agent.call("ask_user", field=field, question="؟"))
+
+    assert agent.turn("هندزفری").blocks[0]["options"] == options
+
+
+def test_the_models_budget_options_win_over_the_default(agent):
+    agent.script(agent.brief(), agent.call("ask_user", field="budget", question="؟", options=["تا ۲ میلیون تومان", "تا ۴ میلیون تومان"]))
+
+    assert agent.turn("هندزفری").blocks[0]["options"] == ["تا ۲ میلیون تومان", "تا ۴ میلیون تومان"]
+
+
+def test_a_use_question_without_options_goes_back_to_the_model(agent):
+    agent.script(
+        agent.brief(),
+        agent.call("ask_user", field="use", question="برای چه کاری؟"),
+        agent.call("ask_user", field="use", question="برای چه کاری؟", options=["ورزش", "تماس"]),
+    )
+
+    turn = agent.turn("هندزفری")
+
+    assert turn.blocks == [{"error": "give 3-5 short options"}, {"block": "chips", "field": "use", "question": "برای چه کاری؟", "options": ["ورزش", "تماس"]}]

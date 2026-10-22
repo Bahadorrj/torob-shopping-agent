@@ -1,15 +1,19 @@
 "use client";
 
+import type { Message } from "@ag-ui/client";
 import { CopilotKitProvider, useAgent, useCopilotKit } from "@copilotkit/react-core/v2";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Block } from "@/components/agent-blocks";
 import { useBrief } from "@/components/brief-provider";
+import { CompareTrayBar } from "@/components/compare-tray";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { getThread } from "@/lib/api";
 
 export const HELP_CHOOSE = "کمکم کن انتخاب کنم";
-// the home screen's guided discovery entry posts HELP_CHOOSE to the sheet through this window event
+// the home screen's input and guided discovery entry post their text to the sheet through this window event
 export const AGENT_SEND = "agent-send";
 
 // The agent bottom sheet (PRD 9): one sentence in, blocks out. The agent's thread is the brief's session.
@@ -27,15 +31,46 @@ export function AgentSheet() {
 function Sheet({ threadId }: { threadId: string }) {
   const { agent } = useAgent({ agentId: "sheet", runtimeAgentId: "pasazhgard", threadId });
   const { copilotkit } = useCopilotKit();
+  const { refresh } = useBrief();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
+  const [thread, setThread] = useState<Message[]>([]);
+  const pathname = usePathname();
+  const [shownPath, setShownPath] = useState(pathname);
+
+  // a link in the thread opens its page in front of the sheet
+  if (pathname !== shownPath) {
+    setShownPath(pathname);
+    setOpen(false);
+  }
+
+  // the thread is checkpointed on the server; a reload or another route reads it back
+  useEffect(() => {
+    getThread(threadId).then(
+      (t) => {
+        setThread(t);
+        if (t.length > 0) setOpen(true);
+      },
+      () => {},
+    );
+  }, [threadId]);
+  // the agent instance is swapped once the runtime registers it, so restore onto whichever is current
+  useEffect(() => {
+    if (thread.length === 0 || agent.messages.length > 0) return;
+    agent.setMessages(thread);
+  }, [agent, thread]);
 
   async function send(content: string) {
     if (!content.trim() || agent.isRunning) return;
     setText("");
     setOpen(true);
     agent.addMessage({ id: crypto.randomUUID(), role: "user", content });
-    await copilotkit.runAgent({ agent });
+    try {
+      await copilotkit.runAgent({ agent });
+    } finally {
+      // the turn patched the brief on the server; the brief bar shows it now
+      refresh();
+    }
   }
 
   useEffect(() => {
@@ -65,6 +100,7 @@ function Sheet({ threadId }: { threadId: string }) {
             {agent.isRunning && <p className="text-xs text-muted-foreground">در حال فکر کردن...</p>}
           </div>
         )}
+        <CompareTrayBar />
         {agent.messages.length === 0 && (
           <Button variant="outline" size="sm" className="self-start" onClick={() => send(HELP_CHOOSE)}>
             {HELP_CHOOSE}

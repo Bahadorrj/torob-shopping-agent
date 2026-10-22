@@ -6,10 +6,55 @@ import { useEffect, useState } from "react";
 import { AGENT_SEND, HELP_CHOOSE } from "@/components/agent-sheet";
 import { recentSessionIds, useBrief } from "@/components/brief-provider";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { getSession, type Session } from "@/lib/api";
 import { locate } from "@/lib/format";
 
 const NEAR_ME_M = 1000;
+
+const EXAMPLES = [
+  "یه هندزفری بلوتوثی برای باشگاه میخوام، حوالی جمهوری، ساعت ۵ عصر، قسطی",
+  "شارژر ۲۰ وات اپل تا ۸۰۰ هزار تومان، امروز توی پاساژ علاالدین",
+  "کلید مینیاتوری ۱۶ آمپر می‌خوام، فردا صبح، نقدی",
+];
+
+const toAgent = (text: string) => window.dispatchEvent(new CustomEvent(AGENT_SEND, { detail: text }));
+
+// the home screen's main input (PRD 9): one sentence to the agent, which answers in the sheet
+export function AgentStart() {
+  const [text, setText] = useState("");
+  return (
+    <div className="flex flex-col gap-2">
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!text.trim()) return;
+          toAgent(text);
+          setText("");
+        }}
+      >
+        <Input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="چه می‌خواهید، کجا و کی؟"
+          aria-label="خرید شما در یک جمله"
+          className="h-11"
+        />
+        <Button type="submit" className="h-11 px-5">
+          بپرس
+        </Button>
+      </form>
+      <div className="flex flex-col items-start gap-2">
+        {EXAMPLES.map((q) => (
+          <Button key={q} variant="outline" size="sm" className="h-auto max-w-full py-1.5 text-start whitespace-normal" onClick={() => toAgent(q)}>
+            {q}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function label(s: Session) {
   return s.brief.need ?? (s.step?.kind === "sellers" ? s.step.title : null) ?? null;
@@ -17,7 +62,7 @@ function label(s: Session) {
 
 export function HelpChoose() {
   return (
-    <Button size="sm" className="self-start" onClick={() => window.dispatchEvent(new CustomEvent(AGENT_SEND, { detail: HELP_CHOOSE }))}>
+    <Button size="sm" className="self-start" onClick={() => toAgent(HELP_CHOOSE)}>
       {HELP_CHOOSE}
     </Button>
   );

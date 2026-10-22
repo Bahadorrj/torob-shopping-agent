@@ -58,11 +58,7 @@ export function CompareTrayBar() {
   const { items, toggle } = useTray();
   if (items.length === 0) return null;
   return (
-    <section
-      aria-label="سبد مقایسه"
-      // bottom-14: stays above the collapsed agent sheet
-      className="sticky bottom-14 -mx-4 flex flex-col gap-2 border-t bg-background px-4 py-3 shadow-[0_-2px_8px_rgb(0_0_0/0.06)]"
-    >
+    <section aria-label="سبد مقایسه" className="flex flex-col gap-2 border-t py-2">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-semibold">
           مقایسه: {faDigits(items.length)} از {faDigits(MAX)}

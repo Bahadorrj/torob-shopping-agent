@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { fakeSessions } from "./fake-session";
+import { askHome, fakeAgent, fakeSessions } from "./fake-session";
 
 test.use({ geolocation: { latitude: 35.6948, longitude: 51.4115 }, permissions: ["geolocation"] });
 
@@ -9,7 +9,7 @@ const price = {
   last_price_changed_at: null, price_age_days: null, price_age_bucket: null,
 };
 const product = { product_id: "p1", title: "کالای الف", brand: null, category: null, image_url: null, key_specs: [], offer_count: 2, price, price_flags: [], score_parts: [], meaning_match: false };
-const search = () => ({ query: "x", items: [product] });
+const cards = { block: "product_cards", query: "x", items: [product] };
 const sellers = (brief: Record<string, unknown>) => ({
   product_id: "p1",
   title: "کالای الف",
@@ -22,13 +22,14 @@ const sellers = (brief: Record<string, unknown>) => ({
   pasajs: [],
 });
 
+const sheet = (page: Page) => page.getByRole("region", { name: "دستیار" });
 const bar = (page: Page) => page.getByRole("region", { name: "خلاصه خرید" });
 const chip = (page: Page, name: string) => bar(page).getByRole("button", { name: new RegExp(`^${name}`) });
 const noOverflow = (page: Page) =>
   page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
 test("brief bar chips edit every field in place and re-run results at 360 px", async ({ page }) => {
-  const { patches } = await fakeSessions(page, { search, sellers });
+  const { patches } = await fakeSessions(page, { sellers });
   await page.goto("/products/p1/sellers");
   await expect(page.getByText("۲ فروشنده")).toBeVisible();
   await expect(chip(page, "محدوده")).toContainText("همه مناطق");
@@ -78,13 +79,13 @@ test("brief bar chips edit every field in place and re-run results at 360 px", a
 });
 
 test("a product link opens its sellers with the brief kept, and back keeps it too", async ({ page }) => {
-  const { patches } = await fakeSessions(page, { search, sellers });
+  const { patches } = await fakeSessions(page, { sellers });
+  await fakeAgent(page, [cards]);
   await page.goto("/");
   await chip(page, "محدوده").click();
   await page.getByLabel("انتخاب محدوده").selectOption({ label: "فردوسی" });
-  await page.getByLabel("جستجوی کالا").fill("x");
-  await page.getByRole("button", { name: "جستجو" }).click();
-  await page.getByRole("link", { name: "دیدن فروشنده‌ها" }).click();
+  await askHome(page, "x");
+  await sheet(page).getByRole("link", { name: "دیدن فروشنده‌ها" }).click();
 
   await expect(page).toHaveURL(/\/products\/p1\/sellers$/);
   await expect(page.getByText("۱ فروشنده")).toBeVisible();
@@ -92,8 +93,9 @@ test("a product link opens its sellers with the brief kept, and back keeps it to
   expect(patches.at(-1)).toEqual({ step: { kind: "sellers", product_id: "p1" } });
 
   await page.goBack();
-  await expect(page.getByLabel("جستجوی کالا")).toHaveValue("x");
-  await expect(page.getByRole("link", { name: "دیدن فروشنده‌ها" })).toBeVisible();
+  // the link closed the sheet; the thread is still there
+  await sheet(page).getByRole("button", { name: "گفتگو" }).click();
+  await expect(sheet(page).getByRole("link", { name: "دیدن فروشنده‌ها" })).toBeVisible();
   await expect(chip(page, "محدوده")).toContainText("فردوسی");
 });
 
@@ -105,14 +107,19 @@ test("a shared product link opens straight into its sellers", async ({ page }) =
 });
 
 test("home offers examples, a near-me chip and recent sessions", async ({ page }) => {
-  const { patches } = await fakeSessions(page, { search, sellers }, {
-    old1: { brief: { need: "شارژر اپل" }, step: { kind: "search" } },
+  const thread = [
+    { id: "u1", role: "user", content: "شارژر اپل" },
+    { id: "a1", role: "assistant", content: "", toolCalls: [{ id: "c1", type: "function", function: { name: "search_products", arguments: "{}" } }] },
+    { id: "t1", role: "tool", toolCallId: "c1", content: JSON.stringify(cards) },
+  ];
+  const { patches } = await fakeSessions(page, { sellers }, {
+    old1: { brief: { need: "شارژر اپل" }, step: { kind: "search" }, messages: thread },
     old2: { step: { kind: "sellers", product_id: "p1", title: "کالای الف" } },
   });
   await page.addInitScript(() => localStorage.setItem("pasazhgard.sessions", JSON.stringify(["old1", "old2"])));
   await page.goto("/");
 
-  await expect(page.getByRole("button", { name: "هندزفری انکر R50i" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "یه هندزفری بلوتوثی برای باشگاه میخوام، حوالی جمهوری، ساعت ۵ عصر، قسطی" })).toBeVisible();
   const recent = page.getByRole("region", { name: "جلسه‌های اخیر" });
   await expect(recent.getByRole("button", { name: "شارژر اپل" })).toBeVisible();
   await expect(recent.getByRole("button", { name: "کالای الف" })).toBeVisible();
@@ -128,8 +135,9 @@ test("home offers examples, a near-me chip and recent sessions", async ({ page }
 
   await page.goto("/");
   await page.getByRole("region", { name: "جلسه‌های اخیر" }).getByRole("button", { name: "شارژر اپل" }).click();
-  await expect(page.getByLabel("جستجوی کالا")).toHaveValue("شارژر اپل");
-  await expect(page.getByRole("link", { name: "دیدن فروشنده‌ها" })).toBeVisible();
+  // the resumed session opens its own thread
+  await expect(sheet(page).getByText("شارژر اپل")).toBeVisible();
+  await expect(sheet(page).getByRole("link", { name: "دیدن فروشنده‌ها" })).toBeVisible();
 });
 
 test.describe("without geolocation", () => {
