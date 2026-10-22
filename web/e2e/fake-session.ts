@@ -1,7 +1,10 @@
 import type { Page } from "@playwright/test";
 
 type Brief = Record<string, unknown>;
-type Step = { kind: "search" } | { kind: "sellers"; product_id: string; title?: string | null };
+type Step =
+  | { kind: "search" }
+  | { kind: "sellers"; product_id: string; title?: string | null }
+  | { kind: "compare"; product_ids: string[] };
 
 export const emptyBrief = (): Brief => ({
   need: null,
@@ -21,6 +24,7 @@ export const emptyBrief = (): Brief => ({
 type Results = {
   search?: (brief: Brief) => object;
   sellers?: (brief: Brief, productId: string) => object;
+  compare?: (brief: Brief, productIds: string[]) => object;
 };
 
 export const centers = [
@@ -41,6 +45,7 @@ export async function fakeSessions(page: Page, results: Results, seed: Record<st
       out = results.sellers?.(s.brief, s.step.product_id) ?? null;
       s.step.title = (out as { title?: string } | null)?.title ?? null;
     }
+    if (withResults && s.step?.kind === "compare") out = results.compare?.(s.brief, s.step.product_ids) ?? null;
     return { session_id: id, brief: s.brief, step: s.step, areas: ["بهارستان", "شیخ هادی", "فردوسی"], pasajs: ["علاالدین"], centers, results: out };
   };
   await page.route("**/api/sessions**", async (route) => {

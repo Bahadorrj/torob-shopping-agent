@@ -29,6 +29,13 @@ class PriceRange(BaseModel):
     price_age_bucket: PriceAgeBucket | None
 
 
+class ScorePart(BaseModel):
+    """One query word of the match score, and whether the title contains it."""
+
+    word: str
+    matched: bool
+
+
 class ProductCard(BaseModel):
     product_id: str
     title: str
@@ -39,6 +46,8 @@ class ProductCard(BaseModel):
     offer_count: int
     price: PriceRange
     price_flags: list[PriceFlag]
+    # why this product was found: shown behind "why this?"
+    score_parts: list[ScorePart]
 
 
 class SearchResult(BaseModel):
@@ -97,6 +106,7 @@ def search_products(conn, query: str, now: datetime, limit: int = 20) -> SearchR
     tokens = [t for t in normalize(query).split() if any(ch.isalnum() for ch in t)]
     # short words like "20" match most rows, so they only rank and do not select
     selective = [t for t in tokens if len(t) >= 3] or tokens
+    word_match = 0.6
     # each query word is matched on its own, so word order and words in between do not matter.
     # A word weighs more the fewer candidates contain it, so common words like "برای" cannot
     # outvote the product words; a word no candidate contains weighs nothing.
@@ -125,7 +135,7 @@ def search_products(conn, query: str, now: datetime, limit: int = 20) -> SearchR
         ORDER BY score DESC, product_id
         LIMIT %(limit)s
         """,
-        {"tokens": tokens, "selective": selective, "n": len(tokens), "word_match": 0.6, "min_score": 0.5, "limit": limit},
+        {"tokens": tokens, "selective": selective, "n": len(tokens), "word_match": word_match, "min_score": 0.5, "limit": limit},
     ).fetchall()
     offers = conn.execute(
         "SELECT product_id, price_toman, last_price_changed_at, price_flags FROM offers WHERE product_id = ANY(%s)",
@@ -152,6 +162,7 @@ def search_products(conn, query: str, now: datetime, limit: int = 20) -> SearchR
                 offer_count=len(own),
                 price=_price_range(own, now),
                 price_flags=_product_flags(own),
+                score_parts=[ScorePart(word=t, matched=sim >= word_match) for t, sim in zip(tokens, p["sims"])],
             )
         )
     return SearchResult(query=query, items=items)

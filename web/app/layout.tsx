@@ -4,6 +4,7 @@ import "./globals.css";
 
 import { BriefBar } from "@/components/brief-bar";
 import { BriefProvider } from "@/components/brief-provider";
+import { CompareTrayProvider } from "@/components/compare-tray";
 
 export const metadata: Metadata = {
   title: "پاساژگرد",
@@ -18,7 +19,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         <BriefProvider>
           <BriefBar />
-          {children}
+          <CompareTrayProvider>{children}</CompareTrayProvider>
         </BriefProvider>
       </body>
     </html>

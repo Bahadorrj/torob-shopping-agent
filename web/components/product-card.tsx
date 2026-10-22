@@ -1,15 +1,33 @@
 import Link from "next/link";
 
+import { CompareToggle } from "@/components/compare-tray";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { PriceFlag, ProductCard as Product } from "@/lib/api";
-import { faDigits, priceAge, toman } from "@/lib/format";
+import { faDigits, faText, priceAge, toman } from "@/lib/format";
 
 const FLAG_LABELS: Partial<Record<PriceFlag, string>> = {
   placeholder: "قیمت صوری کنار گذاشته شد",
   invalid: "قیمت نامعتبر کنار گذاشته شد",
   far_from_median: "قیمت دور از میانه کنار گذاشته شد",
 };
+
+function joinFa(words: string[]) {
+  return words.length < 2 ? words.join("") : `${words.slice(0, -1).join("، ")} و ${words.at(-1)}`;
+}
+
+// one sentence from the card's own data, so it claims nothing the search did not return
+function whySentence(p: Product) {
+  const words = p.score_parts.filter((s) => s.matched).map((s) => `«${faText(s.word)}»`);
+  const found = words.length > 0 ? `${joinFa(words)} در عنوان این کالا آمده و ` : "";
+  if (p.offer_count === 0) return `${found}فروشنده‌ای آن را ثبت نکرده است.`;
+  const { price } = p;
+  const priced =
+    price.trust_level === "listed" && price.min_toman !== null && price.max_toman !== null
+      ? `با قیمت ${toman(price.min_toman, price.max_toman)}${price.per_meter ? " برای هر متر" : ""}`
+      : "بدون قیمت";
+  return `${found}${faDigits(p.offer_count)} فروشنده آن را ${priced} ثبت کرده‌اند.`;
+}
 
 export function ProductCard({ product }: { product: Product }) {
   const { price } = product;
@@ -49,16 +67,36 @@ export function ProductCard({ product }: { product: Product }) {
         )}
         <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           <span>{faDigits(product.offer_count)} فروشنده</span>
-          {product.offer_count > 0 && (
-            <Link href={`/products/${product.product_id}/sellers`} className="font-medium text-primary underline-offset-4 hover:underline">
-              دیدن فروشنده‌ها
-            </Link>
-          )}
           {notes.map((n) => (
             <Badge key={n} variant="outline" className="text-muted-foreground">
               {n}
             </Badge>
           ))}
+        </div>
+        <details className="text-xs">
+          <summary className="cursor-pointer font-medium text-primary">چرا این؟</summary>
+          <div className="mt-1.5 flex flex-col gap-1.5">
+            <div className="flex flex-wrap gap-1.5">
+              {product.score_parts.map((s) =>
+                s.matched ? (
+                  <Badge key={s.word} variant="secondary">مطابق: {faText(s.word)}</Badge>
+                ) : (
+                  <Badge key={s.word} variant="outline" className="text-muted-foreground">
+                    نیامده: {faText(s.word)}
+                  </Badge>
+                ),
+              )}
+            </div>
+            <p className="leading-6">{whySentence(product)}</p>
+          </div>
+        </details>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <CompareToggle item={{ product_id: product.product_id, title: product.title }} />
+          {product.offer_count > 0 && (
+            <Link href={`/products/${product.product_id}/sellers`} className="font-medium text-primary underline-offset-4 hover:underline">
+              دیدن فروشنده‌ها
+            </Link>
+          )}
         </div>
       </CardContent>
     </Card>
