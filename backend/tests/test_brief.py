@@ -1,5 +1,6 @@
 import socket
 
+from pasazhgard.api import app, get_embedder
 from pasazhgard.ingest import ingest
 
 ANKER = "product_92ac53fa75e18e8e73f20b56"
@@ -156,9 +157,20 @@ def test_search_step_searches_the_need(client):
     assert ANKER in [p["product_id"] for p in session["results"]["items"]]
 
 
-def test_brief_edits_make_no_llm_call(client, monkeypatch):
-    # with a key set, any LLM or embedding request would open a socket from Python (the DB driver uses libpq)
-    monkeypatch.setenv("LLM_API_KEY", "test-key")
+def test_session_search_finds_products_by_meaning(client, embedder):
+    app.dependency_overrides[get_embedder] = lambda: embedder
+    try:
+        session = patch(client, new_session(client), {"brief": {"need": "هندزفری ورزشی"}, "step": {"kind": "search"}})
+    finally:
+        app.dependency_overrides[get_embedder] = lambda: None
+    # the R50i title says neither word, so only the meaning match finds it
+    card = next(c for c in session["results"]["items"] if c["product_id"] == ANKER)
+    assert card["meaning_match"] is True
+    assert not any(p["matched"] for p in card["score_parts"])
+
+
+def test_brief_edits_make_no_llm_call(client, embedder, monkeypatch):
+    # an LLM request would open a socket from Python (the DB driver uses libpq); embeddings go through the fake
     calls = []
 
     def blocked(self, address):
@@ -166,19 +178,30 @@ def test_brief_edits_make_no_llm_call(client, monkeypatch):
         raise OSError("network is off in this test")
 
     monkeypatch.setattr(socket.socket, "connect", blocked)
-    sid = new_session(client)
-    patch(client, sid, {"brief": {"need": "انکر R50i"}, "step": {"kind": "search"}})
-    patch(client, sid, {"step": {"kind": "sellers", "product_id": ANKER}})
-    for brief in (
+    chips = (
         {"area": {"name": "فردوسی"}},
         {"budget": {"max_total_toman": 2_000_000}},
         {"visit_window": {"earliest_arrival": "17:00"}},
         {"travel_mode": "walk"},
         {"payment": {"kind": "cash"}},
         {"priority": "most_reliable"},
-    ):
-        patch(client, sid, {"brief": brief})
+    )
+    app.dependency_overrides[get_embedder] = lambda: embedder
+    try:
+        sid = new_session(client)
+        # entering the need may embed it once
+        patch(client, sid, {"brief": {"need": "انکر R50i هدفون"}, "step": {"kind": "search"}})
+        embedded = len(embedder.calls)
+        # each chip edit re-runs the search for the same need
+        for brief in chips:
+            patch(client, sid, {"brief": brief})
+        patch(client, sid, {"step": {"kind": "sellers", "product_id": ANKER}})
+        for brief in chips:
+            patch(client, sid, {"brief": brief})
+    finally:
+        app.dependency_overrides[get_embedder] = lambda: None
     assert calls == []
+    assert len(embedder.calls) == embedded
 
 
 def test_sessions_survive_a_reingest(client, fixture_dir, database_url, embedder):

@@ -122,10 +122,14 @@ def sessions_read(session_id: str, conn=Depends(get_conn)) -> Session:
 
 @app.patch("/sessions/{session_id}")
 def sessions_patch(
-    session_id: str, change: SessionPatch, conn=Depends(get_conn), now: datetime = Depends(get_now)
+    session_id: str,
+    change: SessionPatch,
+    conn=Depends(get_conn),
+    now: datetime = Depends(get_now),
+    embedder: Embedder | None = Depends(get_embedder),
 ) -> Session:
     try:
-        session = patch_session(conn, session_id, change, now)
+        session = patch_session(conn, session_id, change, now, embedder)
     except ValidationError as e:
         raise RequestValidationError(e.errors(include_url=False, include_context=False)) from None
     except LookupError:

@@ -3,6 +3,7 @@
 import logging
 import re
 from datetime import UTC, datetime
+from functools import lru_cache
 from typing import Literal
 from zoneinfo import ZoneInfo
 
@@ -147,13 +148,20 @@ def _lexical(conn, tokens: list[str], pool: int) -> list[str]:
     return [r["product_id"] for r in rows]
 
 
+# shortcut: per-process cache, so a brief chip edit re-running the same need makes no provider call;
+# move to a shared store (or key it by session) when the API runs in several processes
+@lru_cache(maxsize=1024)
+def _query_vector(embedder: Embedder, query: str) -> list[float]:
+    return embedder.embed([query])[0]
+
+
 def _semantic(conn, query: str, embedder: Embedder | None, pool: int) -> list[str]:
     if embedder is None:
         return []
     # text-embedding-3-small puts related products above about 0.3 cosine similarity, unrelated ones below
     max_distance = 0.7
     try:
-        vector = embedder.embed([query])[0]
+        vector = _query_vector(embedder, query)
     except Exception:
         # degraded mode: any provider failure leaves the lexical results
         log.warning("query embedding failed, searching lexically", exc_info=True)

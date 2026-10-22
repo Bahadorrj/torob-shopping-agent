@@ -8,6 +8,7 @@ from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from pasazhgard.compare import ProductCompare, compare_products
+from pasazhgard.embeddings import Embedder
 from pasazhgard.search import SearchResult, search_products
 from pasazhgard.sellers import SellerList, SellerQuery, area_options, find_sellers
 from pasazhgard.shops import TEHRAN
@@ -192,8 +193,10 @@ def seller_query(brief: Brief, product_id: str, now: dt.datetime) -> SellerQuery
     )
 
 
-def patch_session(conn, sid: str, change: SessionPatch, now: dt.datetime) -> Session | None:
+def patch_session(conn, sid: str, change: SessionPatch, now: dt.datetime, embedder: Embedder | None = None) -> Session | None:
     """Apply the change and re-run the current step. No LLM: brief bar edits stay deterministic and fast.
+
+    The search step embeds the need once per need text; chip edits reuse that vector.
 
     Raises pydantic.ValidationError for an invalid brief and LookupError for an unknown product; nothing is saved then.
     """
@@ -214,7 +217,7 @@ def patch_session(conn, sid: str, change: SessionPatch, now: dt.datetime) -> Ses
         if session.results is None:
             raise LookupError(step.product_ids)
     elif isinstance(step, SearchStep) and session.brief.need:
-        session.results = search_products(conn, session.brief.need, now)
+        session.results = search_products(conn, session.brief.need, now, embedder=embedder)
     conn.execute(
         "UPDATE sessions SET brief = %s, step = %s, updated_at = now() WHERE session_id = %s",
         [Jsonb(session.brief.model_dump(mode="json")), Jsonb(step.model_dump(mode="json")) if step else None, sid],
