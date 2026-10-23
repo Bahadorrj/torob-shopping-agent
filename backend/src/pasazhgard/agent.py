@@ -28,6 +28,7 @@ from langgraph.prebuilt import InjectedState, ToolNode
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field
 
+from pasazhgard.alternatives import Alternatives
 from pasazhgard.alternatives import find_alternatives as _find_alternatives
 from pasazhgard.basket import BasketQuery
 from pasazhgard.basket import optimize_basket as _optimize_basket
@@ -36,7 +37,7 @@ from pasazhgard.compare import compare_products as _compare_products
 from pasazhgard.discovery import SuggestQuery
 from pasazhgard.discovery import suggest_models as _suggest_models
 from pasazhgard.embeddings import Embedder
-from pasazhgard.inquiries import Compose
+from pasazhgard.inquiries import Compose, Inquiry
 from pasazhgard.inquiries import contact_seller as _contact_seller
 from pasazhgard.inquiries import get_inquiries as _get_inquiries
 from pasazhgard.routing import Router
@@ -111,6 +112,24 @@ def block(kind: str, payload: BaseModel | dict) -> str:
     """A tool result the UI renders with the `kind` renderer."""
     data = payload.model_dump(mode="json") if isinstance(payload, BaseModel) else payload
     return json.dumps({"block": kind, **data}, ensure_ascii=False)
+
+
+def fallback_messages(inquiry: Inquiry, alternatives: Alternatives) -> list[AIMessage | ToolMessage]:
+    """The agent's own find_alternatives step for an inquiry that fell through, as if it had called the tool.
+
+    Ids come from the inquiry, so posting it again replaces it instead of adding a second copy."""
+    said = {
+        "unavailable": f"«{inquiry.shop_name}» گفت «{inquiry.product_title}» را ندارد.",
+        "no_reply": f"«{inquiry.shop_name}» دربارهٔ «{inquiry.product_title}» جواب نداد.",
+        "closed": f"«{inquiry.shop_name}» الان بسته است.",
+    }[alternatives.reason]
+    tail = " این‌ها را بپرسید:" if alternatives.alternatives else " جای دیگری برای پرسیدن پیدا نکردم."
+    key = f"fallback-{inquiry.inquiry_id}"
+    call = {"name": "find_alternatives", "args": {"inquiry_id": inquiry.inquiry_id}, "id": key, "type": "tool_call"}
+    return [
+        AIMessage(said + tail, tool_calls=[call], id=key),
+        ToolMessage(block("alternatives", alternatives), tool_call_id=key, name="find_alternatives", id=f"{key}-result"),
+    ]
 
 
 def error(message: str) -> str:
