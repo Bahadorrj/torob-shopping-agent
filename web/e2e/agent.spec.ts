@@ -90,12 +90,12 @@ test("an inquiry_status block sends its drafts only on the user's tap and then t
   await sheet.getByRole("button", { name: "بفرست" }).click();
 
   const tracker = sheet.getByRole("region", { name: "استعلام‌ها" });
-  await expect(tracker.getByRole("heading", { name: "پیش‌نویس پیام‌ها" })).toBeVisible();
+  await expect(tracker.getByRole("heading", { name: "درخواست موجودی" })).toBeVisible();
   expect(confirmed).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
 
-  await tracker.getByRole("button", { name: "ارسال به ۱ فروشنده" }).click();
-  await expect(tracker.getByText("ارسال شد، منتظر پاسخ")).toBeVisible();
+  await tracker.getByRole("button", { name: "ارسال درخواست موجودی" }).click();
+  await expect(tracker.getByText("درخواست ارسال شد · موجودی تأیید نشده")).toBeVisible();
   expect(confirmed).toEqual([[7]]);
 });
 

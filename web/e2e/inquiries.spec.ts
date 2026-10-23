@@ -101,8 +101,12 @@ test("ask three sellers: drafts first, send on consent, replies update the track
   await page.goto("/products/p1/sellers/compare?offer=o1&offer=o2&offer=o3");
 
   await page.getByRole("button", { name: "استعلام از ۳ فروشنده" }).click();
-  await expect(page.getByRole("heading", { name: "پیش‌نویس پیام‌ها" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "درخواست موجودی" })).toBeVisible();
   await expect(page.getByText("تا وقتی تأیید نکنید، پیامی برای فروشنده فرستاده نمی‌شود.")).toBeVisible();
+  // each shop shows its name and one action, never the message body
+  const tracker = page.getByRole("region", { name: "استعلام‌ها" });
+  await expect(tracker.getByRole("button", { name: "ارسال درخواست موجودی" })).toHaveCount(3);
+  await expect(tracker.getByText(inquiry(0).message)).toHaveCount(0);
   expect(state.composed).toEqual([["o1", "o2", "o3"]]);
   // nothing is sent before consent
   expect(state.confirmed).toEqual([]);
@@ -111,10 +115,12 @@ test("ask three sellers: drafts first, send on consent, replies update the track
   await page.getByRole("button", { name: "ارسال به ۳ فروشنده" }).click();
   await expect(page.getByRole("heading", { name: "پیگیری استعلام‌ها" })).toBeVisible();
   expect(state.confirmed).toEqual([[1, 2, 3]]);
-  const tracker = page.getByRole("region", { name: "استعلام‌ها" });
-  await expect(tracker.getByText("ارسال شد، منتظر پاسخ")).toHaveCount(3);
+  await expect(tracker.getByText("درخواست ارسال شد · موجودی تأیید نشده")).toHaveCount(3);
   await expect(tracker.getByText("شبیه‌سازی", { exact: true })).toHaveCount(3);
-  await expect(tracker.getByText("۱۲:۰۱ - پیام ارسال شد")).toHaveCount(3);
+  await expect(tracker.getByText("۱۲:۰۱ - درخواست ارسال شد")).toHaveCount(3);
+  await expect(tracker.getByText(inquiry(0).message)).toHaveCount(0);
+  // nothing claims stock before a seller replies
+  await expect(tracker.getByText("موجودی تأیید شد")).toHaveCount(0);
 
   // the seller confirms from the Seller Console
   const mansa = state.inquiries[0];
@@ -129,6 +135,8 @@ test("ask three sellers: drafts first, send on consent, replies update the track
   cols[0].inquiry = { inquiry_id: 1, status: "confirmed", available: "yes", latest_price_toman: 3400000, hold_until: "17:00:00", installments: true, replied_at: AT };
 
   await expect(tracker.getByText("موجودی تأیید شد")).toBeVisible();
+  // the two that did not reply stay unconfirmed
+  await expect(tracker.getByText("درخواست ارسال شد · موجودی تأیید نشده")).toHaveCount(2);
   await expect(tracker).toContainText("قیمت تأییدشده توسط فروشنده: ۳٫۴۰۰٫۰۰۰ تومان - ساعت ۱۲:۰۵");
   await expect(tracker).toContainText("نگه می‌دارد تا ساعت ۱۷:۰۰");
   await expect(tracker).toContainText("۱۲:۰۵ - فروشنده: موجود است");
@@ -193,7 +201,7 @@ test("seller console: simulated label, incoming message and quick replies at 360
   expect(await noOverflow(page)).toBe(0);
 });
 
-test("each drafted message can be copied or opened in WhatsApp or Bale, with a note that the numbers are not real", async ({ page, context }) => {
+test("send it yourself: the message is tucked behind the action, then copied or opened in WhatsApp or Bale", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await fakeSessions(page, {}, { s9: {} });
   await page.addInitScript(() => {
@@ -210,15 +218,17 @@ test("each drafted message can be copied or opened in WhatsApp or Bale, with a n
 
   const message = inquiry(0).message;
   const draft = page.getByRole("listitem").filter({ hasText: "دیسیلا مانسا" });
+  await expect(draft.getByRole("button", { name: "کپی پیام" })).toBeHidden();
+  await draft.getByText("خودم می‌فرستم").click();
   await draft.getByRole("button", { name: "کپی پیام" }).click();
   await expect(draft.getByRole("button", { name: "کپی شد" })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(message);
 
-  await expect(page.getByRole("link", { name: "واتس‌اپ" })).toHaveCount(3);
+  await expect(page.getByRole("link", { name: "واتس‌اپ" })).toHaveCount(1);
   await expect(draft.getByRole("link", { name: "واتس‌اپ" })).toHaveAttribute("href", `https://wa.me/?text=${encodeURIComponent(message)}`);
   await draft.getByRole("button", { name: "بله و دیگر برنامه‌ها" }).click();
   expect(await page.evaluate(() => (window as unknown as { shared: ShareData[] }).shared)).toEqual([{ text: message }]);
 
-  await expect(page.getByText("شماره‌های تماس فروشگاه‌ها در داده‌های این دمو واقعی نیستند.", { exact: false })).toBeVisible();
+  await expect(draft.getByText("شماره‌های تماس فروشگاه‌ها در داده‌های این دمو واقعی نیستند.", { exact: false })).toBeVisible();
   expect(await noOverflow(page)).toBe(0);
 });

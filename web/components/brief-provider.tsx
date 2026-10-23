@@ -30,9 +30,15 @@ export function recentSessionIds(): string[] {
   }
 }
 
-// drops a chat from this device's history; the server session stays
+// a chat's compare picks, kept on this device
+export const compareKey = (id: string) => `pasazhgard.compare.${id}`;
+
+// drops a chat and its compare picks from this device's history; the server session stays
 export function forgetSession(id: string) {
   write(RECENT, JSON.stringify(recentSessionIds().filter((x) => x !== id)));
+  try {
+    localStorage.removeItem(compareKey(id));
+  } catch {}
 }
 
 function remember(id: string) {
