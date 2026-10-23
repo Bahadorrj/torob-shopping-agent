@@ -2,16 +2,18 @@
 
 import { useRenderTool } from "@copilotkit/react-core/v2";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { AgentAlternatives } from "@/components/alternatives";
 import { BasketView } from "@/components/basket";
+import { fold } from "@/components/brief-bar";
 import { useBrief } from "@/components/brief-provider";
-import { InquiryTracker } from "@/components/inquiry-tracker";
+import { InquiryTracker, withAlternatives } from "@/components/inquiry-tracker";
 import { ListedPrice, ProductCard } from "@/components/product-card";
 import { Seller } from "@/components/seller-list";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { clock, OpenBadge, RouteDetails } from "@/components/visit-plan";
 import {
@@ -31,7 +33,7 @@ import {
   type Shortlist,
   type VisitPlan,
 } from "@/lib/api";
-import { faDigits, faText } from "@/lib/format";
+import { faDigits, faText, locate } from "@/lib/format";
 import { productReasons } from "@/lib/reasons";
 import { useEventStream } from "@/lib/use-event-stream";
 
@@ -47,7 +49,7 @@ function Inquiries({ initial, sites }: { initial: Inquiry[]; sites: SitePrice[] 
   // shortcut: one stream per block; share one per session if threads grow many inquiry blocks
   const live = useEventStream<InquiryStatus>(inquiriesStreamUrl(sid));
   const ids = new Set(initial.map((i) => i.inquiry_id));
-  const inquiries = live ? live.inquiries.filter((i) => ids.has(i.inquiry_id)) : initial;
+  const inquiries = live ? withAlternatives(live.inquiries, (i) => ids.has(i.inquiry_id)) : initial;
   const keys = new Set(sites.map((p) => `${p.shop_id} ${p.product_id}`));
   const sitePrices = live ? (live.site_prices ?? []).filter((p) => keys.has(`${p.shop_id} ${p.product_id}`)) : sites;
   return <InquiryTracker sessionId={sid} inquiries={inquiries} sitePrices={sitePrices} onConfirm={(inquiryIds) => confirmInquiries(sid, inquiryIds)} />;
@@ -188,19 +190,59 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
   ),
   alternatives: (d: Alternatives) => <AgentAlternatives block={d} />,
   basket: (d: Basket) => <BasketView basket={d} />,
-  chips: (d: Chips, send) => (
+  chips: (d: Chips, send) => <ChipsBlock block={d} send={send} />,
+};
+
+// A long list (every area and pasaj) shows 8 chips and a search box, so it does not fill the thread
+function ChipsBlock({ block, send }: { block: Chips; send: (text: string) => void }) {
+  const [query, setQuery] = useState("");
+  const [geoError, setGeoError] = useState(false);
+  const { session, patch } = useBrief();
+  // an origin chip sets the brief's origin first, so the agent's next turn has it
+  async function pick(o: string) {
+    if (block.field !== "origin") return send(o);
+    let origin: { lat: number; lon: number } | undefined;
+    if (o === "موقعیت من") {
+      try {
+        origin = await locate();
+      } catch {
+        return setGeoError(true);
+      }
+    } else {
+      const c = session?.centers.find((c) => c.name === o);
+      origin = c && { lat: c.lat, lon: c.lon };
+    }
+    setGeoError(false);
+    if (origin) await patch({ brief: { origin } });
+    send(`مبدأ من: ${o}`);
+  }
+  const q = fold(query);
+  const shown = block.options.filter((o) => fold(o).includes(q)).slice(0, 8);
+  return (
     <div className="flex flex-col gap-2">
-      <p className="text-sm">{d.question}</p>
-      <div className="flex flex-wrap gap-1.5">
-        {d.options.map((o) => (
-          <Button key={o} variant="outline" size="sm" onClick={() => send(o)}>
+      <p className="text-sm">{block.question}</p>
+      {block.options.length > 8 && (
+        <Input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          aria-label="جستجو در گزینه‌ها"
+          placeholder="جستجو..."
+          className="h-9"
+        />
+      )}
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label={block.question}>
+        {shown.map((o) => (
+          <Button key={o} variant="outline" size="sm" onClick={() => pick(o)}>
             {o}
           </Button>
         ))}
       </div>
+      {!shown.length && <p className="text-sm text-muted-foreground">گزینه‌ای با این نام پیدا نشد</p>}
+      {geoError && <p role="alert" className="text-sm text-destructive">موقعیت شما در دسترس نیست. محله یا پاساژ را انتخاب کنید.</p>}
     </div>
-  ),
-};
+  );
+}
 
 // the home screen's input, chips and blocks post their text to the sheet through this window event
 export const AGENT_SEND = "agent-send";
