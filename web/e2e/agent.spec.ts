@@ -25,6 +25,14 @@ test("the agent sheet renders blocks at 360 px and a chip answers the question",
   // directions: route, last leg and map app links
   await expect(sheet.getByText("پاساژ علاالدین، رو‌به‌روی پاساژ چهارسو، طبقه ۲، واحد ۲۱۶")).toBeVisible();
   await expect(sheet.getByRole("link", { name: "باز کردن در نشان" })).toBeVisible();
+  // shop_details: location and today's hours from the tool, the week on the shop page
+  await expect(sheet.getByText("پاساژ علاالدین، طبقه ۲، واحد ۲۱۶")).toBeVisible();
+  await expect(sheet.getByText("امروز: ۱۰:۰۰ تا ۲۱:۰۰")).toBeVisible();
+  await expect(sheet.getByRole("link", { name: "ساعت کاری هفته و جزئیات فروشگاه" })).toHaveAttribute("href", "/shops/shop_d");
+  // product: a link to the product's sellers
+  await expect(sheet.getByText("کابل شارژ انکر")).toBeVisible();
+  // the shortlist in the same fake run has links with this name too
+  await expect(sheet.locator('a[href="/products/p4/sellers"]')).toHaveText("دیدن فروشنده‌ها");
   // alternatives: the reason, a trade-off line and a one-tap ask
   const alternatives = sheet.getByRole("region", { name: "جایگزین‌ها" });
   await expect(alternatives).toContainText("پاسخ نداد. به جایش:");

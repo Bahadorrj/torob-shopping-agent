@@ -6,6 +6,8 @@ const TOOLS = {
   directions: "get_directions",
   alternatives: "find_alternatives",
   seller_list: "find_sellers",
+  shop_details: "shop_details",
+  product: "get_product",
 };
 
 export function runEvents({ threadId, runId, messages }, blocks, text) {

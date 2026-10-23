@@ -34,6 +34,7 @@ from pasazhgard.basket import BasketQuery
 from pasazhgard.basket import optimize_basket as _optimize_basket
 from pasazhgard.brief import Area, Brief, Budget, Item, Payment, VisitWindow, seller_query
 from pasazhgard.compare import compare_products as _compare_products
+from pasazhgard.compare import get_product as _get_product
 from pasazhgard.discovery import SuggestQuery
 from pasazhgard.discovery import suggest_models as _suggest_models
 from pasazhgard.embeddings import Embedder
@@ -46,6 +47,7 @@ from pasazhgard.seller_compare import CompareQuery
 from pasazhgard.seller_compare import compare_sellers as _compare_sellers
 from pasazhgard.sellers import area_options
 from pasazhgard.sellers import find_sellers as _find_sellers
+from pasazhgard.shops import shop_details as _shop_details
 from pasazhgard.site_prices import FetchQuery, WebFetch
 from pasazhgard.site_prices import fetch_site_price as _fetch_site_price
 from pasazhgard.visit import DirectionsQuery, PlanQuery
@@ -206,7 +208,26 @@ def build_graph(ports: Ports) -> StateGraph:
         with ports.connect() as conn:
             q = seller_query(brief, product_id, now).model_copy(update={"session_id": _session(config)})
             result = _find_sellers(conn, product_id, q, now)
-        return block("seller_list", result) if result else error("product not found")
+        if result is None:
+            return error("product not found")
+        # the area and pasaj lists (~500 names) and a long category-only list cost tokens; the UI reads neither
+        trimmed = result.model_copy(update={"category_only": result.category_only[:5]})
+        return block("seller_list", trimmed.model_dump(mode="json", exclude={"areas", "pasajs"}))
+
+    @tool
+    def get_product(product_id: str) -> str:
+        """One product's full specs and images. Shows a link to the product."""
+        with ports.connect() as conn:
+            result = _get_product(conn, product_id)
+        return block("product", result) if result else error("product not found")
+
+    @tool
+    def shop_details(shop_id: str) -> str:
+        """One shop's pasaj, floor, unit, landmark, hours for each day of the week, payment, fast delivery and links.
+        Shows the shop."""
+        with ports.connect() as conn:
+            result = _shop_details(conn, shop_id, ports.now())
+        return block("shop_details", result) if result else error("shop not found")
 
     @tool
     def compare_sellers(product_id: str, offer_ids: list[str], config: RunnableConfig) -> str:
@@ -384,8 +405,8 @@ def build_graph(ports: Ports) -> StateGraph:
         return block("inquiry_status", {"inquiries": [], "site_prices": [result.model_dump(mode="json")]}) if result else error("shop or product not found")
 
     tools = [
-        search_products, suggest_models, compare_products, find_sellers, compare_sellers, plan_visit, get_directions,
-        find_alternatives, ask_user, contact_seller, get_inquiries, fetch_site_price, optimize_basket,
+        search_products, get_product, suggest_models, compare_products, find_sellers, compare_sellers, shop_details,
+        plan_visit, get_directions, find_alternatives, ask_user, contact_seller, get_inquiries, fetch_site_price, optimize_basket,
     ]
 
     def patch_brief(state: MessagesState, config: RunnableConfig) -> dict:
@@ -425,6 +446,8 @@ def build_graph(ports: Ports) -> StateGraph:
               features and budget, at most these three and only what the brief lacks; give use and features 3-5 short options.
               In the reply, explain the trade-offs from the shortlist; do not repeat its prices.
             - Never say an item is in stock unless a seller confirmed it.
+            - A shop in category_only matches only by its activity category: never present it as having the product;
+              at most suggest asking it.
             - contact_seller only drafts messages; the user sends them with the button under the drafts. Never say a message
               was sent or a seller answered unless get_inquiries shows it.
             - A website price (fetch_site_price) is the shop's site, not a seller's word: never say it is in stock from it.
