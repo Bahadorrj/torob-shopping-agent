@@ -42,6 +42,15 @@ const blocks = [
   { block: "visit_plan", ...plan },
   { block: "directions", ...directions },
   {
+    block: "shop_details", shop_id: "shop_d", name: "نیکورا ویوان", address: null, pasaj: "علاالدین", floor: "۲", unit: "۲۱۶",
+    landmark: null, payment_options: [], fast_delivery: "unknown", website_url: null, instagram_url: null,
+    hours: {
+      timezone: "Asia/Tehran", today: "thu",
+      week: ["sat", "sun", "mon", "tue", "wed", "thu", "fri"].map((day) => ({ day, status: "declared", shifts: [{ start: "10:00", end: "21:00" }] })),
+    },
+  },
+  { block: "product", product_id: "p4", title: "کابل شارژ انکر", brand: null, category: null, image_urls: [], specs: [] },
+  {
     block: "alternatives", inquiry_id: 1, reason: "no_reply",
     alternatives: [{
       kind: "same_product", offer_id: "o9", product_id: "p1", product_title: "هدفون انکر R50i", shop_id: "shop_c", shop_name: "نیکورا ویوان",

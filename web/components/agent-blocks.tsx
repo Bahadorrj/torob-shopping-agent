@@ -12,7 +12,7 @@ import { InquiryTracker, withAlternatives } from "@/components/inquiry-tracker";
 import { ListedPrice, ProductCard } from "@/components/product-card";
 import { ROWS } from "@/components/seller-compare";
 import { Seller, shownPrice, TRUST_CLASS } from "@/components/seller-list";
-import { NotRecorded } from "@/components/shop-details";
+import { hoursText, NotRecorded } from "@/components/shop-details";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -33,6 +33,7 @@ import {
   type ProductCompare,
   type SellerCompare,
   type SellerList,
+  type ShopDetails,
   type SitePrice,
   type Shortlist,
   type VisitPlan,
@@ -203,6 +204,28 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
       </Link>
     </div>
   ),
+  product: (d: { product_id: string; title: string }) => (
+    <div className="flex flex-col gap-1 text-sm">
+      <p>{d.title}</p>
+      <Link href={`/products/${d.product_id}/sellers`} className={linkClass}>
+        دیدن فروشنده‌ها
+      </Link>
+    </div>
+  ),
+  shop_details: (d: ShopDetails) => (
+    <div className="flex flex-col gap-1 text-sm">
+      <p className="font-semibold">{d.name}</p>
+      {(d.pasaj || d.floor || d.unit) && (
+        <p className="break-words">
+          {faText([d.pasaj && `پاساژ ${d.pasaj}`, d.floor && `طبقه ${d.floor}`, d.unit && `واحد ${d.unit}`].filter(Boolean).join("، "))}
+        </p>
+      )}
+      <p>امروز: {hoursText(d.hours.week.find((h) => h.day === d.hours.today)!)}</p>
+      <Link href={`/shops/${d.shop_id}`} className={linkClass}>
+        ساعت کاری هفته و جزئیات فروشگاه
+      </Link>
+    </div>
+  ),
   compare_table: (d: ProductCompare) => {
     const products = d.products.slice(0, 3);
     // the full page has every spec; the chat shows the first few that differ
@@ -329,9 +352,11 @@ const toAgent = (text: string) => window.dispatchEvent(new CustomEvent(AGENT_SEN
 // what the drawer says while each backend tool (backend/src/pasazhgard/agent.py) runs
 const BUSY: Record<string, string> = {
   search_products: "در حال جستجوی کالا",
+  get_product: "در حال خواندن مشخصات کالا",
   compare_products: "در حال مقایسه مدل‌ها",
   find_sellers: "در حال یافتن فروشنده‌ها",
   compare_sellers: "در حال مقایسه فروشنده‌ها",
+  shop_details: "در حال خواندن اطلاعات فروشگاه",
   suggest_models: "در حال انتخاب مدل‌ها",
   plan_visit: "در حال برنامه‌ریزی مسیر",
   get_directions: "در حال مسیریابی",
