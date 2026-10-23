@@ -325,7 +325,7 @@ test("seller cards end with ask, directions and compare, in both groups, at 360 
   await expect(card.getByRole("button", { name: "مقایسه", exact: true })).toBeVisible();
 
   await card.getByRole("button", { name: "استعلام بگیرید" }).click();
-  await expect(page.getByRole("heading", { name: "پیش‌نویس پیام‌ها" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "درخواست موجودی" })).toBeVisible();
   expect(composed).toEqual([["o1"]]);
   await expect(card.getByRole("button", { name: "پیش‌نویس استعلام آماده است" })).toBeDisabled();
 
