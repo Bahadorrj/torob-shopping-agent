@@ -43,7 +43,7 @@ function warranty(w: SellerColumn["warranty"]) {
   return w.description && faText(w.description);
 }
 
-const ROWS: [string, (s: SellerColumn) => React.ReactNode][] = [
+export const ROWS: [string, (s: SellerColumn) => React.ReactNode][] = [
   [
     "قیمت ثبت‌شده",
     (s) =>
