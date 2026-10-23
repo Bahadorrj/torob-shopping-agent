@@ -138,3 +138,24 @@
 body:has([data-seller-console]) [data-brief-bar] {
   display: none;
 }
+
+/* chat bubble tail on the outer bottom corner; the polygons assume RTL, where the user's outer side is the right */
+.bubble-tail {
+  position: relative;
+}
+.bubble-tail::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: 8px;
+  height: 10px;
+  background: inherit;
+}
+.bubble-user::after {
+  inset-inline-start: -7px;
+  clip-path: polygon(0 0, 0 100%, 100% 100%);
+}
+.bubble-agent::after {
+  inset-inline-end: -7px;
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}

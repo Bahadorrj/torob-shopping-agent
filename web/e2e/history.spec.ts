@@ -95,7 +95,7 @@ test("new chat creates a session, empties the thread and resets the chips; off w
   await expect(warranty(page)).toHaveAttribute("aria-pressed", "true");
 
   await sheet(page).getByRole("button", { name: "گفتگوی جدید" }).click();
-  await expect(sheet(page).getByText("چه چیزی می‌خواهید حضوری بخرید؟")).toBeVisible();
+  await expect(sheet(page).getByRole("log")).toBeEmpty();
   await expect(sheet(page).getByText("شارژر اپل")).toHaveCount(0);
   await expect(warranty(page)).toHaveAttribute("aria-pressed", "false");
   expect(sessions.has("s1")).toBe(true);
