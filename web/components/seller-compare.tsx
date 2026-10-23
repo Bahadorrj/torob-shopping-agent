@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import { MODES } from "@/components/brief-bar";
 import { useBrief } from "@/components/brief-provider";
-import { clock, InquiryTracker } from "@/components/inquiry-tracker";
+import { clock, InquiryTracker, withAlternatives } from "@/components/inquiry-tracker";
 import { DELIVERY, NotRecorded } from "@/components/shop-details";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -140,6 +140,8 @@ export function SellerCompare({ productId, offerIds }: { productId: string; offe
   const sid = session?.session_id ?? null;
   const tracked = useEventStream<InquiryStatus>(sid && inquiriesStreamUrl(sid));
   const inquiries = (tracked?.inquiries ?? []).filter((i) => i.product_id === productId);
+  // the tracker also follows alternatives asked from here, which may be for a similar product
+  const followed = withAlternatives(tracked?.inquiries ?? [], (i) => i.product_id === productId);
   const sitePrices = (tracked?.site_prices ?? []).filter((p) => p.product_id === productId);
   // refetch only when a brief field the compare reads changes, a seller replies or a website price comes in
   const replies = [...inquiries.map((i) => i.events.length), ...sitePrices.map((p) => p.fetched_at)].join();
@@ -225,7 +227,7 @@ export function SellerCompare({ productId, offerIds }: { productId: string; offe
       </Button>
       <p className="text-xs text-muted-foreground">موجودی، قیمت امروز، نگه‌داشتن کالا و اقساط را می‌پرسیم. اول پیش‌نویس را می‌بینید.</p>
       {composeError && <p className="text-sm text-destructive">پیش‌نویس ساخته نشد. برای هر کالا حداکثر ۳ استعلام باز می‌ماند.</p>}
-      {sid && <InquiryTracker sessionId={sid} inquiries={inquiries} sitePrices={sitePrices} onConfirm={(inquiryIds) => confirmInquiries(sid, inquiryIds)} />}
+      {sid && <InquiryTracker sessionId={sid} inquiries={followed} sitePrices={sitePrices} onConfirm={(inquiryIds) => confirmInquiries(sid, inquiryIds)} />}
       {plan ? (
         <Link href={plan} className={buttonVariants({ size: "lg", className: "self-center" })}>
           برنامه مراجعه

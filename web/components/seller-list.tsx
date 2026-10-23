@@ -5,7 +5,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { cn } from "cn";
 
 import { useBrief } from "@/components/brief-provider";
-import { clock, FELL_THROUGH, InquiryTracker } from "@/components/inquiry-tracker";
+import { clock, FELL_THROUGH, InquiryTracker, withAlternatives } from "@/components/inquiry-tracker";
 import { pasajHref } from "@/components/pasaj-view";
 import { pinKey, pins, SellerMap } from "@/components/seller-map";
 import { RouteDetails } from "@/components/visit-plan";
@@ -190,6 +190,8 @@ export function SellerList({ productId }: { productId: string }) {
   const sid = session?.session_id ?? null;
   const tracked = useEventStream<InquiryStatus>(sid && inquiriesStreamUrl(sid));
   const inquiries = (tracked?.inquiries ?? []).filter((i) => i.product_id === productId);
+  // the tracker also follows alternatives asked from here, which may be for a similar product
+  const followed = withAlternatives(tracked?.inquiries ?? [], (i) => i.product_id === productId);
   const [askError, setAskError] = useState(false);
   const trackerRef = useRef<HTMLDivElement>(null);
   const toTracker = () => trackerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -436,7 +438,7 @@ export function SellerList({ productId }: { productId: string }) {
 
       <div ref={trackerRef} className="scroll-mt-32">
         {askError && <p className="text-sm text-destructive">پیش‌نویس ساخته نشد. برای هر کالا حداکثر ۳ استعلام باز می‌ماند.</p>}
-        {sid && <InquiryTracker sessionId={sid} inquiries={inquiries} onConfirm={(ids) => confirmInquiries(sid, ids)} />}
+        {sid && <InquiryTracker sessionId={sid} inquiries={followed} onConfirm={(ids) => confirmInquiries(sid, ids)} />}
       </div>
 
       {/* bottom-18: above the collapsed agent sheet */}
