@@ -57,6 +57,25 @@ test("a sentence on home runs the agent in place and its chips answer it", async
   await fits(page);
 });
 
+test("a long chip list shows 8 chips and a search box that filters them at 360 px", async ({ page }) => {
+  const names = ["نزدیک من", ...Array.from({ length: 40 }, (_, i) => `محله ${i}`), "پاساژ علاالدين"];
+  const sent: string[] = [];
+  await fakeSessions(page, {});
+  await fakeAgent(page, [{ block: "chips", field: "area", question: "کجا؟", options: names }], "", ({ messages }) => sent.push(String(messages.at(-1)?.content)));
+  await page.goto("/");
+  await askHome(page, "هدفون");
+
+  const group = sheet(page).getByRole("group", { name: "کجا؟" });
+  await expect(group.getByRole("button")).toHaveCount(8);
+  await expect(group.getByRole("button", { name: "نزدیک من" })).toBeVisible();
+  // the search folds ی/ي like the area sheet
+  await sheet(page).getByLabel("جستجو در گزینه‌ها").fill("علاالدی");
+  await expect(group.getByRole("button")).toHaveCount(1);
+  await group.getByRole("button", { name: "پاساژ علاالدين" }).click();
+  await expect.poll(() => sent).toEqual(["هدفون", "پاساژ علاالدين"]);
+  await fits(page);
+});
+
 test("a restored thread shows on home without a tap, and in the drawer on another route", async ({ page }) => {
   const thread = [
     { id: "u1", role: "user", content: "شارژر اپل" },

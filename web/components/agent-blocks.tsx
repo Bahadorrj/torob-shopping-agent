@@ -2,16 +2,18 @@
 
 import { useRenderTool } from "@copilotkit/react-core/v2";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { AgentAlternatives } from "@/components/alternatives";
 import { BasketView } from "@/components/basket";
+import { fold } from "@/components/brief-bar";
 import { useBrief } from "@/components/brief-provider";
 import { InquiryTracker } from "@/components/inquiry-tracker";
 import { ListedPrice, ProductCard } from "@/components/product-card";
 import { Seller } from "@/components/seller-list";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { clock, OpenBadge, RouteDetails } from "@/components/visit-plan";
 import {
@@ -188,19 +190,38 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
   ),
   alternatives: (d: Alternatives) => <AgentAlternatives block={d} />,
   basket: (d: Basket) => <BasketView basket={d} />,
-  chips: (d: Chips, send) => (
+  chips: (d: Chips, send) => <ChipsBlock block={d} send={send} />,
+};
+
+// A long list (every area and pasaj) shows 8 chips and a search box, so it does not fill the thread
+function ChipsBlock({ block, send }: { block: Chips; send: (text: string) => void }) {
+  const [query, setQuery] = useState("");
+  const q = fold(query);
+  const shown = block.options.filter((o) => fold(o).includes(q)).slice(0, 8);
+  return (
     <div className="flex flex-col gap-2">
-      <p className="text-sm">{d.question}</p>
-      <div className="flex flex-wrap gap-1.5">
-        {d.options.map((o) => (
+      <p className="text-sm">{block.question}</p>
+      {block.options.length > 8 && (
+        <Input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          aria-label="جستجو در گزینه‌ها"
+          placeholder="جستجو..."
+          className="h-9"
+        />
+      )}
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label={block.question}>
+        {shown.map((o) => (
           <Button key={o} variant="outline" size="sm" onClick={() => send(o)}>
             {o}
           </Button>
         ))}
       </div>
+      {!shown.length && <p className="text-sm text-muted-foreground">گزینه‌ای با این نام پیدا نشد</p>}
     </div>
-  ),
-};
+  );
+}
 
 // the home screen's input, chips and blocks post their text to the sheet through this window event
 export const AGENT_SEND = "agent-send";
