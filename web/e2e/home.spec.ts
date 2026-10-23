@@ -101,13 +101,13 @@ test("a product card shows one reason, a from-price, its shop count and the sell
   await askHome(page, "هدفون");
 
   const first = page.getByRole("listitem").filter({ hasText: "کالای الف" });
-  await expect(first.locator("[data-slot=badge]")).toHaveCount(1);
-  await expect(first.locator("[data-slot=badge]")).toHaveText("ارزان‌ترین");
+  await expect(first.locator("[data-slot=badge]:not([data-slot=why] *)")).toHaveCount(1);
+  await expect(first.locator("[data-slot=badge]:not([data-slot=why] *)")).toHaveText("ارزان‌ترین");
   await expect(first).toContainText("از ۱٫۰۰۰٫۰۰۰ تومان");
   await expect(first).toContainText("در ۸ فروشگاه");
   await expect(first.getByText("قیمت صوری کنار گذاشته شد")).toBeVisible();
   await expect(first.getByRole("link", { name: "دیدن فروشنده‌ها" })).toHaveAttribute("href", "/products/p1/sellers");
-  await expect(page.getByRole("listitem").filter({ hasText: "کالای ب" }).locator("[data-slot=badge]")).toHaveText("در ۸ فروشگاه");
+  await expect(page.getByRole("listitem").filter({ hasText: "کالای ب" }).locator("[data-slot=badge]:not([data-slot=why] *)")).toHaveText("در ۸ فروشگاه");
   await expect(sheet(page).locator("details")).toHaveCount(0);
   await fits(page);
 
@@ -153,7 +153,7 @@ test("search opens from home: results, condition chips, category tiles and pasaj
   await page.getByLabel("جستجوی کالا").fill("هدفون");
   await page.getByLabel("جستجوی کالا").press("Enter");
   const results = page.getByRole("region", { name: "نتیجه‌ها" });
-  await expect(results.getByRole("listitem").filter({ hasText: "هدفون الف" }).locator("[data-slot=badge]")).toHaveText("ارزان‌ترین");
+  await expect(results.getByRole("listitem").filter({ hasText: "هدفون الف" }).locator("[data-slot=badge]:not([data-slot=why] *)")).toHaveText("ارزان‌ترین");
   await expect(results.getByRole("link", { name: "دیدن فروشنده‌ها" }).first()).toHaveAttribute("href", "/products/p1/sellers");
 
   await tiles.filter({ hasText: "ساعت مچی" }).click();
@@ -180,4 +180,17 @@ test("a condition chip on search patches the brief before any message", async ({
   await expect.poll(() => patches.at(-1)?.brief?.must_have).toEqual({ warranty: true, test_in_presence: false, fast_delivery: false });
   await expect(chip(page, "گارانتی")).toHaveAttribute("aria-pressed", "true");
   expect(sent).toEqual([]);
+});
+
+test("a product card with the most score chips and its sentence fits at 360 px", async ({ page }) => {
+  const parts = [{ word: "هندزفری", matched: true }, { word: "بلوتوثی", matched: true }, { word: "انکر", matched: true }, { word: "مشکی", matched: false }];
+  await fakeSessions(page, {});
+  await fakeAgent(page, [{ block: "product_cards", query: "x", items: [{ ...card("p1", "کالای الف", 1000000), price_flags: [], score_parts: parts, meaning_match: true }] }]);
+  await page.goto("/");
+  await askHome(page, "x");
+
+  const item = page.getByRole("listitem").filter({ hasText: "کالای الف" });
+  await expect(item.locator("[data-slot=why] [data-slot=badge]")).toHaveCount(5);
+  await expect(item).toContainText("«مشکی» در آن پیدا نشد؛ از نظر معنی به جستجوی شما نزدیک است؛ ۸ فروشگاه آن را دارند.");
+  await fits(page);
 });

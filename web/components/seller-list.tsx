@@ -25,7 +25,7 @@ import {
   type SellerRow,
 } from "@/lib/api";
 import { distance, faDigits, faText, localDate, openLabel, priceAge, toman, UNKNOWN } from "@/lib/format";
-import { sellerReasons } from "@/lib/reasons";
+import { sellerChips } from "@/lib/reasons";
 import { useEventStream } from "@/lib/use-event-stream";
 
 const CONDITION: Record<Condition, string> = {
@@ -139,20 +139,22 @@ function OpenNow({ open }: { open: boolean | null }) {
   );
 }
 
-// ResultCard: one reason badge, price / age / availability slots, then the actions passed as children
-export function Seller({ s, reason, children }: { s: SellerRow; reason?: string; children?: ReactNode }) {
+// ResultCard: all reason chips, price / age / availability slots, then the actions passed as children
+export function Seller({ s, children }: { s: SellerRow; children?: ReactNode }) {
   const price = shownPrice(s);
   const confirmed = s.latest_price?.status === "confirmed" ? s.latest_price.price_toman : null;
   const available = availability(s.inquiry);
   return (
     <Card className="gap-2 p-4">
-      <div className="flex items-start justify-between gap-2">
-        <Link href={`/shops/${s.shop_id}`} className="text-base leading-7 font-bold">
-          {s.shop_name}
-        </Link>
-        <Badge variant="secondary" className="rounded-full font-bold">
-          {reason ?? sellerReasons([s], { priority: "cheapest", payment: { kind: "any", provider: null } })[0]}
-        </Badge>
+      <Link href={`/shops/${s.shop_id}`} className="text-base leading-7 font-bold">
+        {s.shop_name}
+      </Link>
+      <div role="group" data-slot="why" aria-label="چرا این فروشنده؟" className="flex flex-wrap gap-1.5">
+        {sellerChips(s).map((c) => (
+          <Badge key={c} variant="secondary" className="h-auto rounded-full py-0.5 font-bold whitespace-normal">
+              {c}
+            </Badge>
+        ))}
       </div>
       <p className="text-xs leading-5 text-muted-foreground">
         {[place(s), payment(s)].filter(Boolean).join(" · ")} · <OpenNow open={s.open_now} />
@@ -296,11 +298,6 @@ export function SellerList({ productId }: { productId: string }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [moreCategory, setMoreCategory] = useState(false);
   const rows = useMemo(() => (list ? [...list.sellers, ...list.ask_them] : []), [list]);
-  const brief = session?.brief;
-  const reasons = useMemo(() => {
-    const labels = brief ? sellerReasons(rows, brief) : [];
-    return new Map(rows.map((s, n) => [s.offer_id, labels[n]]));
-  }, [rows, brief]);
   const mapPins = useMemo(() => pins(rows), [rows]);
   const picked = mapPins.find((p) => p.key === selected);
   const showMap = view === "map" && rows.length > 0;
@@ -321,7 +318,7 @@ export function SellerList({ productId }: { productId: string }) {
 
   const nearest = list.nearest_covered;
   const card = (s: SellerRow) => (
-    <Seller s={s} reason={reasons.get(s.offer_id)}>
+    <Seller s={s}>
       {actions(s)}
     </Seller>
   );

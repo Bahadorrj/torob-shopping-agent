@@ -110,7 +110,7 @@ test("result cards show price, age and availability slots, one reason and one fi
     await expect(slot(name, "age")).toContainText("آخرین تغییر قیمت");
     await expect(slot(name, "age")).not.toContainText("به‌روز");
     await expect(slot(name, "availability")).toContainText("موجودی");
-    await expect(card(name).locator('[data-slot="badge"]:not([data-slot="price"] *)')).toHaveCount(1);
+    await expect(card(name).locator('[data-slot="why"] [data-slot="badge"]')).toHaveCount(name === row.shop_name ? 2 : 1);
     expect(await filled(card(name))).toBe(1);
   }
 
@@ -118,7 +118,7 @@ test("result cards show price, age and availability slots, one reason and one fi
   await expect(slot(row.shop_name, "price")).toContainText("قیمت ثبت‌شده");
   await expect(slot(row.shop_name, "age")).toContainText("۲۲ روز پیش");
   await expect(slot(row.shop_name, "availability")).toContainText("نامشخص");
-  await expect(card(row.shop_name).locator('[data-slot="badge"]:not([data-slot="price"] *)')).toHaveText("ارزان‌ترین");
+  await expect(card(row.shop_name).locator('[data-slot="why"]')).toHaveText("ارزان‌ترینگارانتی ۱۸ ماهه");
   await expect(card(row.shop_name).getByRole("button", { name: "استعلام بگیرید" })).toBeVisible();
   await expect(card(row.shop_name).getByRole("link", { name: row.shop_name })).toHaveAttribute("href", "/shops/shop_a");
 
@@ -200,7 +200,7 @@ test("condition chips, the declared installment channel and the ask-them group a
   };
   await open(page, () => ({ ...list, count: 1, sellers: [installments], ask_them: [{ ...unpriced, unknown: ["hours", "payment"] }] }));
   const first = page.getByRole("listitem").filter({ hasText: row.shop_name });
-  await expect(first.locator('[data-slot="badge"]:not([data-slot="price"] *)')).toHaveText("الان باز");
+  await expect(first.locator('[data-slot="why"]')).toHaveText("الان بازاسنپ‌پی حضوری");
   await expect(first).toContainText("اسنپ‌پی حضوری، تارا · الان باز");
 
   const ask = page.getByRole("region", { name: "از فروشنده بپرسید" });
@@ -375,5 +375,26 @@ test("each seller card shows one trust badge, green confirmed, blue website, neu
   await expect(badge("تازه")).not.toHaveCSS("background-color", "rgb(11, 81, 36)");
   await expect(card("قدیمی")).toContainText("قیمت قدیمی، استعلام بگیرید");
   await expect(card("تازه")).not.toContainText("قیمت قدیمی");
+  expect(await noOverflow(page)).toBe(0);
+});
+
+test("a seller card with every reason chip wraps without overflow at 360 px", async ({ page }) => {
+  const all = {
+    ...row,
+    payment_options: [{ provider: "اسنپ‌پی", channel: "in_person" }],
+    reasons: [
+      { kind: "cheapest", months: null, provider: null },
+      { kind: "closest", months: null, provider: null },
+      { kind: "open_now", months: null, provider: null },
+      { kind: "installments", months: null, provider: "اسنپ‌پی" },
+      { kind: "warranty", months: 18, provider: null },
+      { kind: "fresh_price", months: null, provider: null },
+      { kind: "declared_hours", months: null, provider: null },
+    ],
+  };
+  await open(page, () => ({ ...list, count: 1, sellers: [all], ask_them: [] }));
+  const chips = page.getByRole("listitem").filter({ hasText: row.shop_name }).locator('[data-slot="why"] [data-slot="badge"]');
+  await expect(chips).toHaveCount(7);
+  await expect(chips.nth(3)).toHaveText("اسنپ‌پی حضوری");
   expect(await noOverflow(page)).toBe(0);
 });
