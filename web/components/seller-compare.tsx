@@ -7,6 +7,7 @@ import { MODES } from "@/components/brief-bar";
 import { useBrief } from "@/components/brief-provider";
 import { clock, InquiryTracker, withAlternatives } from "@/components/inquiry-tracker";
 import { DELIVERY, NotRecorded } from "@/components/shop-details";
+import { TRUST_CLASS } from "@/components/seller-list";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -105,9 +106,9 @@ const ROWS: [string, (s: SellerColumn) => React.ReactNode][] = [
     "اعتبار قیمت",
     (s) =>
       s.latest_price.status === "confirmed" ? (
-        <Badge>تأییدشده</Badge>
+        <Badge className={TRUST_CLASS.confirmed}>تأییدشده</Badge>
       ) : s.latest_price.status === "website" ? (
-        <Badge variant="outline">قیمت سایت</Badge>
+        <Badge className={TRUST_CLASS.website}>قیمت سایت</Badge>
       ) : (
         s.trust_level === "listed" && <Badge variant="secondary">ثبت‌شده</Badge>
       ),
