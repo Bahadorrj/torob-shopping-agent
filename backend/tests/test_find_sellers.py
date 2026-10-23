@@ -184,3 +184,16 @@ def test_per_meter_prices_do_not_beat_per_piece_ones(database_url, now):
 def test_rows_carry_the_shop_location_for_the_map(client):
     row = next(s for s in sellers(client)["sellers"] if s["shop_name"] == "دیسیلا مانسا")
     assert (row["lat"], row["lon"]) == (ALADDIN["lat"], ALADDIN["lon"])
+
+
+def test_empty_area_offers_fast_delivery_shops(client):
+    # no Anker seller in بهارستان; نیکورا ویوان in شیخ هادی declared fast delivery
+    result = sellers(client, area="بهارستان")
+    assert result["count"] == 0
+    fast = result["fast_delivery"]
+    assert "نیکورا ویوان" in [s["shop_name"] for s in fast]
+    assert {s["area"] for s in fast} <= {"شیخ هادی", "فردوسی"}
+
+
+def test_covered_area_offers_no_fast_delivery_fallback(client):
+    assert sellers(client, area="فردوسی")["fast_delivery"] == []

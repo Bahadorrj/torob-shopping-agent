@@ -120,6 +120,8 @@ class SellerList(BaseModel):
     ask_them: list[SellerRow]
     category_only: list[CategoryShop]
     nearest_covered: NearestCovered | None
+    # sellers outside an area without sellers that declared fast delivery, closest first
+    fast_delivery: list[SellerRow] = []
     areas: list[str]
     pasajs: list[str]
 
@@ -300,10 +302,12 @@ def find_sellers(conn, product_id: str, q: SellerQuery, now: datetime) -> Seller
     best = {}
     for o in sorted(offers, key=lambda o: (not _usable([o]), o["price_toman"] or 0, o["offer_id"])):
         best.setdefault(o["shop_id"], o)
-    rows, ask_them, in_area = [], [], False
+    rows, ask_them, fast, in_area = [], [], [], False
     for o in best.values():
         d = _distance(q, o)
         if not _in_area(q, o, d):
+            if o["fast_delivery"] == "yes":
+                fast.append(_row(o, d, now, asked.get(o["shop_id"]), fetched.get(o["shop_id"])))
             continue
         in_area = True
         row = _row(o, d, now, asked.get(o["shop_id"]), fetched.get(o["shop_id"]))
@@ -342,5 +346,6 @@ def find_sellers(conn, product_id: str, q: SellerQuery, now: datetime) -> Seller
         category_only=category_only,
         # only an area without sellers suggests another; a filter that empties the list does not
         nearest_covered=None if in_area else _nearest_covered(conn, q, list(best.values())),
+        fast_delivery=[] if in_area else sorted(fast, key=lambda r: (r.distance_m is None, r.distance_m or 0, r.shop_id)),
         **area_options(conn),
     )
