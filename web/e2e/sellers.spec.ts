@@ -298,6 +298,21 @@ test("seller cards end with ask, directions and compare, in both groups, at 360 
   expect(await noOverflow(page)).toBe(0);
 });
 
+test("unknown-hours shops get their own group; a shop unknown on more stays in ask-them, at 360 px", async ({ page }) => {
+  const hoursOnly = { ...row, offer_id: "o2", shop_id: "shop_h", shop_name: "هورا نامشخص", unknown: ["hours"] };
+  const both = { ...row, offer_id: "o3", shop_id: "shop_b", shop_name: "هر دو نامشخص", unknown: ["hours", "payment"] };
+  const other = { ...row, offer_id: "o4", shop_id: "shop_p", shop_name: "پرداخت نامشخص", unknown: ["payment"] };
+  await open(page, () => ({ ...list, count: 0, sellers: [], ask_them: [hoursOnly, both, other] }));
+  const hours = page.getByRole("region", { name: "ساعت کاری نامشخص" });
+  await expect(hours.getByRole("listitem")).toHaveCount(1);
+  await expect(hours).toContainText(hoursOnly.shop_name);
+  const ask = page.getByRole("region", { name: "از فروشنده بپرسید" });
+  await expect(ask.getByRole("listitem")).toHaveCount(2);
+  await expect(ask.getByRole("listitem").filter({ hasText: both.shop_name })).toContainText("ساعت کاری، روش پرداخت");
+  await expect(page.getByText(both.shop_name)).toHaveCount(1);
+  expect(await noOverflow(page)).toBe(0);
+});
+
 test("directions without an origin ask for one", async ({ page }) => {
   await open(page, () => list);
   const card = page.getByRole("listitem").filter({ hasText: row.shop_name });
