@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { getSession, getThread, inquiriesStreamUrl, type InquiryStatus } from "@/lib/api";
+import { useBackCloses } from "@/lib/use-back-closes";
 import { useEventStream } from "@/lib/use-event-stream";
 
 export { AGENT_SEND };
@@ -138,7 +139,11 @@ function Sheet({ threadId, open, setOpen }: { threadId: string; open: boolean; s
   const [text, setText] = useState("");
   const [thread, setThread] = useState<Message[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const showHistory = useBackCloses("chatHistory", setHistoryOpen);
   const pathname = usePathname();
+  // on other routes the thread is a drawer, which browser back closes; home shows it inline
+  const drawer = useBackCloses("agentDrawer", setOpen);
+  const show = pathname === "/" ? setOpen : drawer;
   const router = useRouter();
   const [shownPath, setShownPath] = useState(pathname);
 
@@ -169,7 +174,7 @@ function Sheet({ threadId, open, setOpen }: { threadId: string; open: boolean; s
   async function send(content: string) {
     if (!content.trim() || agent.isRunning) return;
     setText("");
-    setOpen(true);
+    show(true);
     agent.addMessage({ id: crypto.randomUUID(), role: "user", content });
     try {
       await copilotkit.runAgent({ agent });
@@ -199,11 +204,11 @@ function Sheet({ threadId, open, setOpen }: { threadId: string; open: boolean; s
         <SquarePen aria-hidden />
         گفتگوی جدید
       </Button>
-      <Button variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}>
+      <Button variant="ghost" size="sm" onClick={() => showHistory(true)}>
         <History aria-hidden />
         تاریخچه
       </Button>
-      <ChatHistory open={historyOpen} onOpenChange={setHistoryOpen} current={threadId} />
+      <ChatHistory open={historyOpen} onOpenChange={showHistory} current={threadId} />
     </div>
   );
 
@@ -286,14 +291,14 @@ function Sheet({ threadId, open, setOpen }: { threadId: string; open: boolean; s
         <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-card">
           <div className="mx-auto flex w-full max-w-xl flex-col gap-2 px-4 py-2">
             <CompareTrayBar />
-            <Button variant="outline" className="h-10 justify-start text-muted-foreground" onClick={() => setOpen(true)}>
+            <Button variant="outline" className="h-10 justify-start text-muted-foreground" onClick={() => show(true)}>
               دستیار خرید
             </Button>
           </div>
         </div>
       )}
       {/* not modal: the app bar and brief bar above the drawer stay usable */}
-      <Drawer open={open} onOpenChange={setOpen} modal={false} showSwipeHandle>
+      <Drawer open={open} onOpenChange={show} modal={false} showSwipeHandle>
         <DrawerContent className="h-[90dvh] max-h-[90dvh]">
           <section aria-label="دستیار" className="mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col gap-2 px-4 pb-3">
             <div className="flex items-center gap-1">

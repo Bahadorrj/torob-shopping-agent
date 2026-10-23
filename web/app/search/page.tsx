@@ -1,13 +1,13 @@
 "use client";
 
-import { ArrowRight, Search } from "lucide-react";
-import Link from "next/link";
+import { Search } from "lucide-react";
 import { useState } from "react";
 
+import { BackButton } from "@/components/back-header";
 import { FilterChipBar } from "@/components/brief-bar";
 import { CategoryTiles, PasajList } from "@/components/home-start";
 import { ProductCard } from "@/components/product-card";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { searchProducts, type ProductCard as Product } from "@/lib/api";
 import { productReasons } from "@/lib/reasons";
@@ -40,9 +40,7 @@ export default function SearchPage() {
             search(q);
           }}
         >
-          <Link href="/" aria-label="بازگشت" className={buttonVariants({ variant: "ghost", size: "icon" })}>
-            <ArrowRight />
-          </Link>
+          <BackButton />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="نام کالا یا مدل" aria-label="جستجوی کالا" className="h-10 flex-1" />
           <Button type="submit" variant="buy" size="icon" aria-label="جستجو کن" className="size-10 shrink-0">
             <Search />
