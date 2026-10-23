@@ -4,6 +4,7 @@ import Link from "next/link";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "cn";
 
+import { PageTitle } from "@/components/back-header";
 import { useBrief } from "@/components/brief-provider";
 import { clock, FELL_THROUGH, InquiryTracker, withAlternatives } from "@/components/inquiry-tracker";
 import { pasajHref } from "@/components/pasaj-view";
@@ -376,7 +377,7 @@ export function SellerList({ productId }: { productId: string }) {
 
   return (
     <article className="flex flex-col gap-3">
-      <h1 className="text-base leading-7 font-bold">{list.title}</h1>
+      <PageTitle>{list.title}</PageTitle>
 
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm" aria-live="polite">

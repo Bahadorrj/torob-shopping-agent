@@ -63,12 +63,12 @@ const TITLES: Record<string, string> = Object.fromEntries(Object.values(SUGGESTI
 const chipText = (content: unknown) => TITLES[String(content)] ?? String(content);
 const userText = (m: Message) => (m.id.startsWith(CHIP) ? chipText(m.content) : String(m.content));
 
-function lastBlock(messages: Message[]) {
+function lastBlock(messages: Message[]): { block?: string; items?: unknown[] } {
   const tool = messages.findLast((m) => m.role === "tool");
   try {
-    return tool ? String(JSON.parse(String(tool.content)).block ?? "") : "";
+    return tool ? JSON.parse(String(tool.content)) : {};
   } catch {
-    return "";
+    return {};
   }
 }
 
@@ -177,8 +177,12 @@ function Sheet({ threadId, open, setOpen }: { threadId: string; open: boolean; s
   const stuck = useRef(true);
   const [unseen, setUnseen] = useState(false);
 
-  const kind = agent.messages.length ? lastBlock(agent.messages) : "";
-  useConfigureSuggestions({ suggestions: SUGGESTIONS[kind] ?? [], available: "always", consumerAgentId: "sheet" }, [kind]);
+  const last = agent.messages.length ? lastBlock(agent.messages) : {};
+  const kind = String(last.block ?? "");
+  // "compare these two" needs two products in the last cards block
+  const single = kind === "product_cards" && (last.items?.length ?? 0) < 2;
+  const offered = (SUGGESTIONS[kind] ?? []).filter((s) => !(single && s.title === "مقایسه این دو"));
+  useConfigureSuggestions({ suggestions: offered, available: "always", consumerAgentId: "sheet" }, [kind, single]);
   const { suggestions } = useSuggestions({ agentId: "sheet" });
 
   // a link in the thread opens its page in front of the drawer

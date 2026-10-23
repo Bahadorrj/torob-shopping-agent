@@ -153,7 +153,10 @@ test("a product card shows one reason, a from-price, its shop count and the sell
   await expect(first).toContainText("در ۸ فروشگاه");
   await expect(first.getByText("قیمت صوری کنار گذاشته شد")).toBeVisible();
   await expect(first.getByRole("link", { name: "دیدن فروشنده‌ها" })).toHaveAttribute("href", "/products/p1/sellers");
-  await expect(page.getByRole("listitem").filter({ hasText: "کالای ب" }).locator("[data-slot=badge]:not([data-slot=why] *)")).toHaveText("در ۸ فروشگاه");
+  // its store-count reason equals the meta line, so it shows once, as the meta line
+  const second = page.getByRole("listitem").filter({ hasText: "کالای ب" });
+  await expect(second.locator("[data-slot=badge]:not([data-slot=why] *)")).toHaveCount(0);
+  await expect(second.getByText("در ۸ فروشگاه", { exact: true })).toHaveCount(1);
   await expect(sheet(page).locator("details")).toHaveCount(0);
   await fits(page);
 

@@ -61,3 +61,48 @@ test("chat product cards are an RTL carousel with a peek, a top-left compare tog
   await expect(second.getByRole("button", { name: "حذف از مقایسه" })).toHaveAttribute("aria-pressed", "true");
   await expect(page).toHaveURL(/\/$/);
 });
+
+test("carousel shows its position, updated on swipe, and cards without an image have no empty well at 360 px", async ({ page }) => {
+  await fakeSessions(page, {});
+  const shown = [{ ...items[0], image_url: "data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22/>" }, ...items.slice(1)];
+  await fakeAgent(page, [{ block: "product_cards", query: "هدفون", items: shown }]);
+  await page.goto("/");
+  await askHome(page, "هدفون");
+
+  const list = page.getByRole("list", { name: "کالاها" });
+  const first = list.getByRole("listitem").filter({ hasText: "کالای الف" });
+  const second = list.getByRole("listitem").filter({ hasText: "کالای ب" });
+  await expect(first.locator("[data-slot=image]")).toHaveCount(1);
+  await expect(second.locator("[data-slot=image]")).toHaveCount(0);
+
+  // product title is 14/700
+  const font = await second.getByRole("heading").evaluate((el) => [getComputedStyle(el).fontSize, getComputedStyle(el).fontWeight]);
+  expect(font).toEqual(["14px", "700"]);
+
+  // the compare toggle is a compact control with a 44 px hit area
+  const t = (await second.getByRole("button", { name: "افزودن به مقایسه" }).boundingBox())!;
+  expect(t.width).toBeGreaterThanOrEqual(44);
+  expect(t.height).toBeGreaterThanOrEqual(44);
+  expect(t.width).toBeLessThan(60);
+
+  await expect(page.getByText("۱ از ۳")).toBeVisible();
+  await list.evaluate((el) => el.scrollBy({ left: -el.clientWidth, behavior: "instant" }));
+  await expect(page.getByText("۲ از ۳")).toBeVisible();
+});
+
+test("a single card shows its store count once, no position and no compare-these-two suggestion at 360 px", async ({ page }) => {
+  await fakeSessions(page, {});
+  const one = { ...items[0], score_parts: [], price: { ...price, price_age_bucket: null } };
+  await fakeAgent(page, [{ block: "product_cards", query: "هدفون", items: [one] }]);
+  await page.goto("/");
+  await askHome(page, "هدفون");
+
+  const card = page.getByRole("list", { name: "کالاها" }).getByRole("listitem");
+  await expect(card.getByRole("heading", { name: "کالای الف" })).toBeVisible();
+  await expect(card.getByText("در ۸ فروشگاه", { exact: true })).toHaveCount(1);
+  await expect(page.getByText(/^۱ از ۱$/)).toHaveCount(0);
+
+  const chips = page.getByRole("group", { name: "پیشنهادها" }).getByRole("button");
+  await expect(chips.first()).toBeVisible();
+  await expect(chips.filter({ hasText: "مقایسه این دو" })).toHaveCount(0);
+});

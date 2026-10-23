@@ -68,11 +68,11 @@ test("visit plan shows a map and a timeline of stops with open status, routes an
   await page.goto(`/plan?${query}`);
 
   await expect(page.getByRole("heading", { name: "برنامه مراجعه" })).toBeVisible();
-  // the page asks for exactly the plan in its link
-  expect(requests).toEqual([query]);
-
+  // the title is static, so wait for the stops before counting requests
   const stops = page.getByRole("listitem").filter({ has: page.getByRole("link", { name: "صفحه فروشگاه" }) });
   await expect(stops).toHaveCount(3);
+  // the page asks for exactly the plan in its link
+  expect(requests).toEqual([query]);
   const [a, b, c] = [stops.nth(0), stops.nth(1), stops.nth(2)];
   await expect(a).toContainText("آذرنوش دیسیس");
   await expect(a).toContainText("رسیدن ۱۳:۴۵");

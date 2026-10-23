@@ -35,7 +35,6 @@ export function PasajView({ pasaj, productIds }: { pasaj: string; productIds: st
   return (
     <article className="flex flex-col gap-4">
       <header className="flex flex-col gap-1">
-        <h1 className="text-xl font-bold">{faText(`پاساژ ${view.pasaj}`)}</h1>
         <p className="text-sm">{faDigits(view.count)} فروشگاه</p>
       </header>
       {view.count === 0 && (

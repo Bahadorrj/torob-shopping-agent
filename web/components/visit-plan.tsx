@@ -175,7 +175,6 @@ export function VisitPlan({ query }: { query: string }) {
   return (
     <article className="flex flex-col gap-3">
       <header className="flex flex-col gap-1">
-        <h1 className="text-lg font-bold leading-7">برنامه مراجعه</h1>
         <p className="text-sm text-muted-foreground">
           حرکت {day(plan.depart_at)} ساعت {clock(plan.depart_at)}، {MODES[plan.mode]}
         </p>
