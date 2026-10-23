@@ -5,7 +5,7 @@ import time
 from collections.abc import AsyncIterable, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from functools import cache
+from functools import cache, partial
 from typing import Annotated
 
 import anyio
@@ -21,8 +21,8 @@ from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel, ValidationError
 
-from pasazhgard.agent import Ports, build_graph, chat_model_from_env
-from pasazhgard.alternatives import Alternatives, find_alternatives
+from pasazhgard.agent import Ports, build_graph, chat_model_from_env, fallback_messages
+from pasazhgard.alternatives import Alternatives, Reason, find_alternatives
 from pasazhgard.basket import Basket, BasketQuery, optimize_basket
 from pasazhgard.brief import Session, SessionPatch, create_session, get_session, patch_session
 from pasazhgard.compare import Product, ProductCompare, ProductCompareQuery, compare_products, get_product
@@ -471,11 +471,46 @@ def _no_transform(response: Response) -> None:
     response.headers["Cache-Control"] = "no-cache, no-transform"
 
 
-@app.get("/sessions/{session_id}/inquiries/stream", response_class=EventSourceResponse, dependencies=[Depends(_no_transform)])
-async def inquiries_stream(
-    session_id: str, _=Depends(inquiries_read), now: datetime = Depends(get_now)
-) -> AsyncIterable[InquiryStatus]:
-    async for status in _changes(lambda conn, at: get_inquiries(conn, session_id, at), now):
+def _post_fallbacks(conn, sid: str, at: datetime) -> InquiryStatus:
+    """The session's inquiries, after the agent posts alternatives for each one that fell through (PRD 6.6).
+
+    Runs on every poll, not only on a change: a turn running meanwhile may write over the post, and the next poll
+    posts it again. The message ids make a repeat a no-op."""
+    status = get_inquiries(conn, sid, at)
+    fell = [i for i in status.inquiries if i.status in Reason.__args__]
+    if not fell:
+        return status
+    graph, config = app.state.graph, {"configurable": {"thread_id": sid}}
+    posted = {m.id for m in anyio.from_thread.run(graph.aget_state, config).values.get("messages", [])}
+    new = []
+    for i in fell:
+        if f"fallback-{i.inquiry_id}" in posted:
+            continue
+        try:
+            new += fallback_messages(i, find_alternatives(conn, sid, i.inquiry_id, at))
+        except ValueError:
+            # a seller answered since the read: nothing fell through any more
+            continue
+    if new:
+        # as the degraded node, whose only edge is END, so the post starts no run
+        anyio.from_thread.run(partial(graph.aupdate_state, config, {"messages": new}, as_node="degraded"))
+    return status
+
+
+def _inquiries_found(session_id: str, now: datetime = Depends(get_now)) -> None:
+    # its own connection, committed before the stream opens: an open tick's row lock would block the stream's tick
+    with _connect(row_factory=dict_row) as conn:
+        inquiries_read(session_id, conn, now)
+
+
+@app.get(
+    "/sessions/{session_id}/inquiries/stream",
+    response_class=EventSourceResponse,
+    dependencies=[Depends(_no_transform), Depends(_inquiries_found)],
+)
+async def inquiries_stream(session_id: str, now: datetime = Depends(get_now)) -> AsyncIterable[InquiryStatus]:
+    # shortcut: the agent posts only while a tracker or the chat of the session is open; move to a job if it must post unwatched
+    async for status in _changes(lambda conn, at: _post_fallbacks(conn, session_id, at), now):
         yield status
 
 
