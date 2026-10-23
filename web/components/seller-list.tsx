@@ -53,12 +53,21 @@ function place(s: { area: string | null; pasaj: string | null; floor?: string | 
 // whole days from an ISO time's date to today
 const daysSince = (at: string) => Math.max(0, Math.round((Date.parse(localDate()) - Date.parse(at.slice(0, 10))) / 864e5));
 
+export const TRUST_CLASS = { confirmed: "bg-trust-confirmed text-trust-foreground", website: "bg-trust-website text-trust-foreground" };
+
 // the price slot: the seller's confirmed price, else the website price, else the listed one
-function shownPrice(s: SellerRow): { toman: number | null; source: string; days: number | null } {
+function shownPrice(s: SellerRow): { toman: number | null; trust: "confirmed" | "website" | "listed"; source: string; days: number | null } {
   const lp = s.latest_price;
-  if (lp?.price_toman != null && lp.at && (lp.status === "confirmed" || lp.status === "website"))
-    return { toman: lp.price_toman, source: `${lp.status === "confirmed" ? "قیمت فروشنده" : "قیمت سایت فروشنده"}، ساعت ${clock(lp.at)}`, days: daysSince(lp.at) };
-  return { toman: s.price_toman, source: s.per_meter ? "قیمت ثبت‌شده، هر متر" : "قیمت ثبت‌شده", days: s.price_age_days };
+  if (lp?.price_toman != null && lp.at && (lp.status === "confirmed" || lp.status === "website")) {
+    const at = `ساعت ${clock(lp.at)}`;
+    return {
+      toman: lp.price_toman,
+      trust: lp.status,
+      source: lp.status === "confirmed" ? `قیمت فروشنده، ${at}` : `قیمت سایت فروشنده، ${at}، موجودی تأیید نشده`,
+      days: daysSince(lp.at),
+    };
+  }
+  return { toman: s.price_toman, trust: "listed", source: s.per_meter ? "قیمت ثبت‌شده، هر متر" : "قیمت ثبت‌شده", days: s.price_age_days };
 }
 
 function availability(i: SellerRow["inquiry"]) {
@@ -152,10 +161,18 @@ export function Seller({ s, reason, children }: { s: SellerRow; reason?: string;
         ) : (
           <>
             <span className="text-base leading-7 font-bold tabular-nums">{toman(price.toman)}</span>
-            <span className="text-xs text-muted-foreground">{price.source}</span>
+            <Badge
+              variant={price.trust === "listed" ? "secondary" : "default"}
+              className={cn("h-auto py-0.5 whitespace-normal", price.trust !== "listed" && TRUST_CLASS[price.trust])}
+            >
+              {price.source}
+            </Badge>
           </>
         )}
       </div>
+      {price.toman !== null && price.days !== null && price.days > 30 && (
+        <p className="text-xs leading-5 text-notice-foreground">قیمت قدیمی، استعلام بگیرید</p>
+      )}
       <div className="grid grid-cols-2 divide-x divide-hairline rounded-lg border border-hairline text-xs leading-5">
         <div data-slot="age" className="flex flex-col px-3 py-1.5">
           <span className="text-muted-foreground">آخرین تغییر قیمت</span>

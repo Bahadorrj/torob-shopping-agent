@@ -71,6 +71,7 @@ test("a website price shows with its fetch time and no stock claim; an unavailab
   await expect(row("آخرین قیمت")).toContainText("سایت فروشنده - ساعت ۱۲:۰۵");
   await expect(row("آخرین قیمت")).toContainText("موجودی تأیید نشده");
   await expect(row("اعتبار قیمت")).toContainText("قیمت سایت");
+  await expect(row("اعتبار قیمت").locator('[data-slot="badge"]').first()).toHaveCSS("background-color", "rgb(52, 104, 204)");
 
   const tracker = page.getByRole("region", { name: "استعلام‌ها" });
   await expect(tracker.getByRole("heading", { name: "قیمت سایت فروشنده‌ها" })).toBeVisible();

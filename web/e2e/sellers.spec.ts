@@ -110,7 +110,7 @@ test("result cards show price, age and availability slots, one reason and one fi
     await expect(slot(name, "age")).toContainText("آخرین تغییر قیمت");
     await expect(slot(name, "age")).not.toContainText("به‌روز");
     await expect(slot(name, "availability")).toContainText("موجودی");
-    await expect(card(name).locator('[data-slot="badge"]')).toHaveCount(1);
+    await expect(card(name).locator('[data-slot="badge"]:not([data-slot="price"] *)')).toHaveCount(1);
     expect(await filled(card(name))).toBe(1);
   }
 
@@ -118,7 +118,7 @@ test("result cards show price, age and availability slots, one reason and one fi
   await expect(slot(row.shop_name, "price")).toContainText("قیمت ثبت‌شده");
   await expect(slot(row.shop_name, "age")).toContainText("۲۲ روز پیش");
   await expect(slot(row.shop_name, "availability")).toContainText("نامشخص");
-  await expect(card(row.shop_name).locator('[data-slot="badge"]')).toHaveText("ارزان‌ترین");
+  await expect(card(row.shop_name).locator('[data-slot="badge"]:not([data-slot="price"] *)')).toHaveText("ارزان‌ترین");
   await expect(card(row.shop_name).getByRole("button", { name: "استعلام بگیرید" })).toBeVisible();
   await expect(card(row.shop_name).getByRole("link", { name: row.shop_name })).toHaveAttribute("href", "/shops/shop_a");
 
@@ -200,7 +200,7 @@ test("condition chips, the declared installment channel and the ask-them group a
   };
   await open(page, () => ({ ...list, count: 1, sellers: [installments], ask_them: [{ ...unpriced, unknown: ["hours", "payment"] }] }));
   const first = page.getByRole("listitem").filter({ hasText: row.shop_name });
-  await expect(first.locator('[data-slot="badge"]')).toHaveText("الان باز");
+  await expect(first.locator('[data-slot="badge"]:not([data-slot="price"] *)')).toHaveText("الان باز");
   await expect(first).toContainText("اسنپ‌پی حضوری، تارا · الان باز");
 
   const ask = page.getByRole("region", { name: "از فروشنده بپرسید" });
@@ -339,5 +339,28 @@ test("a streamed seller reply changes the card without a reload at 360 px", asyn
   await expect(card.locator('[data-slot="price"]')).toContainText("قیمت فروشنده، ساعت ۱۱:۴۲");
   await expect(card.locator('[data-slot="availability"]')).toContainText("موجود است");
   await expect(card).toContainText("قیمت ثبت‌شده ۳٫۵۰۰٫۰۰۰ تومان بود.");
+  expect(await noOverflow(page)).toBe(0);
+});
+
+test("each seller card shows one trust badge, green confirmed, blue website, neutral listed, at 360 px", async ({ page }) => {
+  const today = new Date().toLocaleDateString("en-CA");
+  const at = `${today}T11:42:00+03:30`;
+  const site = { ...row, offer_id: "o4", shop_id: "shop_f", shop_name: "سایت‌نشین", latest_price: { status: "website", price_toman: 3600000, trust_level: "website_price", at } };
+  const sure = { ...row, offer_id: "o5", shop_id: "shop_g", shop_name: "مطمئن", latest_price: { status: "confirmed", price_toman: 3700000, trust_level: "confirmed", at } };
+  const old = { ...row, offer_id: "o6", shop_id: "shop_h", shop_name: "قدیمی", price_age_days: 45, price_age_bucket: ">30" };
+  const fresh = { ...row, offer_id: "o7", shop_id: "shop_i", shop_name: "تازه" };
+  const sellers = [sure, site, old, fresh];
+  await open(page, () => ({ ...list, count: 4, sellers }));
+  const card = (name: string) => page.getByRole("listitem").filter({ hasText: name });
+  const badge = (name: string) => card(name).locator('[data-slot="price"] [data-slot="badge"]');
+  for (const s of sellers) await expect(badge(s.shop_name)).toHaveCount(1);
+  await expect(badge("مطمئن")).toContainText("قیمت فروشنده، ساعت ۱۱:۴۲");
+  await expect(badge("سایت‌نشین")).toContainText("قیمت سایت فروشنده، ساعت ۱۱:۴۲، موجودی تأیید نشده");
+  await expect(badge("تازه")).toHaveText("قیمت ثبت‌شده");
+  await expect(badge("مطمئن")).toHaveCSS("background-color", "rgb(11, 81, 36)");
+  await expect(badge("سایت‌نشین")).toHaveCSS("background-color", "rgb(52, 104, 204)");
+  await expect(badge("تازه")).not.toHaveCSS("background-color", "rgb(11, 81, 36)");
+  await expect(card("قدیمی")).toContainText("قیمت قدیمی، استعلام بگیرید");
+  await expect(card("تازه")).not.toContainText("قیمت قدیمی");
   expect(await noOverflow(page)).toBe(0);
 });
