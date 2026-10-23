@@ -38,7 +38,15 @@ export function ProductCompare({ ids }: { ids: string[] }) {
   const results = session?.results;
   const table = step?.kind === "compare" && step.product_ids.join(",") === key && results && "specs" in results ? results : null;
   if (table === null) {
-    if (error && !pending) return <p className="text-sm text-destructive">مقایسه انجام نشد. دوباره تلاش کنید.</p>;
+    if (error && !pending)
+      return (
+        <div className="flex flex-col items-start gap-2">
+          <p className="text-sm text-destructive">مقایسه انجام نشد. دوباره تلاش کنید.</p>
+          <Button variant="outline" onClick={() => patch({ step: { kind: "compare", product_ids: ids } })}>
+            دوباره تلاش
+          </Button>
+        </div>
+      );
     return <p className="text-sm text-muted-foreground">در حال بارگذاری...</p>;
   }
 
@@ -50,7 +58,6 @@ export function ProductCompare({ ids }: { ids: string[] }) {
 
   return (
     <article className="flex flex-col gap-3">
-      <h1 className="text-lg font-bold">مقایسه کالاها</h1>
       <p className="text-xs text-muted-foreground" aria-live="polite">
         {pending ? "در حال به‌روزرسانی..." : "قیمت، فروشنده و گارانتی در محدوده‌ای که در نوار بالا انتخاب کرده‌اید."}
       </p>

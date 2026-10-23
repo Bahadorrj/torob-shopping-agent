@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { PageTitle } from "@/components/back-header";
 import { clock, replyText, STATUS } from "@/components/inquiry-tracker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -109,7 +110,7 @@ export function SellerConsole({ shopId, token }: { shopId: string; token: string
       <p role="note" className="rounded-lg border border-dashed p-2 text-xs">
         شبیه‌سازی: این صفحه در دمو نقش فروشنده را بازی می‌کند و پاسخ‌هایش از فروشنده واقعی نیست.
       </p>
-      <h1 className="text-lg font-bold leading-7">کنسول فروشنده{inbox && ` - ${inbox.shop_name}`}</h1>
+      {inbox && <PageTitle>کنسول فروشنده - {inbox.shop_name}</PageTitle>}
       {inbox === null ? (
         <p className="text-sm text-muted-foreground">در حال بارگذاری...</p>
       ) : inbox.inquiries.length === 0 ? (

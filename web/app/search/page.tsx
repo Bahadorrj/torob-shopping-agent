@@ -41,7 +41,8 @@ export default function SearchPage() {
           }}
         >
           <BackButton />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="نام کالا یا مدل" aria-label="جستجوی کالا" className="h-10 flex-1" />
+          <h1 className="shrink-0 text-base font-bold">جستجو</h1>
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="نام کالا یا مدل" aria-label="جستجوی کالا" className="h-10 min-w-0 flex-1" />
           <Button type="submit" variant="buy" size="icon" aria-label="جستجو کن" className="size-10 shrink-0">
             <Search />
           </Button>
