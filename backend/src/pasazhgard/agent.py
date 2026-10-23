@@ -81,6 +81,14 @@ class Ports:
     connect: Callable[[], AbstractContextManager]
 
 
+class MustHavePatch(BaseModel):
+    """Seller conditions the user turns on (true) or off (false); null leaves one as it is."""
+
+    warranty: bool | None = Field(None, description="the item must come with a warranty, e.g. گارانتی دار, با گارانتی")
+    test_in_presence: bool | None = Field(None, description="the user can test the item in the shop")
+    fast_delivery: bool | None = None
+
+
 class BriefPatch(BaseModel):
     """Brief fields the user's latest message states or changes. Leave every other field null."""
 
@@ -92,6 +100,11 @@ class BriefPatch(BaseModel):
     visit_window: VisitWindow | None = None
     payment: Payment | None = None
     quantity: int | None = Field(None, gt=0)
+    priority: Literal["cheapest", "closest", "most_reliable"] | None = Field(
+        None, description="how to rank sellers, e.g. ارزون‌ترین is cheapest, نزدیک‌ترین closest, معتبرترین most_reliable"
+    )
+    must_have: MustHavePatch | None = None
+    travel_mode: Literal["walk", "transit", "car"] | None = Field(None, description="how the user gets there, e.g. با ماشین میرم is car")
 
 
 def block(kind: str, payload: BaseModel | dict) -> str:
@@ -124,6 +137,8 @@ def load_brief(conn, sid: str) -> Brief:
 
 def apply_patch(brief: Brief, patch: BriefPatch) -> Brief:
     fields = {k: v for k, v in patch.model_dump().items() if v is not None and k != "quantity"}
+    if patch.must_have:
+        fields["must_have"] = {**brief.must_have.model_dump(), **patch.must_have.model_dump(exclude_none=True)}
     if patch.quantity:
         items = brief.items or [Item()]
         fields["items"] = [items[0].model_copy(update={"quantity": patch.quantity}), *items[1:]]
