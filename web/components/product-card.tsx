@@ -1,7 +1,9 @@
+import { cn } from "cn";
 import Link from "next/link";
 
 import { TrayToggle } from "@/components/compare-tray";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { PriceFlag, PriceRange, ProductCard as Product } from "@/lib/api";
 import { faDigits, fromToman, priceAge, toman, UNKNOWN } from "@/lib/format";
@@ -56,44 +58,46 @@ export function ProductCard({ product, reason }: { product: Product; reason?: st
   const why = productWhy(product);
   return (
     // the sellers link stretches over the whole card; the compare toggle sits above it
-    <Card className="relative flex-row gap-3 p-3">
-      <div className="size-[72px] shrink-0 overflow-hidden rounded-lg bg-card">
+    <Card className="relative h-full gap-2 p-3">
+      <div className="h-24 shrink-0 overflow-hidden rounded-lg bg-muted/40">
         {product.image_url && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={product.image_url} alt="" loading="lazy" className="size-full object-contain" />
         )}
       </div>
+      {/* left is the end corner in RTL */}
+      <span className="absolute top-2 left-2 z-10">
+        <TrayToggle item={{ product_id: product.product_id, title: product.title }} />
+      </span>
       <CardContent className="flex min-w-0 flex-1 flex-col items-start gap-1 p-0">
-        <Badge variant="secondary" className="rounded-full font-bold">
-          {reason ?? productReasons([product])[0]}
-        </Badge>
-        {why.chips.length > 0 && (
-          <div role="group" data-slot="why" aria-label="چرا این کالا؟" className="flex flex-wrap gap-1">
-            {why.chips.map((c) => (
-              <Badge key={c} variant="outline" className="h-auto py-0.5 whitespace-normal">
-                {c}
-              </Badge>
-            ))}
-          </div>
-        )}
-        <h2 className="line-clamp-2 text-sm font-bold leading-6">{product.title}</h2>
+        <h2 className="line-clamp-2 text-base font-bold leading-7">{product.title}</h2>
         <FromPrice price={price} />
         <p className="text-xs text-muted-foreground tabular-nums">در {faDigits(product.offer_count)} فروشگاه</p>
-        {why.chips.length > 0 && <p className="text-xs leading-5 text-muted-foreground">{why.sentence}</p>}
-        {notes.length > 0 && <p className="text-xs text-muted-foreground">{notes.join("، ")}</p>}
-        <div className="flex w-full items-center justify-between gap-2 text-sm">
-          {product.offer_count > 0 ? (
-            <Link href={`/products/${product.product_id}/sellers`} className="font-bold text-contact after:absolute after:inset-0">
-              دیدن فروشنده‌ها
-            </Link>
-          ) : (
-            <span />
+        <div className="mt-1 flex flex-col items-start gap-1 border-t pt-2">
+          <Badge variant="secondary" className="rounded-full">
+            {reason ?? productReasons([product])[0]}
+          </Badge>
+          {why.chips.length > 0 && (
+            <div role="group" data-slot="why" aria-label="چرا این کالا؟" className="flex flex-wrap gap-1">
+              {why.chips.map((c) => (
+                <Badge key={c} variant="outline" className="h-auto py-0.5 font-normal whitespace-normal text-muted-foreground">
+                  {c}
+                </Badge>
+              ))}
+            </div>
           )}
-          <span className="relative z-10">
-            <TrayToggle item={{ product_id: product.product_id, title: product.title }} />
-          </span>
+          {why.chips.length > 0 && <p className="text-xs leading-5 text-muted-foreground">{why.sentence}</p>}
+          {notes.length > 0 && <p className="text-xs text-muted-foreground">{notes.join("، ")}</p>}
         </div>
       </CardContent>
+      {product.offer_count > 0 && (
+        <Link
+          href={`/products/${product.product_id}/sellers`}
+          className={cn(buttonVariants({ variant: "contact", size: "row" }), "h-11 w-full after:absolute after:inset-0")}
+        >
+          دیدن فروشنده‌ها
+        </Link>
+      )}
     </Card>
   );
 }
