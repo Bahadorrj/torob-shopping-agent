@@ -166,7 +166,8 @@ test("product cards end in suggestion chips that send their message", async ({ p
     price: { trust_level: "listed", min_toman: 1000000, max_toman: 1000000, per_meter: false, last_price_changed_at: null, price_age_days: null, price_age_bucket: null },
     price_flags: [], score_parts: [], meaning_match: false,
   };
-  await fakeAgent(page, [{ block: "product_cards", query: "x", items: [product] }], "", ({ messages }) => sent.push(String(messages.at(-1)?.content)));
+  const two = [product, { ...product, product_id: "p2", title: "کالای ب" }];
+  await fakeAgent(page, [{ block: "product_cards", query: "x", items: two }], "", ({ messages }) => sent.push(String(messages.at(-1)?.content)));
   await page.goto("/");
   const sheet = page.getByRole("region", { name: "دستیار" });
   await sheet.getByLabel("پیام به دستیار").fill("کالای الف");

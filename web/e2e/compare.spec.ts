@@ -133,3 +133,17 @@ test("compare picks belong to their chat: a new chat starts empty, a resumed or 
   await history.getByRole("button", { name: "حذف از تاریخچه" }).click();
   expect(await page.evaluate(() => localStorage.getItem("pasazhgard.compare.a"))).toBeNull();
 });
+
+test("a failed compare offers a retry that runs it again", async ({ page }) => {
+  await fakeSessions(page, { compare: compareResult });
+  let fail = true;
+  await page.route("**/api/sessions/**", (route) => {
+    if (fail && route.request().method() === "PATCH") return route.fulfill({ status: 500, body: "" });
+    return route.fallback();
+  });
+  await page.goto("/compare?ids=p1,p2");
+  await expect(page.getByText("مقایسه انجام نشد. دوباره تلاش کنید.")).toBeVisible();
+  fail = false;
+  await page.getByRole("button", { name: "دوباره تلاش" }).click();
+  await expect(page.getByRole("columnheader", { name: "کالای الف" })).toBeVisible();
+});

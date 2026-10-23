@@ -1,11 +1,13 @@
 "use client";
 
+import { GitCompareArrows } from "lucide-react";
 import Link from "next/link";
 import { createContext, useContext, useMemo, useState } from "react";
 
 import { compareKey, useBrief } from "@/components/brief-provider";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { faDigits } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 const MAX = 3;
 
@@ -55,11 +57,19 @@ export function CompareTrayProvider({ children }: { children: React.ReactNode })
   return <TrayContext.Provider value={value}>{children}</TrayContext.Provider>;
 }
 
-// one compare pick, for products here and for sellers in the seller list; a full pick list disables adding
+// one compare pick, a 44 px icon toggle; a full pick list disables adding
 export function CompareToggle({ on, full, onToggle }: { on: boolean; full: boolean; onToggle: () => void }) {
   return (
-    <Button variant="outline" size="sm" className="self-start" aria-pressed={on} disabled={!on && full} onClick={onToggle}>
-      {on ? "حذف از مقایسه" : "افزودن به مقایسه"}
+    <Button
+      variant="outline"
+      size="icon"
+      className={cn("size-11 rounded-full bg-card", on && "border-foreground bg-foreground text-background ring-[0.5px] ring-foreground hover:bg-foreground hover:text-background")}
+      aria-label={on ? "حذف از مقایسه" : "افزودن به مقایسه"}
+      aria-pressed={on}
+      disabled={!on && full}
+      onClick={onToggle}
+    >
+      <GitCompareArrows aria-hidden />
     </Button>
   );
 }
