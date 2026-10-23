@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { createContext, useContext, useMemo, useState } from "react";
 
+import { compareKey, useBrief } from "@/components/brief-provider";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { faDigits } from "@/lib/format";
 
@@ -20,22 +21,36 @@ function useTray() {
   return ctx;
 }
 
-// shortcut: the tray lives in memory and a reload empties it; keep it in the session if users miss it
+function stored(sid: string): Item[] {
+  try {
+    return JSON.parse(localStorage.getItem(compareKey(sid)) ?? "[]");
+  } catch {
+    return [];
+  }
+}
+
+// each chat (session) has its own picks, kept in localStorage so a reload or a resumed chat brings them back
 export function CompareTrayProvider({ children }: { children: React.ReactNode }) {
-  const [items, setItems] = useState<Item[]>([]);
+  const sid = useBrief().session?.session_id ?? null;
+  const [picks, setPicks] = useState<Record<string, Item[]>>({});
+  const items = useMemo(() => (sid ? (picks[sid] ?? stored(sid)) : []), [picks, sid]);
   const value = useMemo(
     () => ({
       items,
-      toggle: (item: Item) =>
-        setItems((all) =>
-          all.some((i) => i.product_id === item.product_id)
-            ? all.filter((i) => i.product_id !== item.product_id)
-            : all.length < MAX
-              ? [...all, item]
-              : all,
-        ),
+      toggle: (item: Item) => {
+        if (!sid) return;
+        const next = items.some((i) => i.product_id === item.product_id)
+          ? items.filter((i) => i.product_id !== item.product_id)
+          : items.length < MAX
+            ? [...items, item]
+            : items;
+        try {
+          localStorage.setItem(compareKey(sid), JSON.stringify(next));
+        } catch {}
+        setPicks((all) => ({ ...all, [sid]: next }));
+      },
     }),
-    [items],
+    [items, sid],
   );
   return <TrayContext.Provider value={value}>{children}</TrayContext.Provider>;
 }
