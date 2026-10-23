@@ -126,13 +126,13 @@ at once. Expression lives in exactness, not ornament: the right word for an unkn
 the floor and unit.
 
 The density is mobile and calm. At 360 px a screen holds a sticky filter chip bar, a stack of white cards
-8 px apart, and one docked action. There is no dark theme, no gradient, no shadow on content, and no
+8 px apart, and one docked action. Dark mode follows the system and uses Torob's dark palette. There is no gradient, no shadow on content, and no
 display type: the largest text is 16 px. Colour is rationed. Red marks the one buy or commit action per
 screen, blue marks talking to a seller or going there, and green and red only report open, closed and
 confirmed.
 
 **Key Characteristics:**
-- Torob's palette and type, light theme only, right-to-left Persian.
+- Torob's palette and type, light and dark (system setting), right-to-left Persian.
 - Flat white cards on a grey ground; the colour step is the edge.
 - Three type sizes (12, 14, 16) at two weights (400, 700).
 - One filled action per result, one red action per screen.
