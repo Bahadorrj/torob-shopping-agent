@@ -36,7 +36,9 @@ const CONDITION: Record<Condition, string> = {
   fast_delivery: "ارسال سریع",
 };
 
-const SHOP_LINK = "font-semibold text-primary underline underline-offset-4";
+const SHOP_LINK = "-my-2.5 py-2.5 font-semibold text-primary underline underline-offset-4";
+
+const CATEGORY_SHOWN = 10;
 
 const COVERAGE = "داده‌ها بخشی از فروشگاه‌های تهران، بیشتر مرکز شهر، را پوشش می‌دهند.";
 
@@ -271,6 +273,7 @@ export function SellerList({ productId }: { productId: string }) {
   // view and selected pin live here, so switching views keeps both; filters live in the brief
   const [view, setView] = useState<"list" | "map">("list");
   const [selected, setSelected] = useState<string | null>(null);
+  const [moreCategory, setMoreCategory] = useState(false);
   const rows = useMemo(() => (list ? [...list.sellers, ...list.ask_them] : []), [list]);
   const brief = session?.brief;
   const reasons = useMemo(() => {
@@ -408,7 +411,7 @@ export function SellerList({ productId }: { productId: string }) {
           </h2>
           <p className="text-xs">این فروشگاه‌ها این کالا را ثبت نکرده‌اند؛ فقط در همین دسته فعالیت دارند.</p>
           <ul className="flex flex-col gap-2">
-            {list.category_only.map((s) => (
+            {list.category_only.slice(0, moreCategory ? undefined : CATEGORY_SHOWN).map((s) => (
               <li key={s.shop_id} className="flex flex-col gap-1 rounded-xl bg-card p-4 text-sm">
                 <Link href={`/shops/${s.shop_id}`} className={SHOP_LINK}>
                   {s.shop_name}
@@ -421,6 +424,11 @@ export function SellerList({ productId }: { productId: string }) {
               </li>
             ))}
           </ul>
+          {!moreCategory && list.category_only.length > CATEGORY_SHOWN && (
+            <Button variant="outline" size="row" onClick={() => setMoreCategory(true)}>
+              نمایش {faDigits(list.category_only.length - CATEGORY_SHOWN)} فروشگاه دیگر
+            </Button>
+          )}
         </section>
       )}
 

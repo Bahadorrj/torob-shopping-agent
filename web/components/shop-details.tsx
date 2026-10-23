@@ -75,7 +75,7 @@ export function ShopDetails({ shopId }: { shopId: string }) {
               {shop.pasaj && (
                 <span className="flex flex-wrap gap-x-3">
                   {faText(shop.pasaj)}
-                  <Link href={pasajHref(shop.pasaj)} className="text-primary underline underline-offset-4">
+                  <Link href={pasajHref(shop.pasaj)} className="-my-2.5 py-2.5 text-primary underline underline-offset-4">
                     همه فروشگاه‌های این پاساژ
                   </Link>
                 </span>
