@@ -118,6 +118,8 @@
     --brand: #d74937;
     --closed: #f43f5e;
     --notice-foreground: #ffca32;
+    /* brighter solid green so the badge edge reads on the dark card; white text stays 5:1 */
+    --trust-confirmed: #15803d;
   }
 }
 
