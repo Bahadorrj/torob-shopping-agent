@@ -12,11 +12,11 @@ export const STATUS: Record<InquiryState, string> = {
   draft: "پیش‌نویس",
   closed: "فروشگاه الان بسته است",
   queued: "هنگام باز شدن فرستاده می‌شود",
-  sent: "ارسال شد، منتظر پاسخ",
-  replied: "پاسخ داد",
+  sent: "درخواست ارسال شد · موجودی تأیید نشده",
+  replied: "پاسخ داد · موجودی تأیید نشده",
   confirmed: "موجودی تأیید شد",
   unavailable: "موجود نیست",
-  no_reply: "پاسخ نداد",
+  no_reply: "پاسخ نداد · موجودی تأیید نشده",
 };
 
 export const FELL_THROUGH: InquiryState[] = ["unavailable", "no_reply", "closed"];
@@ -84,7 +84,7 @@ function Sent({ sessionId, inquiry: i, original }: { sessionId: string; inquiry:
           .filter((e) => e.status !== "draft")
           .map((e, n) => (
             <li key={n}>
-              {clock(e.at)} - {e.reply ? `فروشنده: ${replyText(e.reply)}` : e.status === "sent" ? "پیام ارسال شد" : STATUS[e.status]}
+              {clock(e.at)} - {e.reply ? `فروشنده: ${replyText(e.reply)}` : e.status === "sent" ? "درخواست ارسال شد" : STATUS[e.status]}
               {e.question && ` - سؤال تکمیلی: ${e.question}`}
             </li>
           ))}
@@ -166,10 +166,10 @@ export function InquiryTracker({
   const drafts = inquiries.filter((i) => i.status === "draft");
   const sent = inquiries.filter((i) => i.status !== "draft");
 
-  async function confirm() {
+  async function confirm(ids: number[]) {
     setSending(true);
     try {
-      await onConfirm(drafts.map((d) => d.inquiry_id));
+      await onConfirm(ids);
       setError(false);
     } catch {
       setError(true);
@@ -182,23 +182,32 @@ export function InquiryTracker({
     <section className="flex flex-col gap-3" aria-label="استعلام‌ها">
       {drafts.length > 0 && (
         <div className="flex flex-col gap-2 rounded-lg bg-muted p-3 text-sm">
-          <h2 className="font-bold">پیش‌نویس پیام‌ها</h2>
+          <h2 className="font-bold">درخواست موجودی</h2>
           <p className="text-xs text-muted-foreground">تا وقتی تأیید نکنید، پیامی برای فروشنده فرستاده نمی‌شود.</p>
           <ul className="flex flex-col gap-2">
             {drafts.map((d) => (
-              <li key={d.inquiry_id} className="flex flex-col gap-0.5">
-                <span className="font-semibold">{d.shop_name}</span>
-                <span>{d.message}</span>
-                <SendYourself message={d.message} />
+              <li key={d.inquiry_id} className="flex flex-col gap-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-semibold">{d.shop_name}</span>
+                  <Button size="xs" variant="outline" disabled={sending} onClick={() => confirm([d.inquiry_id])}>
+                    ارسال درخواست موجودی
+                  </Button>
+                </div>
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-muted-foreground">خودم می‌فرستم</summary>
+                  <div className="flex flex-col gap-1.5 pt-1.5">
+                    <SendYourself message={d.message} />
+                    <p className="text-muted-foreground">شماره‌های تماس فروشگاه‌ها در داده‌های این دمو واقعی نیستند.</p>
+                  </div>
+                </details>
               </li>
             ))}
           </ul>
-          <p className="text-xs text-muted-foreground">
-            می‌توانید پیام را خودتان هم بفرستید. شماره‌های تماس فروشگاه‌ها در داده‌های این دمو واقعی نیستند.
-          </p>
-          <Button onClick={confirm} disabled={sending} className="h-auto py-1.5 whitespace-normal">
-            ارسال به {faDigits(drafts.length)} فروشنده
-          </Button>
+          {drafts.length > 1 && (
+            <Button onClick={() => confirm(drafts.map((d) => d.inquiry_id))} disabled={sending} className="h-auto py-1.5 whitespace-normal">
+              ارسال به {faDigits(drafts.length)} فروشنده
+            </Button>
+          )}
           {error && <p className="text-xs text-destructive">ارسال نشد. دوباره تلاش کنید.</p>}
         </div>
       )}

@@ -70,7 +70,7 @@ test("no reply and closed inquiries bring up alternatives with one-tap ask and q
   await page.goto("/products/p1/sellers/compare?offer=o1&offer=o2");
 
   const tracker = page.getByRole("region", { name: "استعلام‌ها" });
-  await expect(tracker.getByText("پاسخ نداد", { exact: true })).toBeVisible();
+  await expect(tracker.getByText("پاسخ نداد · موجودی تأیید نشده", { exact: true })).toBeVisible();
   await expect(tracker.getByText("فروشگاه الان بسته است", { exact: true })).toBeVisible();
   const block = tracker.getByRole("region", { name: "جایگزین‌ها" });
   await expect(block).toContainText("پاسخ نداد. به جایش:");
@@ -119,7 +119,7 @@ test("an alternative asked from the agent's inquiry block shows in that block an
   const tracker = page.getByRole("region", { name: "استعلام‌ها" });
   const card = tracker.getByRole("listitem").filter({ hasText: "نیکورا ویوان" });
   await expect(card).toContainText("به جای دیسیلا مانسا");
-  await expect(card.getByText("پاسخ داد", { exact: true })).toBeVisible();
+  await expect(card.getByText("پاسخ داد · موجودی تأیید نشده", { exact: true })).toBeVisible();
   // another inquiry of the session stays out of this block
   await expect(tracker).not.toContainText("رامیلا رامیرا");
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
