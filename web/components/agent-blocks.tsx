@@ -167,9 +167,14 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
     const items = d.items.slice(0, 5);
     const reasons = productReasons(items);
     return items.length ? (
-      <ul className="flex flex-col gap-2">
+      // one swipe row: each card is narrower than the row so the next one peeks in; RTL starts it on the right.
+      // shrink-0: a scroll box in the thread's flex column would otherwise shrink and clip the cards
+      <ul
+        aria-label="کالاها"
+        className="flex shrink-0 snap-x snap-mandatory gap-2 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
         {items.map((p, i) => (
-          <li key={p.product_id}>
+          <li key={p.product_id} className="w-[85%] shrink-0 snap-start only:w-full">
             <ProductCard product={p} reason={reasons[i]} />
           </li>
         ))}
