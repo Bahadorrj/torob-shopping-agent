@@ -29,7 +29,7 @@ export function ListedPrice({ price }: { price: PriceRange }) {
       <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
         <Badge variant="secondary">قیمت ثبت‌شده</Badge>
         <span>آخرین تغییر قیمت: {priceAge(price.price_age_days)}</span>
-        {price.price_age_bucket === ">30" && <span className="text-amber-700">قیمت قدیمی، استعلام بگیرید</span>}
+        {price.price_age_bucket === ">30" && <span className="text-notice-foreground">قیمت قدیمی، استعلام بگیرید</span>}
       </div>
     </>
   );

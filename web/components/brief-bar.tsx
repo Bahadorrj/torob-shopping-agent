@@ -74,7 +74,7 @@ export function Choices<T extends string>({ label, options, value, onPick }: { l
 type Place = { kind: "area" | "pasaj"; name: string };
 const KINDS = { area: "محله", pasaj: "پاساژ" };
 // a match ignores ی/ي, ک/ك, spaces and ZWNJ: the data spells one pasaj several ways
-const fold = (s: string) => s.replace(/ي/g, "ی").replace(/ك/g, "ک").replace(/[\s\u200c]/g, "");
+export const fold = (s: string) => s.replace(/ي/g, "ی").replace(/ك/g, "ک").replace(/[\s\u200c]/g, "");
 
 type AreaPick = { radius_m: number } | { name: string } | { pasaj: string } | null;
 

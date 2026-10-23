@@ -305,6 +305,19 @@ test("directions without an origin ask for one", async ({ page }) => {
   await expect(card).toContainText("برای مسیر، مبدأ را در خلاصه خرید انتخاب کنید.");
 });
 
+test("a long same-category list shows 10 shops and a button for the rest at 360 px", async ({ page }) => {
+  const many = Array.from({ length: 14 }, (_, n) => ({ ...list.category_only[0], shop_id: `shop_c${n}`, shop_name: `فروشگاه ${n + 1}` }));
+  await open(page, () => ({ ...list, category_only: many }));
+  const shops = page.getByRole("region", { name: "فروشگاه‌های هم‌دسته" });
+  await expect(shops.getByRole("listitem")).toHaveCount(10);
+  await shops.getByRole("button", { name: "نمایش ۴ فروشگاه دیگر" }).click();
+  await expect(shops.getByRole("listitem")).toHaveCount(14);
+  await expect(shops.getByRole("button", { name: /نمایش/ })).toHaveCount(0);
+  const link = (await shops.getByRole("link").first().boundingBox())!;
+  expect(link.height).toBeGreaterThanOrEqual(40);
+  expect(await noOverflow(page)).toBe(0);
+});
+
 test("a streamed seller reply changes the card without a reload at 360 px", async ({ page }) => {
   const today = new Date().toLocaleDateString("en-CA");
   const at = `${today}T11:42:00+03:30`;

@@ -36,7 +36,7 @@ export function PasajList() {
         <h2 id="pasajs" className="text-base font-bold">
           پاساژها
         </h2>
-        <button type="button" className="text-sm text-contact" onClick={() => window.dispatchEvent(new Event(OPEN_AREA))}>
+        <button type="button" className="-mx-2 flex h-10 items-center px-2 text-sm text-contact" onClick={() => window.dispatchEvent(new Event(OPEN_AREA))}>
           همه مناطق
         </button>
       </div>

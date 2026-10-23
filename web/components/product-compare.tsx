@@ -104,8 +104,8 @@ export function ProductCompare({ ids }: { ids: string[] }) {
               ))}
             </tr>
             {specs.map((s) => (
-              <tr key={s.key} data-differs={s.differs} className={s.differs ? "bg-amber-50" : undefined}>
-                <th scope="row" className={`${label} ${s.differs ? "bg-amber-50" : ""}`}>
+              <tr key={s.key} data-differs={s.differs} className={s.differs ? "bg-amber-50 dark:bg-amber-950" : undefined}>
+                <th scope="row" className={`${label} ${s.differs ? "bg-amber-50 dark:bg-amber-950" : ""}`}>
                   {faText(s.key)}
                 </th>
                 {s.values.map((v, i) => (
