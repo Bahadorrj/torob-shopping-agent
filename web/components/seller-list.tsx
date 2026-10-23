@@ -58,7 +58,7 @@ const daysSince = (at: string) => Math.max(0, Math.round((Date.parse(localDate()
 export const TRUST_CLASS = { confirmed: "bg-trust-confirmed text-trust-foreground", website: "bg-trust-website text-trust-foreground" };
 
 // the price slot: the seller's confirmed price, else the website price, else the listed one
-function shownPrice(s: SellerRow): { toman: number | null; trust: "confirmed" | "website" | "listed"; source: string; days: number | null } {
+export function shownPrice(s: SellerRow): { toman: number | null; trust: "confirmed" | "website" | "listed"; source: string; days: number | null } {
   const lp = s.latest_price;
   if (lp?.price_toman != null && lp.at && (lp.status === "confirmed" || lp.status === "website")) {
     const at = `ساعت ${clock(lp.at)}`;

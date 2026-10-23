@@ -10,7 +10,10 @@ import { fold } from "@/components/brief-bar";
 import { useBrief } from "@/components/brief-provider";
 import { InquiryTracker, withAlternatives } from "@/components/inquiry-tracker";
 import { ListedPrice, ProductCard } from "@/components/product-card";
-import { Seller } from "@/components/seller-list";
+import { ROWS } from "@/components/seller-compare";
+import { Seller, shownPrice, TRUST_CLASS } from "@/components/seller-list";
+import { NotRecorded } from "@/components/shop-details";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -25,6 +28,7 @@ import {
   type Inquiry,
   type InquiryStatus,
   type ModelPick,
+  type PriceRange,
   type ProductCard as Product,
   type ProductCompare,
   type SellerCompare,
@@ -33,7 +37,7 @@ import {
   type Shortlist,
   type VisitPlan,
 } from "@/lib/api";
-import { faDigits, faText, locate } from "@/lib/format";
+import { faDigits, faText, locate, toman } from "@/lib/format";
 import { productReasons } from "@/lib/reasons";
 import { useEventStream } from "@/lib/use-event-stream";
 
@@ -105,6 +109,58 @@ function Pick({ m }: { m: ModelPick }) {
   );
 }
 
+function RangeCell({ price: p }: { price: PriceRange }) {
+  if (p.trust_level !== "listed" || p.min_toman === null || p.max_toman === null) return <NotRecorded text="قیمت ثبت نشده" />;
+  return <span className="font-bold">{p.min_toman === p.max_toman ? toman(p.min_toman) : `${faDigits(p.min_toman)} تا ${toman(p.max_toman)}`}</span>;
+}
+
+const TRUST_LABEL = { confirmed: "تأییدشده", website: "قیمت سایت", listed: "ثبت‌شده" };
+
+function SellerPrice({ s }: { s: SellerCompare["sellers"][number] }) {
+  const p = shownPrice(s);
+  if (p.toman === null) return <NotRecorded text="قیمت ثبت نشده" />;
+  return (
+    <div className="flex flex-col items-start gap-0.5">
+      <span className="font-bold">{toman(p.toman)}</span>
+      <Badge variant={p.trust === "listed" ? "secondary" : "default"} className={p.trust === "listed" ? undefined : TRUST_CLASS[p.trust]}>
+        {TRUST_LABEL[p.trust]}
+      </Badge>
+    </div>
+  );
+}
+
+// side by side in the chat: table-fixed keeps up to three columns inside 360 px
+function MiniTable({ label, heads, rows }: { label: string; heads: string[]; rows: [string, ReactNode[]][] }) {
+  return (
+    <table aria-label={label} className="w-full table-fixed text-xs">
+      <thead>
+        <tr className="border-b">
+          <td className="w-16" />
+          {heads.map((h, i) => (
+            <th key={i} scope="col" className="p-1 text-start align-top font-semibold break-words">
+              <span className="line-clamp-3">{h}</span>
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(([name, cells]) => (
+          <tr key={name} className="border-b">
+            <th scope="row" className="py-1.5 text-start align-top font-normal break-words text-muted-foreground">
+              {name}
+            </th>
+            {cells.map((c, i) => (
+              <td key={i} className="p-1 align-top break-words">
+                {c || <NotRecorded />}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export const BLOCKS: Record<string, (data: never, send: (text: string) => void) => ReactNode> = {
   product_cards: (d: { items: Product[] }) => {
     const items = d.items.slice(0, 5);
@@ -147,17 +203,39 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
       </Link>
     </div>
   ),
-  compare_table: (d: ProductCompare) => (
-    <div className="flex flex-col gap-1 text-sm">
-      <p>{d.products.map((p) => p.title).join(" / ")}</p>
-      <Link href={compareHref(d.products.map((p) => p.product_id))} className={linkClass}>
-        دیدن جدول مقایسه
-      </Link>
-    </div>
-  ),
+  compare_table: (d: ProductCompare) => {
+    const products = d.products.slice(0, 3);
+    // the full page has every spec; the chat shows the first few that differ
+    const specs = d.specs.filter((s) => s.differs).slice(0, 6);
+    return (
+      <div className="flex flex-col gap-1.5">
+        <MiniTable
+          label="مقایسه کالاها"
+          heads={products.map((p) => p.title)}
+          rows={[
+            ["قیمت در محدوده", products.map((p) => <RangeCell key={p.product_id} price={p.price} />)],
+            ["فروشنده در محدوده", products.map((p) => `${faDigits(p.seller_count)} فروشنده`)],
+            ...specs.map((s): [string, ReactNode[]] => [faText(s.key), products.map((_, i) => s.values[i] && faText(s.values[i]))]),
+          ]}
+        />
+        <Link href={compareHref(d.products.map((p) => p.product_id))} className={linkClass}>
+          دیدن جدول مقایسه
+        </Link>
+      </div>
+    );
+  },
   seller_compare: (d: SellerCompare) => (
-    <div className="flex flex-col gap-1 text-sm">
-      <p>{d.sellers.map((s) => s.shop_name).join(" / ")}</p>
+    <div className="flex flex-col gap-1.5">
+      <MiniTable
+        label="مقایسه فروشنده‌ها"
+        heads={d.sellers.slice(0, 3).map((s) => s.shop_name)}
+        rows={[
+          ["قیمت", d.sellers.slice(0, 3).map((s) => <SellerPrice key={s.offer_id} s={s} />)],
+          ...ROWS.filter(([label]) => ["فاصله و زمان", "باز در زمان رسیدن", "پرداخت و اقساط"].includes(label)).map(
+            ([label, cell]): [string, ReactNode[]] => [label, d.sellers.slice(0, 3).map(cell)],
+          ),
+        ]}
+      />
       <Link
         href={`/products/${d.product_id}/sellers/compare?${new URLSearchParams(d.sellers.map((s) => ["offer", s.offer_id]))}`}
         className={linkClass}
