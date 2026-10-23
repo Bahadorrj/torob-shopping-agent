@@ -4,7 +4,7 @@ import type { Message, ToolMessage } from "@ag-ui/client";
 import { CopilotKitProvider, useAgent, useConfigureSuggestions, useCopilotKit, useRenderToolCall, useSuggestions } from "@copilotkit/react-core/v2";
 import { ArrowUp, History, SquarePen, Trash2, X } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { AGENT_SEND, ToolRenderers } from "@/components/agent-blocks";
 import { forgetSession, recentSessionIds, useBrief } from "@/components/brief-provider";
@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 export { AGENT_SEND };
 
 // a tapped chip goes to the agent as a user message whose id has this prefix; the server keeps message ids,
-// so the thread read back after a reload hides it too
+// so the thread read back after a reload still draws it as a chip pill
 const CHIP = "chip-";
 
 const TIMES = "pasazhgard.messageTimes";
@@ -58,6 +58,11 @@ const SUGGESTIONS: Record<string, { title: string; message: string }[]> = {
   ],
 };
 
+// a suggestion sends its message but shows its title; a chip-block option sends its own text
+const TITLES: Record<string, string> = Object.fromEntries(Object.values(SUGGESTIONS).flat().map((s) => [s.message, s.title]));
+const chipText = (content: unknown) => TITLES[String(content)] ?? String(content);
+const userText = (m: Message) => (m.id.startsWith(CHIP) ? chipText(m.content) : String(m.content));
+
 function lastBlock(messages: Message[]) {
   const tool = messages.findLast((m) => m.role === "tool");
   try {
@@ -92,7 +97,7 @@ async function pastChats(): Promise<Chat[]> {
       try {
         const [session, thread] = await Promise.all([getSession(id), getThread(id)]);
         const first = thread.find((m) => m.role === "user");
-        return session && first ? { id, title: String(first.content) } : null;
+        return session && first ? { id, title: userText(first) } : null;
       } catch {
         return null;
       }
@@ -167,6 +172,10 @@ function Sheet({ threadId, open, setOpen }: { threadId: string; open: boolean; s
   const router = useRouter();
   const [shownPath, setShownPath] = useState(pathname);
   const [times, setTimes] = useState<Record<string, number> | null>(null);
+  const logRef = useRef<HTMLDivElement>(null);
+  // the log follows new content while the user is at its bottom
+  const stuck = useRef(true);
+  const [unseen, setUnseen] = useState(false);
 
   const kind = agent.messages.length ? lastBlock(agent.messages) : "";
   useConfigureSuggestions({ suggestions: SUGGESTIONS[kind] ?? [], available: "always", consumerAgentId: "sheet" }, [kind]);
@@ -213,11 +222,12 @@ function Sheet({ threadId, open, setOpen }: { threadId: string; open: boolean; s
     agent.setMessages(thread);
   }, [agent, agent.isRunning, thread]);
 
-  // `chip`: a tapped suggestion, sent to the agent but not drawn as a user bubble
+  // `chip`: a tapped suggestion or chip-block option, drawn as a muted pill instead of a user bubble
   async function send(content: string, chip = false) {
     if (!content.trim() || agent.isRunning) return;
     if (!chip) setText("");
     show(true);
+    stuck.current = true;
     agent.addMessage({ id: `${chip ? CHIP : ""}${crypto.randomUUID()}`, role: "user", content });
     try {
       await copilotkit.runAgent({ agent });
@@ -235,19 +245,45 @@ function Sheet({ threadId, open, setOpen }: { threadId: string; open: boolean; s
     return () => window.removeEventListener(AGENT_SEND, onSend);
   });
 
+  // opening the drawer starts at the latest turn
+  useLayoutEffect(() => {
+    if (!open) return;
+    stuck.current = true;
+    logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
+  }, [open]);
+  // messages, blocks filling in and suggestions all grow the log's content, so its size drives the follow
+  const follow = useCallback((content: HTMLDivElement | null) => {
+    if (!content) return;
+    let height = 0;
+    const observer = new ResizeObserver(() => {
+      const grew = content.offsetHeight > height;
+      height = content.offsetHeight;
+      if (stuck.current) logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
+      else if (grew) setUnseen(true);
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
+  const toBottom = () => {
+    stuck.current = true;
+    setUnseen(false);
+    logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
+  };
+
   // a new chat is a new session, which also starts the brief over
   const actions = (
     <div className="flex items-center">
       <Button
         variant="ghost"
         size="sm"
+        className="h-11"
         disabled={agent.isRunning || !agent.messages.some((m) => m.role === "user")}
         onClick={() => resume(null)}
       >
         <SquarePen aria-hidden />
         گفتگوی جدید
       </Button>
-      <Button variant="ghost" size="sm" onClick={() => showHistory(true)}>
+      <Button variant="ghost" size="sm" className="h-11" onClick={() => showHistory(true)}>
         <History aria-hidden />
         تاریخچه
       </Button>
@@ -256,77 +292,120 @@ function Sheet({ threadId, open, setOpen }: { threadId: string; open: boolean; s
   );
 
   const results = new Map(agent.messages.filter((m): m is ToolMessage => m.role === "tool").map((m) => [m.toolCallId, m]));
-  const shown = agent.messages.filter((m) => (m.role === "user" && !m.id.startsWith(CHIP)) || m.role === "assistant");
-  const sender = (i: number) => (shown[i] ? (shown[i].role === "user" ? "user" : "agent") : null);
+  const shown = agent.messages.filter((m) => m.role === "user" || m.role === "assistant");
+  // one agent run draws as one group: its texts first, then its blocks
+  const runs: Message[][] = [];
+  for (const m of shown) {
+    const last = runs.at(-1);
+    if (m.role === "assistant" && last?.[0].role === "assistant") last.push(m);
+    else runs.push([m]);
+  }
+  const sender = (i: number) => (runs[i] ? (runs[i][0].role === "user" ? "user" : "agent") : null);
   // tighter within a run of one sender, wider between runs
   const gap = (i: number) => (i === 0 ? "" : sender(i - 1) === sender(i) ? "mt-1" : "mt-4");
   const time = (id: string) =>
-    times?.[id] ? <time className="self-end text-[10px] leading-none opacity-70">{clock.format(times[id])}</time> : null;
+    times?.[id] ? <time className="self-end text-xs leading-none opacity-70">{clock.format(times[id])}</time> : null;
   const body = (
     <>
-      <div role="log" aria-label="گفتگو" className="flex min-h-0 flex-1 flex-col overflow-y-auto py-2">
-        {shown.map((m, i) => {
-          // the last bubble of a run gets the tail on its outer bottom corner
-          const tail = sender(i + 1) !== sender(i);
-          if (m.role === "user")
-            return (
-              <div
-                key={m.id}
-                data-sender="user"
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div
+          ref={logRef}
+          role="log"
+          aria-label="گفتگو"
+          className="flex min-h-0 flex-1 flex-col overflow-y-auto py-2"
+          onScroll={(e) => {
+            const log = e.currentTarget;
+            stuck.current = log.scrollHeight - log.scrollTop - log.clientHeight < 8;
+            if (stuck.current) setUnseen(false);
+          }}
+        >
+          <div ref={follow} className="flex shrink-0 flex-col">
+            {runs.map((run, i) => {
+              const [m] = run;
+              if (m.role === "user" && m.id.startsWith(CHIP))
+                return (
+                  <p
+                    key={m.id}
+                    data-sender="chip"
+                    className={cn("max-w-[85%] self-start rounded-full border bg-card px-3 py-1 text-xs text-muted-foreground", gap(i))}
+                  >
+                    {chipText(m.content)}
+                  </p>
+                );
+              if (m.role === "user")
+                return (
+                  <div
+                    key={m.id}
+                    data-sender="user"
+                    className={cn(
+                      "flex max-w-[85%] flex-col gap-1 self-start rounded-2xl bg-primary px-3 py-1.5 text-sm text-primary-foreground",
+                      gap(i),
+                      // the last bubble of a run gets the tail on its outer bottom corner
+                      sender(i + 1) !== "user" && "bubble-tail bubble-user rounded-es-none",
+                    )}
+                  >
+                    <p className="leading-6 whitespace-pre-wrap">{String(m.content)}</p>
+                    {time(m.id)}
+                  </div>
+                );
+              const texts = run.filter((x) => x.content);
+              const calls = run.flatMap((x) => (x.role === "assistant" ? (x.toolCalls ?? []) : []));
+              // blocks keep to the agent's column: its side and its width limit
+              return (
+                <div key={m.id} className={cn("flex w-[88%] flex-col items-end gap-2 self-end", gap(i))}>
+                  {texts.map((x, j) => (
+                    <div
+                      key={x.id}
+                      data-sender="agent"
+                      className={cn(
+                        "flex max-w-full flex-col gap-1 rounded-2xl bg-card px-3 py-1.5 text-sm text-card-foreground",
+                        j === texts.length - 1 && !calls.length && "bubble-tail bubble-agent rounded-ee-none",
+                      )}
+                    >
+                      <p className="leading-6 whitespace-pre-wrap">{String(x.content)}</p>
+                      {time(x.id)}
+                    </div>
+                  ))}
+                  {calls.map((toolCall) => (
+                    <div key={toolCall.id} className="w-full min-w-0">
+                      {renderToolCall({ toolCall, toolMessage: results.get(toolCall.id) })}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+            {agent.isRunning ? (
+              <p
+                data-sender="agent"
                 className={cn(
-                  "flex max-w-[85%] flex-col gap-1 self-start rounded-2xl bg-primary px-3 py-1.5 text-sm text-primary-foreground",
-                  gap(i),
-                  tail && "bubble-tail bubble-user rounded-es-none",
+                  "bubble-tail bubble-agent self-end rounded-2xl rounded-ee-none bg-card px-3 py-2 text-xs text-muted-foreground",
+                  runs.length > 0 && (sender(runs.length - 1) === "agent" ? "mt-1" : "mt-4"),
                 )}
               >
-                <p className="leading-6 whitespace-pre-wrap">{String(m.content)}</p>
-                {time(m.id)}
-              </div>
-            );
-          const calls = m.role === "assistant" ? (m.toolCalls ?? []) : [];
-          // blocks keep to the agent's column: its side and its width limit
-          return (
-            <div key={m.id} className={cn("flex w-[88%] flex-col items-end gap-2 self-end", gap(i))}>
-              {m.content && (
-                <div
-                  data-sender="agent"
-                  className={cn(
-                    "flex max-w-full flex-col gap-1 rounded-2xl bg-card px-3 py-1.5 text-sm text-card-foreground",
-                    tail && !calls.length && "bubble-tail bubble-agent rounded-ee-none",
-                  )}
-                >
-                  <p className="leading-6 whitespace-pre-wrap">{String(m.content)}</p>
-                  {time(m.id)}
+                در حال فکر کردن...
+              </p>
+            ) : (
+              suggestions.length > 0 && (
+                <div role="group" aria-label="پیشنهادها" className="mt-3 flex flex-wrap gap-1.5">
+                  {suggestions.map((s) => (
+                    <Button key={s.title} variant="outline" size="sm" className="h-9 bg-card px-3" onClick={() => send(s.message, true)}>
+                      {s.title}
+                    </Button>
+                  ))}
                 </div>
-              )}
-              {calls.map((toolCall) => (
-                <div key={toolCall.id} className="w-full min-w-0">
-                  {renderToolCall({ toolCall, toolMessage: results.get(toolCall.id) })}
-                </div>
-              ))}
-            </div>
-          );
-        })}
-        {agent.isRunning ? (
-          <p
-            data-sender="agent"
-            className={cn(
-              "bubble-tail bubble-agent self-end rounded-2xl rounded-ee-none bg-card px-3 py-2 text-xs text-muted-foreground",
-              shown.length > 0 && (sender(shown.length - 1) === "agent" ? "mt-1" : "mt-4"),
+              )
             )}
+          </div>
+        </div>
+        {unseen && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="absolute bottom-2 left-1/2 h-9 -translate-x-1/2 rounded-full bg-card px-3 shadow-sm"
+            onClick={toBottom}
           >
-            در حال فکر کردن...
-          </p>
-        ) : (
-          suggestions.length > 0 && (
-            <div role="group" aria-label="پیشنهادها" className="mt-3 flex flex-wrap gap-1.5">
-              {suggestions.map((s) => (
-                <Button key={s.title} variant="outline" size="sm" className="h-9 bg-card px-3" onClick={() => send(s.message, true)}>
-                  {s.title}
-                </Button>
-              ))}
-            </div>
-          )
+            پیام جدید
+          </Button>
         )}
       </div>
       <CompareTrayBar />
@@ -347,7 +426,7 @@ function Sheet({ threadId, open, setOpen }: { threadId: string; open: boolean; s
             e.preventDefault();
             router.push(`/basket?${new URLSearchParams({ text: pasted })}`);
           }}
-          placeholder="بپرسید یا شرط اضافه کنید"
+          placeholder={shown.length ? "بپرسید یا شرط اضافه کنید" : "چه چیزی لازم دارید؟"}
           aria-label="پیام به دستیار"
           className="h-10"
         />

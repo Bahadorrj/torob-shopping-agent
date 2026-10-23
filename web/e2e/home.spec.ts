@@ -61,7 +61,7 @@ test("user bubbles sit on the right, agent bubbles and blocks on the left, each 
   await fits(page);
 });
 
-test("a tapped chip goes to the agent but not into the thread, also after a reload", async ({ page }) => {
+test("a tapped chip goes to the agent and shows as a pill, not a user bubble", async ({ page }) => {
   const sent: string[] = [];
   const { sessions } = await fakeSessions(page, {});
   await fakeAgent(page, [budget], "", ({ messages }) => sent.push(String(messages.at(-1)?.content)));
@@ -71,10 +71,11 @@ test("a tapped chip goes to the agent but not into the thread, also after a relo
   await expect.poll(() => sent).toEqual([SENTENCE, "تا ۱ میلیون تومان"]);
   await expect(sheet(page).locator("[data-sender=user]")).toHaveCount(1);
   await expect(sheet(page).locator("[data-sender=user]")).toContainText(SENTENCE);
+  await expect(sheet(page).locator("[data-sender=chip]")).toHaveText("تا ۱ میلیون تومان");
   expect(sessions.size).toBe(1);
 });
 
-test("a hidden chip message in a restored thread stays hidden", async ({ page }) => {
+test("a chip message in a restored thread shows as a pill", async ({ page }) => {
   const thread = [
     { id: "u1", role: "user", content: "شارژر اپل" },
     { id: "chip-u2", role: "user", content: "تا ۱ میلیون تومان" },
@@ -85,7 +86,7 @@ test("a hidden chip message in a restored thread stays hidden", async ({ page })
   await page.goto("/");
   await expect(sheet(page).getByText("باشه")).toBeVisible();
   await expect(sheet(page).locator("[data-sender=user]")).toHaveCount(1);
-  await expect(sheet(page).getByText("تا ۱ میلیون تومان")).toHaveCount(0);
+  await expect(sheet(page).locator("[data-sender=chip]")).toHaveText("تا ۱ میلیون تومان");
 });
 
 test("a sentence on home runs the agent in place and its chips answer it", async ({ page }) => {
