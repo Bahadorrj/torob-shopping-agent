@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { PageTitle } from "@/components/back-header";
 import { pasajHref } from "@/components/pasaj-view";
 import { Badge } from "@/components/ui/badge";
 import { getShop, type Day, type DayHours, type ShopDetails as Shop } from "@/lib/api";
@@ -63,7 +64,7 @@ export function ShopDetails({ shopId }: { shopId: string }) {
   return (
     <article className="flex flex-col gap-4">
       <header className="flex flex-col gap-1">
-        <h1 className="text-xl font-bold">{shop.name}</h1>
+        <PageTitle>{shop.name}</PageTitle>
         <p className="text-sm text-muted-foreground">{shop.address ?? `نشانی: ${UNKNOWN}`}</p>
       </header>
 

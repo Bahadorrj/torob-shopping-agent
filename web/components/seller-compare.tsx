@@ -174,7 +174,6 @@ export function SellerCompare({ productId, offerIds }: { productId: string; offe
   const plan = session && planLink(session.brief, [...new Set(compare.sellers.map((s) => s.shop_id))], session.session_id);
   return (
     <article className="flex flex-col gap-3">
-      <h1 className="text-lg font-bold leading-7">مقایسه فروشنده‌ها</h1>
       <p className="text-sm">{compare.title}</p>
       <div className="overflow-x-auto">
         <table className="w-full table-fixed text-xs">
