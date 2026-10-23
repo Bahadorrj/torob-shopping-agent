@@ -24,7 +24,7 @@ export function NotRecorded({ text = UNKNOWN }: { text?: string }) {
   return <span className="text-muted-foreground">{text}</span>;
 }
 
-function hoursText(d: DayHours) {
+export function hoursText(d: DayHours) {
   if (d.status === "closed") return "تعطیل";
   if (d.status === "declared" && d.shifts.length > 0) return d.shifts.map((s) => faText(`${s.start} تا ${s.end}`)).join("، ");
   // unknown, unsupported, or declared without a usable shift
