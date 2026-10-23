@@ -51,8 +51,8 @@ test("help me choose on the home screen shows the model shortlist at 360 px", as
   await fakeSessions(page, {});
   await page.goto("/");
   const sheet = page.getByRole("region", { name: "دستیار" });
-  // the thread offers it as a starter before the first message
-  await sheet.getByRole("button", { name: "کمکم کن انتخاب کنم" }).click();
+  await sheet.getByLabel("پیام به دستیار").fill("کمکم کن انتخاب کنم");
+  await sheet.getByRole("button", { name: "بفرست" }).click();
 
   await expect(sheet.getByText("کمکم کن انتخاب کنم")).toBeVisible();
   await expect(sheet.getByText("هندزفری بلوتوثی انکر R50i NC")).toBeVisible();

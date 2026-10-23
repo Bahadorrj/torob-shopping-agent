@@ -4,27 +4,47 @@ import type { Message, ToolMessage } from "@ag-ui/client";
 import { CopilotKitProvider, useAgent, useConfigureSuggestions, useCopilotKit, useRenderToolCall, useSuggestions } from "@copilotkit/react-core/v2";
 import { ArrowUp, History, SquarePen, Trash2, X } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { Fragment, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AGENT_SEND, ToolRenderers } from "@/components/agent-blocks";
-import { FilterChipBar } from "@/components/brief-bar";
 import { forgetSession, recentSessionIds, useBrief } from "@/components/brief-provider";
 import { CompareTrayBar } from "@/components/compare-tray";
-import { CATEGORIES } from "@/components/home-start";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { getSession, getThread, inquiriesStreamUrl, type InquiryStatus } from "@/lib/api";
 import { useBackCloses } from "@/lib/use-back-closes";
 import { useEventStream } from "@/lib/use-event-stream";
+import { cn } from "@/lib/utils";
 
 export { AGENT_SEND };
-export const HELP_CHOOSE = "کمکم کن انتخاب کنم";
-const GREETING = "چه چیزی می‌خواهید حضوری بخرید؟";
 
-// suggestion chips keyed by the kind of the thread's last block; "" is before the first message
+// a tapped chip goes to the agent as a user message whose id has this prefix; the server keeps message ids,
+// so the thread read back after a reload hides it too
+const CHIP = "chip-";
+
+const TIMES = "pasazhgard.messageTimes";
+const TIMES_MAX = 500;
+const clock = new Intl.DateTimeFormat("fa-IR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Asia/Tehran" });
+
+// AG-UI messages carry no time, so this device records when it first showed each one. 0 marks a message first seen
+// in a thread read back from the server, whose time this device does not know.
+function readTimes(): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(TIMES) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
+function writeTimes(times: Record<string, number>) {
+  try {
+    localStorage.setItem(TIMES, JSON.stringify(Object.fromEntries(Object.entries(times).slice(-TIMES_MAX))));
+  } catch {}
+}
+
+// suggestion chips keyed by the kind of the thread's last block
 const SUGGESTIONS: Record<string, { title: string; message: string }[]> = {
-  "": [HELP_CHOOSE, ...CATEGORIES].map((c) => ({ title: c, message: c })),
   product_cards: [
     { title: "مقایسه این دو", message: "این دو مدل را مقایسه کن" },
     { title: "فقط فروشگاه‌های باز", message: "فقط فروشگاه‌هایی که الان باز هستند" },
@@ -146,6 +166,7 @@ function Sheet({ threadId, open, setOpen }: { threadId: string; open: boolean; s
   const show = pathname === "/" ? setOpen : drawer;
   const router = useRouter();
   const [shownPath, setShownPath] = useState(pathname);
+  const [times, setTimes] = useState<Record<string, number> | null>(null);
 
   const kind = agent.messages.length ? lastBlock(agent.messages) : "";
   useConfigureSuggestions({ suggestions: SUGGESTIONS[kind] ?? [], available: "always", consumerAgentId: "sheet" }, [kind]);
@@ -163,6 +184,27 @@ function Sheet({ threadId, open, setOpen }: { threadId: string; open: boolean; s
   useEffect(() => {
     getThread(threadId).then(setThread, () => {});
   }, [threadId, inquiries]);
+  // the first read-back is the thread from before this page: its messages this device never timed stay untimed
+  useEffect(() => {
+    let live = true;
+    const known = readTimes();
+    getThread(threadId).then(
+      (t) => live && setTimes({ ...Object.fromEntries(t.map((m) => [m.id, 0])), ...known }),
+      () => live && setTimes(known),
+    );
+    return () => {
+      live = false;
+    };
+  }, [threadId]);
+  useEffect(() => {
+    if (!times) return;
+    const fresh = agent.messages.filter((m) => !(m.id in times));
+    if (!fresh.length) return;
+    const now = Date.now();
+    const next = { ...times, ...Object.fromEntries(fresh.map((m) => [m.id, now])) };
+    setTimes(next);
+    writeTimes(next);
+  }, [agent.messages, times]);
   // the agent instance is swapped once the runtime registers it, so restore onto whichever is current; a message the
   // server has and the sheet lacks is one the agent posted between turns
   useEffect(() => {
@@ -171,11 +213,12 @@ function Sheet({ threadId, open, setOpen }: { threadId: string; open: boolean; s
     agent.setMessages(thread);
   }, [agent, agent.isRunning, thread]);
 
-  async function send(content: string) {
+  // `chip`: a tapped suggestion, sent to the agent but not drawn as a user bubble
+  async function send(content: string, chip = false) {
     if (!content.trim() || agent.isRunning) return;
-    setText("");
+    if (!chip) setText("");
     show(true);
-    agent.addMessage({ id: crypto.randomUUID(), role: "user", content });
+    agent.addMessage({ id: `${chip ? CHIP : ""}${crypto.randomUUID()}`, role: "user", content });
     try {
       await copilotkit.runAgent({ agent });
     } finally {
@@ -187,7 +230,7 @@ function Sheet({ threadId, open, setOpen }: { threadId: string; open: boolean; s
   }
 
   useEffect(() => {
-    const onSend = (e: Event) => send((e as CustomEvent<string>).detail);
+    const onSend = (e: Event) => send((e as CustomEvent<string>).detail, true);
     window.addEventListener(AGENT_SEND, onSend);
     return () => window.removeEventListener(AGENT_SEND, onSend);
   });
@@ -213,29 +256,72 @@ function Sheet({ threadId, open, setOpen }: { threadId: string; open: boolean; s
   );
 
   const results = new Map(agent.messages.filter((m): m is ToolMessage => m.role === "tool").map((m) => [m.toolCallId, m]));
+  const shown = agent.messages.filter((m) => (m.role === "user" && !m.id.startsWith(CHIP)) || m.role === "assistant");
+  const sender = (i: number) => (shown[i] ? (shown[i].role === "user" ? "user" : "agent") : null);
+  // tighter within a run of one sender, wider between runs
+  const gap = (i: number) => (i === 0 ? "" : sender(i - 1) === sender(i) ? "mt-1" : "mt-4");
+  const time = (id: string) =>
+    times?.[id] ? <time className="self-end text-[10px] leading-none opacity-70">{clock.format(times[id])}</time> : null;
   const body = (
     <>
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto py-2">
-        {agent.messages.length === 0 && <p className="text-sm leading-6">{GREETING}</p>}
-        {agent.messages.map((m) =>
-          m.role === "user" ? (
-            <p key={m.id} className="self-start rounded-lg bg-primary px-3 py-1.5 text-sm text-primary-foreground">
-              {String(m.content)}
-            </p>
-          ) : m.role === "assistant" ? (
-            <Fragment key={m.id}>
-              {m.content && <p className="text-sm leading-6">{String(m.content)}</p>}
-              {m.toolCalls?.map((toolCall) => renderToolCall({ toolCall, toolMessage: results.get(toolCall.id) }))}
-            </Fragment>
-          ) : null,
-        )}
+      <div role="log" aria-label="گفتگو" className="flex min-h-0 flex-1 flex-col overflow-y-auto py-2">
+        {shown.map((m, i) => {
+          // the last bubble of a run gets the tail on its outer bottom corner
+          const tail = sender(i + 1) !== sender(i);
+          if (m.role === "user")
+            return (
+              <div
+                key={m.id}
+                data-sender="user"
+                className={cn(
+                  "flex max-w-[85%] flex-col gap-1 self-start rounded-2xl bg-primary px-3 py-1.5 text-sm text-primary-foreground",
+                  gap(i),
+                  tail && "bubble-tail bubble-user rounded-es-none",
+                )}
+              >
+                <p className="leading-6 whitespace-pre-wrap">{String(m.content)}</p>
+                {time(m.id)}
+              </div>
+            );
+          const calls = m.role === "assistant" ? (m.toolCalls ?? []) : [];
+          // blocks keep to the agent's column: its side and its width limit
+          return (
+            <div key={m.id} className={cn("flex w-[88%] flex-col items-end gap-2 self-end", gap(i))}>
+              {m.content && (
+                <div
+                  data-sender="agent"
+                  className={cn(
+                    "flex max-w-full flex-col gap-1 rounded-2xl bg-card px-3 py-1.5 text-sm text-card-foreground",
+                    tail && !calls.length && "bubble-tail bubble-agent rounded-ee-none",
+                  )}
+                >
+                  <p className="leading-6 whitespace-pre-wrap">{String(m.content)}</p>
+                  {time(m.id)}
+                </div>
+              )}
+              {calls.map((toolCall) => (
+                <div key={toolCall.id} className="w-full min-w-0">
+                  {renderToolCall({ toolCall, toolMessage: results.get(toolCall.id) })}
+                </div>
+              ))}
+            </div>
+          );
+        })}
         {agent.isRunning ? (
-          <p className="text-xs text-muted-foreground">در حال فکر کردن...</p>
+          <p
+            data-sender="agent"
+            className={cn(
+              "bubble-tail bubble-agent self-end rounded-2xl rounded-ee-none bg-card px-3 py-2 text-xs text-muted-foreground",
+              shown.length > 0 && (sender(shown.length - 1) === "agent" ? "mt-1" : "mt-4"),
+            )}
+          >
+            در حال فکر کردن...
+          </p>
         ) : (
           suggestions.length > 0 && (
-            <div role="group" aria-label="پیشنهادها" className="flex flex-wrap gap-1.5">
+            <div role="group" aria-label="پیشنهادها" className="mt-3 flex flex-wrap gap-1.5">
               {suggestions.map((s) => (
-                <Button key={s.title} variant="outline" size="sm" className="h-9 bg-card px-3" onClick={() => send(s.message)}>
+                <Button key={s.title} variant="outline" size="sm" className="h-9 bg-card px-3" onClick={() => send(s.message, true)}>
                   {s.title}
                 </Button>
               ))}
@@ -274,9 +360,8 @@ function Sheet({ threadId, open, setOpen }: { threadId: string; open: boolean; s
 
   if (pathname === "/") {
     return (
-      // fills the screen under home's 56 px app bar: the brief bar, then the thread with the input at the bottom
+      // fills the screen under home's 56 px app bar: the thread with the input at the bottom
       <div className="fixed inset-x-0 top-14 bottom-0 flex flex-col">
-        <FilterChipBar />
         <section aria-label="دستیار" className="mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col gap-2 px-4 pb-3">
           <div className="flex justify-end pt-2">{actions}</div>
           {body}

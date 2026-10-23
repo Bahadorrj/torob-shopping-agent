@@ -14,49 +14,78 @@ const sheet = (page: Page) => page.getByRole("region", { name: "دستیار" })
 const chip = (page: Page, name: string) => page.getByRole("region", { name: "خلاصه خرید" }).getByRole("button", { name: new RegExp(`^${name}`) });
 const fits = async (page: Page) => expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
 
-test("home shows only the assistant: app bar, greeting, starter chips and the input at 360 px", async ({ page }) => {
+test("a new chat on home shows only the app bar and the empty input at 360 px", async ({ page }) => {
   await fakeSessions(page, {});
-  const sent: string[] = [];
-  await fakeAgent(page, [budget], "", ({ messages }) => sent.push(String(messages.at(-1)?.content)));
   await page.goto("/");
 
   await expect(page.getByRole("heading", { name: "پاساژگرد" })).toBeVisible();
   await expect(page.getByRole("link", { name: "جستجو" })).toHaveAttribute("href", "/search");
-  await expect(sheet(page).getByText("چه چیزی می‌خواهید حضوری بخرید؟")).toBeVisible();
-  const starters = sheet(page).getByRole("group", { name: "پیشنهادها" });
-  await expect(starters.getByRole("button", { name: "کمکم کن انتخاب کنم" })).toBeVisible();
-  await expect(starters.getByRole("button", { name: "هدفون و هندزفری" })).toBeVisible();
-  // the input sits at the bottom of the screen
-  const input = (await sheet(page).getByLabel("پیام به دستیار").boundingBox())!;
-  expect(input.y + input.height).toBeGreaterThan(740 - 72);
+  const input = sheet(page).getByLabel("پیام به دستیار");
+  await expect(input).toHaveValue("");
+  await expect(input).toHaveAttribute("placeholder", /.+/);
+  // no greeting, starters, suggestions or brief bar before the first message
+  await expect(sheet(page).getByRole("log")).toBeEmpty();
+  await expect(sheet(page).getByRole("group", { name: "پیشنهادها" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "خلاصه خرید" })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "از یک دسته شروع کنید" })).toHaveCount(0);
-  await expect(page.getByRole("region", { name: "پاساژها" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "دستیار خرید" })).toHaveCount(0);
+  // the input sits at the bottom of the screen
+  const box = (await input.boundingBox())!;
+  expect(box.y + box.height).toBeGreaterThan(740 - 72);
   await fits(page);
-
-  await starters.getByRole("button", { name: "هدفون و هندزفری" }).click();
-  await expect.poll(() => sent).toEqual(["هدفون و هندزفری"]);
-  await expect(sheet(page).getByText("حداکثر بودجه‌تان چقدر است؟")).toBeVisible();
-  // the agent ran in place: no drawer opened
-  await expect(page.locator("[data-slot=drawer-popup]")).toHaveCount(0);
-  await expect(sheet(page).getByText("چه چیزی می‌خواهید حضوری بخرید؟")).toHaveCount(0);
 });
 
-test("the brief bar shows on home under the app bar without covering the chat input at 360 px", async ({ page }) => {
+test("user bubbles sit on the right, agent bubbles and blocks on the left, each with a time at 360 px", async ({ page }) => {
   await fakeSessions(page, {});
+  await fakeAgent(page, [{ block: "product_cards", query: "هدفون", items: [card("p1", "کالای الف", 1000000)] }], "این‌ها را پیدا کردم");
   await page.goto("/");
-  const bar = page.getByRole("region", { name: "خلاصه خرید" });
-  await expect(chip(page, "فیلترها")).toBeVisible();
-  const head = (await page.getByRole("banner").boundingBox())!;
-  const box = (await bar.boundingBox())!;
-  const input = (await sheet(page).getByLabel("پیام به دستیار").boundingBox())!;
-  expect(box.y).toBeGreaterThanOrEqual(head.y + head.height - 1);
-  expect(box.y + box.height).toBeLessThanOrEqual(input.y);
-  expect(input.y + input.height).toBeLessThanOrEqual(740);
-  // the greeting is not hidden under the bar
-  const greeting = (await sheet(page).getByText("چه چیزی می‌خواهید حضوری بخرید؟").boundingBox())!;
-  expect(greeting.y).toBeGreaterThanOrEqual(box.y + box.height);
+  await askHome(page, "هدفون");
+
+  const user = sheet(page).locator("[data-sender=user]").filter({ hasText: "هدفون" });
+  const agent = sheet(page).locator("[data-sender=agent]").filter({ hasText: "این‌ها را پیدا کردم" });
+  await expect(agent).toBeVisible();
+  const u = (await user.boundingBox())!;
+  const a = (await agent.boundingBox())!;
+  // RTL: the user's start side is the right edge, the agent's end side the left
+  expect(u.x + u.width).toBeGreaterThan(330);
+  expect(a.x).toBeLessThan(30);
+  expect(a.x + a.width).toBeLessThan(330);
+  const bg = (l: typeof user) => l.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(await bg(user)).not.toBe(await bg(agent));
+  await expect(user.locator("time")).toHaveText(/^[۰-۹]{2}:[۰-۹]{2}$/);
+  await expect(agent.locator("time")).toHaveText(/^[۰-۹]{2}:[۰-۹]{2}$/);
+  // the block stays in the agent's column
+  const cards = (await sheet(page).getByRole("listitem").filter({ hasText: "کالای الف" }).boundingBox())!;
+  expect(cards.x).toBeGreaterThanOrEqual(a.x - 1);
+  expect(cards.x + cards.width).toBeLessThan(330);
   await fits(page);
+});
+
+test("a tapped chip goes to the agent but not into the thread, also after a reload", async ({ page }) => {
+  const sent: string[] = [];
+  const { sessions } = await fakeSessions(page, {});
+  await fakeAgent(page, [budget], "", ({ messages }) => sent.push(String(messages.at(-1)?.content)));
+  await page.goto("/");
+  await askHome(page, SENTENCE);
+  await sheet(page).getByRole("button", { name: "تا ۱ میلیون تومان" }).click();
+  await expect.poll(() => sent).toEqual([SENTENCE, "تا ۱ میلیون تومان"]);
+  await expect(sheet(page).locator("[data-sender=user]")).toHaveCount(1);
+  await expect(sheet(page).locator("[data-sender=user]")).toContainText(SENTENCE);
+  expect(sessions.size).toBe(1);
+});
+
+test("a hidden chip message in a restored thread stays hidden", async ({ page }) => {
+  const thread = [
+    { id: "u1", role: "user", content: "شارژر اپل" },
+    { id: "chip-u2", role: "user", content: "تا ۱ میلیون تومان" },
+    { id: "a2", role: "assistant", content: "باشه" },
+  ];
+  await fakeSessions(page, {}, { old: { messages: thread } });
+  await page.addInitScript(() => localStorage.setItem("pasazhgard.session", "old"));
+  await page.goto("/");
+  await expect(sheet(page).getByText("باشه")).toBeVisible();
+  await expect(sheet(page).locator("[data-sender=user]")).toHaveCount(1);
+  await expect(sheet(page).getByText("تا ۱ میلیون تومان")).toHaveCount(0);
 });
 
 test("a sentence on home runs the agent in place and its chips answer it", async ({ page }) => {

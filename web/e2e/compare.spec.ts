@@ -111,7 +111,7 @@ test("compare picks belong to their chat: a new chat starts empty, a resumed or 
   await expect(tray).toContainText("۱ از ۳");
 
   await sheet.getByRole("button", { name: "گفتگوی جدید" }).click();
-  await expect(sheet.getByText("چه چیزی می‌خواهید حضوری بخرید؟")).toBeVisible();
+  await expect(sheet.getByText("هدفون")).toHaveCount(0);
   await expect(tray).toHaveCount(0);
 
   await sheet.getByRole("button", { name: "تاریخچه" }).click();
