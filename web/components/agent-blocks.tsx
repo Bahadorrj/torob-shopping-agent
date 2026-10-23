@@ -11,7 +11,7 @@ import { useBrief } from "@/components/brief-provider";
 import { InquiryTracker, withAlternatives } from "@/components/inquiry-tracker";
 import { ListedPrice, ProductCard } from "@/components/product-card";
 import { ROWS } from "@/components/seller-compare";
-import { Seller, shownPrice, TRUST_CLASS } from "@/components/seller-list";
+import { FAST_DELIVERY, NoSellers, Seller, shownPrice, TRUST_CLASS } from "@/components/seller-list";
 import { NotRecorded } from "@/components/shop-details";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -195,9 +195,18 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
   ),
   seller_list: (d: SellerList) => (
     <div className="flex flex-col gap-2">
+      {d.sellers.length === 0 && <NoSellers list={d} />}
       {d.sellers.slice(0, 3).map((s) => (
         <Seller key={s.offer_id} s={s} />
       ))}
+      {d.sellers.length === 0 && d.fast_delivery?.length > 0 && (
+        <section aria-label={FAST_DELIVERY} className="flex flex-col gap-2">
+          <h3 className="text-sm font-semibold">{FAST_DELIVERY}</h3>
+          {d.fast_delivery.slice(0, 3).map((s) => (
+            <Seller key={s.offer_id} s={s} />
+          ))}
+        </section>
+      )}
       <Link href={`/products/${d.product_id}/sellers`} className={linkClass}>
         همه فروشنده‌های {d.title}
       </Link>

@@ -95,3 +95,11 @@ test("pasaj view still shows when no session can be made", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 2 })).toHaveText(["طبقه زیر همکف", "طبقه ۲", "طبقه: نامشخص"]);
   expect(asked.at(-1)!.searchParams.has("session_id")).toBe(false);
 });
+
+test("a pasaj with none of your items shows the coverage note", async ({ page }) => {
+  await fakeSessions(page, {});
+  await page.route("**/api/pasajs/**", (route) => route.fulfill({ json: { ...view, count: 0, floors: [] } }));
+  await page.goto(`/pasajs/${encodeURIComponent("علاالدین 2")}`);
+  await expect(page.getByText("در این پاساژ فروشگاهی کالاهای شما را ثبت نکرده است.")).toBeVisible();
+  await expect(page.getByText("داده‌ها بخشی از فروشگاه‌های تهران، بیشتر مرکز شهر، را پوشش می‌دهند.")).toBeVisible();
+});

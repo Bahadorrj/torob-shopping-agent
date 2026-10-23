@@ -68,6 +68,7 @@ test("a pasted list opens basket mode: stops, per-meter totals, category-only fl
   await expect(stops.nth(0)).toContainText("(۲۰۰ متر)");
   await expect(stops.nth(1)).toContainText("فقط دسته‌بندی فروشگاه");
   await expect(page.getByRole("region", { name: "پیدا نشد" })).toContainText("زززز");
+  await expect(page.getByText("داده‌ها بخشی از فروشگاه‌های تهران، بیشتر مرکز شهر، را پوشش می‌دهند.")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
 
   await page.getByRole("button", { name: "برنامه مراجعه" }).click();

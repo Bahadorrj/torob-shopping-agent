@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { optimizeBasket, type Basket, type BasketItem, type BasketStopItem } from "@/lib/api";
-import { faDigits, faText, locate } from "@/lib/format";
+import { COVERAGE, faDigits, faText, locate } from "@/lib/format";
 
 const quantity = (i: BasketItem) => (i.unit === "meter" ? `${faDigits(i.quantity)} متر` : `${faDigits(i.quantity)} عدد`);
 
@@ -104,6 +104,7 @@ export function BasketView({ basket }: { basket: Basket }) {
           </ul>
         </section>
       )}
+      {(stops.length === 0 || missing.length > 0) && <p className="text-muted-foreground">{COVERAGE}</p>}
       {stops.length > 0 && <PlanThis shopIds={stops.map((s) => s.shop_id)} />}
     </div>
   );

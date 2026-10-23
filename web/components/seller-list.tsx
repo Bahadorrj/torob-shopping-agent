@@ -22,9 +22,10 @@ import {
   type Condition,
   type Directions,
   type InquiryStatus,
+  type SellerList as List,
   type SellerRow,
 } from "@/lib/api";
-import { distance, faDigits, faText, localDate, openLabel, priceAge, toman, UNKNOWN } from "@/lib/format";
+import { COVERAGE, distance, faDigits, faText, localDate, openLabel, priceAge, toman, UNKNOWN } from "@/lib/format";
 import { sellerChips } from "@/lib/reasons";
 import { useEventStream } from "@/lib/use-event-stream";
 
@@ -40,7 +41,7 @@ const SHOP_LINK = "-my-2.5 py-2.5 font-semibold text-primary underline underline
 
 const CATEGORY_SHOWN = 10;
 
-const COVERAGE = "داده‌ها بخشی از فروشگاه‌های تهران، بیشتر مرکز شهر، را پوشش می‌دهند.";
+export const FAST_DELIVERY = "ارسال سریع از محدوده‌های دیگر";
 
 function place(s: { area: string | null; pasaj: string | null; floor?: string | null; unit?: string | null; distance_m: number | null }) {
   const parts = [
@@ -204,6 +205,34 @@ export function Seller({ s, children }: { s: SellerRow; children?: ReactNode }) 
   );
 }
 
+// a list with no ranked seller: shops to ask, else an uncovered area with the nearest covered one, else no match
+export function NoSellers({ list }: { list: List }) {
+  const { patch } = useBrief();
+  const nearest = list.nearest_covered;
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border p-3 text-sm">
+      {list.ask_them.length > 0 ? (
+        <p>{faDigits(list.ask_them.length)} فروشگاه این کالا را دارند ولی شرایط شما را ثبت نکرده‌اند. از آن‌ها بپرسید.</p>
+      ) : nearest ? (
+        <p>این محدوده پوشش داده نشده و فروشنده‌ای برای این کالا ندارد.</p>
+      ) : (
+        <p>فروشنده‌ای با همه شرایط شما پیدا نشد. شرایط را در نوار بالا تغییر دهید.</p>
+      )}
+      <p className="text-muted-foreground">{COVERAGE}</p>
+      {nearest && (nearest.area || nearest.pasaj) && (
+        <Button
+          variant="outline"
+          className="h-auto self-start whitespace-normal py-1.5 text-start"
+          onClick={() => patch({ brief: { area: nearest.area ? { name: nearest.area } : { pasaj: nearest.pasaj } } })}
+        >
+          نزدیک‌ترین محدوده با فروشنده: {nearest.area ?? `پاساژ ${faText(nearest.pasaj!)}`}
+          {nearest.distance_m !== null && ` (${distance(nearest.distance_m)})`}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export function SellerList({ productId }: { productId: string }) {
   const { session, pending, error, patch } = useBrief();
   const sid = session?.session_id ?? null;
@@ -334,7 +363,6 @@ export function SellerList({ productId }: { productId: string }) {
     return <p className="text-sm text-muted-foreground">در حال بارگذاری...</p>;
   }
 
-  const nearest = list.nearest_covered;
   const card = (s: SellerRow) => (
     <Seller s={s}>
       {actions(s)}
@@ -397,23 +425,8 @@ export function SellerList({ productId }: { productId: string }) {
         </section>
       )}
 
-      {showMap ? null : list.count === 0 && nearest === null ? (
-        <p className="rounded-lg border p-3 text-sm">فروشنده‌ای با همه شرایط شما پیدا نشد. شرایط را در نوار بالا تغییر دهید.</p>
-      ) : list.count === 0 ? (
-        <div className="flex flex-col gap-2 rounded-lg border p-3 text-sm">
-          <p>این محدوده پوشش داده نشده و فروشنده‌ای برای این کالا ندارد.</p>
-          <p className="text-muted-foreground">{COVERAGE}</p>
-          {nearest && (nearest.area || nearest.pasaj) && (
-            <Button
-              variant="outline"
-              className="h-auto self-start whitespace-normal py-1.5 text-start"
-              onClick={() => patch({ brief: { area: nearest.area ? { name: nearest.area } : { pasaj: nearest.pasaj } } })}
-            >
-              نزدیک‌ترین محدوده با فروشنده: {nearest.area ?? `پاساژ ${faText(nearest.pasaj!)}`}
-              {nearest.distance_m !== null && ` (${distance(nearest.distance_m)})`}
-            </Button>
-          )}
-        </div>
+      {showMap ? null : list.count === 0 ? (
+        <NoSellers list={list} />
       ) : (
         <ul className="flex flex-col gap-2">
           {list.sellers.map((s) => (
@@ -426,6 +439,9 @@ export function SellerList({ productId }: { productId: string }) {
 
       {!showMap && hoursOnly.length > 0 && group("unknown-hours", "ساعت کاری نامشخص", "ساعت کاری این فروشگاه‌ها ثبت نشده است.", hoursOnly)}
       {!showMap && askThem.length > 0 && group("ask-them", "از فروشنده بپرسید", "این فروشگاه‌ها بعضی از شرایط شما را ثبت نکرده‌اند.", askThem)}
+      {!showMap &&
+        list.fast_delivery?.length > 0 &&
+        group("fast-delivery", FAST_DELIVERY, "این فروشگاه‌ها بیرون از محدوده شما هستند و ارسال سریع دارند.", list.fast_delivery)}
 
       {!showMap && list.category_only.length > 0 && (
         <section aria-labelledby="category-only" className="flex flex-col gap-2">
