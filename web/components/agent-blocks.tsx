@@ -162,15 +162,23 @@ function MiniTable({ label, heads, rows }: { label: string; heads: string[]; row
   );
 }
 
-export const BLOCKS: Record<string, (data: never, send: (text: string) => void) => ReactNode> = {
-  product_cards: (d: { items: Product[] }) => {
-    const items = d.items.slice(0, 5);
-    const reasons = productReasons(items);
-    return items.length ? (
-      // one swipe row: each card is narrower than the row so the next one peeks in; RTL starts it on the right.
-      // shrink-0: a scroll box in the thread's flex column would otherwise shrink and clip the cards
+// one swipe row: each card is narrower than the row so the next one peeks in; RTL starts it on the right.
+// shrink-0: a scroll box in the thread's flex column would otherwise shrink and clip the cards
+function CardRow({ items }: { items: Product[] }) {
+  const reasons = productReasons(items);
+  const [at, setAt] = useState(0);
+  const onScroll = (e: React.UIEvent<HTMLUListElement>) => {
+    const el = e.currentTarget;
+    const x = Math.abs(el.scrollLeft); // negative in RTL
+    const stride = (el.firstElementChild as HTMLElement).offsetWidth + 8; // gap-2
+    // the last card cannot snap to the start, so the scroll end counts as the last card
+    setAt(x >= el.scrollWidth - el.clientWidth - 1 ? items.length - 1 : Math.round(x / stride));
+  };
+  return (
+    <div className="flex shrink-0 flex-col gap-1">
       <ul
         aria-label="کالاها"
+        onScroll={onScroll}
         className="flex shrink-0 snap-x snap-mandatory gap-2 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {items.map((p, i) => (
@@ -179,10 +187,17 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
           </li>
         ))}
       </ul>
-    ) : (
-      <p className="text-sm text-muted-foreground">کالایی پیدا نشد.</p>
-    );
-  },
+      {items.length > 1 && (
+        <p aria-live="polite" className="self-center text-xs text-muted-foreground tabular-nums">
+          {faDigits(at + 1)} از {faDigits(items.length)}
+        </p>
+      )}
+    </div>
+  );
+}
+
+export const BLOCKS: Record<string, (data: never, send: (text: string) => void) => ReactNode> = {
+  product_cards: (d: { items: Product[] }) => (d.items.length ? <CardRow items={d.items.slice(0, 5)} /> : <p className="text-sm text-muted-foreground">کالایی پیدا نشد.</p>),
   model_shortlist: (d: Shortlist) => (
     <div className="flex flex-col gap-2">
       <ul className="flex flex-col gap-2">

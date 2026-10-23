@@ -56,27 +56,32 @@ export function ProductCard({ product, reason }: { product: Product; reason?: st
   if (product.price_flags.includes("per_meter") && !price.per_meter) notes.push("برخی قیمت‌ها هر متر است");
 
   const why = productWhy(product);
+  const stores = `در ${faDigits(product.offer_count)} فروشگاه`;
+  const badge = reason ?? productReasons([product])[0];
   return (
     // the sellers link stretches over the whole card; the compare toggle sits above it
     <Card className="relative h-full gap-2 p-3">
-      <div className="h-24 shrink-0 overflow-hidden rounded-lg bg-muted/40">
-        {product.image_url && (
-          // eslint-disable-next-line @next/next/no-img-element
+      {product.image_url && (
+        <div data-slot="image" className="h-24 shrink-0 overflow-hidden rounded-lg bg-muted/40">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={product.image_url} alt="" loading="lazy" className="size-full object-contain" />
-        )}
-      </div>
+        </div>
+      )}
       {/* left is the end corner in RTL */}
-      <span className="absolute top-2 left-2 z-10">
+      <span className="absolute top-1 left-1 z-10">
         <TrayToggle item={{ product_id: product.product_id, title: product.title }} />
       </span>
       <CardContent className="flex min-w-0 flex-1 flex-col items-start gap-1 p-0">
-        <h2 className="line-clamp-2 text-base font-bold leading-7">{product.title}</h2>
+        <h2 className="line-clamp-2 pe-10 text-sm font-bold leading-6">{product.title}</h2>
         <FromPrice price={price} />
-        <p className="text-xs text-muted-foreground tabular-nums">در {faDigits(product.offer_count)} فروشگاه</p>
+        <p className="text-xs text-muted-foreground tabular-nums">{stores}</p>
         <div className="mt-1 flex flex-col items-start gap-1 border-t pt-2">
-          <Badge variant="secondary" className="rounded-full">
-            {reason ?? productReasons([product])[0]}
-          </Badge>
+          {/* the store-count fallback reason would repeat the meta line above */}
+          {badge !== stores && (
+            <Badge variant="secondary" className="rounded-full">
+              {badge}
+            </Badge>
+          )}
           {why.chips.length > 0 && (
             <div role="group" data-slot="why" aria-label="چرا این کالا؟" className="flex flex-wrap gap-1">
               {why.chips.map((c) => (
