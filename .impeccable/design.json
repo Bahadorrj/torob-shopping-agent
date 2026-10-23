@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-23T00:00:00Z",
+  "title": "Design System: Pasazhgard",
+  "extensions": {
+    "colorMeta": {
+      "ground": { "role": "neutral", "displayName": "Cool Ground", "tonalRamp": ["#0f172a", "#1e293b", "#334155", "#475569", "#94a3b8", "#cbd5e1", "#e2e8f0", "#f1f5f9"] },
+      "ink": { "role": "neutral", "displayName": "Slate Ink", "tonalRamp": ["#0f172a", "#1e293b", "#334155", "#475569", "#64748b", "#94a3b8", "#cbd5e1", "#f1f5f9"] },
+      "surface": { "role": "neutral", "displayName": "White Surface", "tonalRamp": ["#1e293b", "#475569", "#94a3b8", "#cbd5e1", "#e2e8f0", "#f1f5f9", "#f8fafc", "#ffffff"] },
+      "muted-ink": { "role": "neutral", "displayName": "Muted Ink", "tonalRamp": ["#0f172a", "#1e293b", "#334155", "#475569", "#64748b", "#94a3b8", "#cbd5e1", "#f1f5f9"] },
+      "border": { "role": "neutral", "displayName": "Border", "tonalRamp": ["#1e293b", "#334155", "#475569", "#64748b", "#94a3b8", "#cbd5e1", "#e2e8f0", "#f8fafc"] },
+      "hairline": { "role": "neutral", "displayName": "Hairline", "tonalRamp": ["#1e293b", "#334155", "#475569", "#64748b", "#94a3b8", "#cbd5e1", "#e2e8f0", "#f8fafc"] },
+      "torob-red": { "role": "primary", "displayName": "Torob Red", "tonalRamp": ["#3d0d12", "#6b1620", "#9a2130", "#d73948", "#e65f6c", "#f08f98", "#f7c1c6", "#fdebed"] },
+      "inquiry-blue": { "role": "secondary", "displayName": "Inquiry Blue", "tonalRamp": ["#0e1d3b", "#17306a", "#244c9e", "#3468cc", "#5c88dc", "#8daae8", "#c0d1f3", "#ebf1fc"] },
+      "open-green": { "role": "tertiary", "displayName": "Open Green", "tonalRamp": ["#0b5124", "#1b5e20", "#2e7d32", "#4caf50", "#66bb6a", "#a5d6a7", "#daf2d5", "#f1faef"] },
+      "closed-red": { "role": "tertiary", "displayName": "Closed Red", "tonalRamp": ["#450a0a", "#7f1d1d", "#b91c1c", "#e02020", "#ef4444", "#f87171", "#fecaca", "#fef2f2"] },
+      "confirmed-wash": { "role": "tertiary", "displayName": "Confirmed Wash", "tonalRamp": ["#0b5124", "#1b5e20", "#2e7d32", "#4caf50", "#8fd18a", "#b9e4b3", "#daf2d5", "#f1faef"] },
+      "confirmed-ink": { "role": "tertiary", "displayName": "Confirmed Ink", "tonalRamp": ["#05290f", "#0b5124", "#1b5e20", "#2e7d32", "#4caf50", "#8fd18a", "#daf2d5", "#f1faef"] },
+      "notice-ink": { "role": "tertiary", "displayName": "Notice Ink", "tonalRamp": ["#451a03", "#78350f", "#92400e", "#b45309", "#d97706", "#f59e0b", "#fde68a", "#fffbeb"] },
+      "notice-text": { "role": "tertiary", "displayName": "Notice Text", "tonalRamp": ["#451a03", "#78350f", "#92400e", "#b45309", "#d97706", "#f59e0b", "#fde68a", "#fffbeb"] },
+      "notice-line": { "role": "tertiary", "displayName": "Notice Line", "tonalRamp": ["#451a03", "#78350f", "#92400e", "#b45309", "#d97706", "#f59e0b", "#fde68a", "#fffbeb"] },
+      "notice-wash": { "role": "tertiary", "displayName": "Notice Wash", "tonalRamp": ["#451a03", "#78350f", "#92400e", "#b45309", "#d97706", "#f59e0b", "#fde68a", "#fffbeb"] }
+    },
+    "typographyMeta": {
+      "title": { "displayName": "Title", "purpose": "App bar page title, shop names, the seller price. The largest size in the system." },
+      "body": { "displayName": "Body", "purpose": "Body text, chips, product meta. Product titles use it at 700, clamped to two lines." },
+      "label": { "displayName": "Label", "purpose": "Button text, pressed chips, product prices." },
+      "meta": { "displayName": "Meta", "purpose": "Price source and age, distance, coverage notes; reason badges at 700." }
+    },
+    "shadows": [
+      { "name": "drawer-backdrop", "value": "background: rgb(0 0 0 / 0.1); backdrop-filter: blur(4px)", "purpose": "Dims the page behind the bottom drawer. Content cards have no shadow." },
+      { "name": "map-pin", "value": "0 1px 3px rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)", "purpose": "Lifts map pins off the map tiles." }
+    ],
+    "motion": [
+      { "name": "drawer", "value": "450ms cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "Bottom drawer open and close." },
+      { "name": "button-press", "value": "translateY(1px)", "purpose": "Active state of every button." }
+    ],
+    "breakpoints": [
+      { "name": "mobile", "value": "360px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Buy Button",
+      "kind": "button",
+      "refersTo": "button-buy",
+      "description": "The one Torob Red commit action per screen.",
+      "html": "<button class=\"ds-btn ds-btn-buy\">استعلام از ۳ فروشنده</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; height: 40px; padding: 0 16px; border: 1px solid transparent; border-radius: 8px; font: 700 14px/24px 'Vazirmatn Variable', sans-serif; cursor: pointer; transition: background 0.15s, transform 0.1s; } .ds-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgb(52 104 204 / 0.5); } .ds-btn:active { transform: translateY(1px); } .ds-btn-buy { background: var(--brand, #d73948); color: #fff; } .ds-btn-buy:hover { background: color-mix(in srgb, var(--brand, #d73948) 90%, transparent); }"
+    },
+    {
+      "name": "Contact Button",
+      "kind": "button",
+      "refersTo": "button-contact",
+      "description": "Inquiry Blue: contact a seller or go to the shop.",
+      "html": "<button class=\"ds-btn-contact\">استعلام بگیرید</button>",
+      "css": ".ds-btn-contact { display: inline-flex; align-items: center; justify-content: center; height: 40px; padding: 0 16px; border: 1px solid transparent; border-radius: 8px; background: var(--contact, #3468cc); color: #fff; font: 700 14px/24px 'Vazirmatn Variable', sans-serif; cursor: pointer; transition: background 0.15s, transform 0.1s; } .ds-btn-contact:hover { background: color-mix(in srgb, var(--contact, #3468cc) 90%, transparent); } .ds-btn-contact:focus-visible { outline: none; box-shadow: 0 0 0 3px rgb(52 104 204 / 0.5); } .ds-btn-contact:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Contact Outline Button",
+      "kind": "button",
+      "refersTo": "button-contact-outline",
+      "description": "Blue stroke on white for map-app links and alternatives.",
+      "html": "<button class=\"ds-btn-contact-outline\">باز کردن در نشان</button>",
+      "css": ".ds-btn-contact-outline { display: inline-flex; align-items: center; justify-content: center; height: 40px; padding: 0 16px; border: 1px solid var(--contact, #3468cc); border-radius: 8px; background: #fff; color: var(--contact, #3468cc); font: 700 14px/24px 'Vazirmatn Variable', sans-serif; cursor: pointer; transition: background 0.15s, transform 0.1s; } .ds-btn-contact-outline:hover { background: rgb(52 104 204 / 0.1); } .ds-btn-contact-outline:focus-visible { outline: none; box-shadow: 0 0 0 3px rgb(52 104 204 / 0.5); } .ds-btn-contact-outline:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Filter Chip",
+      "kind": "chip",
+      "refersTo": "chip-filter",
+      "description": "One-tap brief condition; pressed state is a 1.5px ink stroke at 700.",
+      "html": "<div class=\"ds-chips\"><button class=\"ds-chip\" aria-pressed=\"true\">الان باز</button><button class=\"ds-chip\" aria-pressed=\"false\">ترب‌پی حضوری</button><button class=\"ds-chip\" aria-pressed=\"false\">بودجه</button></div>",
+      "css": ".ds-chips { display: flex; gap: 8px; direction: rtl; } .ds-chip { display: inline-flex; align-items: center; height: 36px; padding: 0 12px; border: 1px solid var(--border, #cbd5e1); border-radius: 9999px; background: #fff; color: var(--foreground, #1e293b); font: 400 14px/24px 'Vazirmatn Variable', sans-serif; white-space: nowrap; cursor: pointer; } .ds-chip:hover { background: #f8fafc; } .ds-chip:focus-visible { outline: none; box-shadow: 0 0 0 3px rgb(52 104 204 / 0.5); } .ds-chip[aria-pressed=true] { border-color: var(--foreground, #1e293b); box-shadow: 0 0 0 0.5px var(--foreground, #1e293b); font-weight: 700; }"
+    },
+    {
+      "name": "Reason Badge",
+      "kind": "chip",
+      "refersTo": "badge-reason",
+      "description": "Why this result is shown; one per result, never coloured.",
+      "html": "<span class=\"ds-badge\">ارزان‌ترین</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; height: 20px; padding: 2px 8px; border-radius: 9999px; background: var(--muted, #f1f5f9); color: var(--foreground, #1e293b); font: 700 12px/20px 'Vazirmatn Variable', sans-serif; white-space: nowrap; }"
+    },
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "input-search",
+      "description": "Grey 48px home search with the red square submit.",
+      "html": "<form class=\"ds-search\"><input class=\"ds-search-input\" placeholder=\"مثلا هندزفری بلوتوثی برای ورزش\"><button class=\"ds-search-go\" aria-label=\"جستجو\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"m20 20-3.5-3.5\"/></svg></button></form>",
+      "css": ".ds-search { display: flex; gap: 8px; direction: rtl; } .ds-search-input { flex: 1; height: 48px; padding: 0 12px; border: 1px solid transparent; border-radius: 8px; background: var(--background, #f1f5f9); color: var(--foreground, #1e293b); font: 400 14px/24px 'Vazirmatn Variable', sans-serif; } .ds-search-input::placeholder { color: #64748b; } .ds-search-input:focus-visible { outline: none; border-color: var(--ring, #3468cc); box-shadow: 0 0 0 3px rgb(52 104 204 / 0.5); } .ds-search-go { display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border: 0; border-radius: 8px; background: var(--brand, #d73948); color: #fff; cursor: pointer; } .ds-search-go:hover { background: color-mix(in srgb, var(--brand, #d73948) 90%, transparent); } .ds-search-go:focus-visible { outline: none; box-shadow: 0 0 0 3px rgb(52 104 204 / 0.5); }"
+    },
+    {
+      "name": "Seller Row",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The ledger entry: name, meta, price slot, age and availability slots, one filled action.",
+      "html": "<article class=\"ds-row\"><div class=\"ds-row-head\"><a class=\"ds-row-name\" href=\"#\">دیسینا نیکیس</a><span class=\"ds-row-badge\">ارزان‌ترین</span></div><p class=\"ds-row-meta\">پاساژ علاءالدین، طبقه منفی ۲ · ۲۲۰ متر · <span class=\"ds-dot\"></span><span class=\"ds-ink\">الان باز</span></p><div class=\"ds-row-price\"><b>۳٫۳۴۰٫۰۰۰ تومان</b><span>قیمت ثبت‌شده</span></div><div class=\"ds-slots\"><div><span>آخرین تغییر قیمت</span><b>۱۵ روز پیش</b></div><div><span>موجودی</span><b class=\"ds-unknown\">نامشخص</b></div></div><div class=\"ds-row-actions\"><button class=\"ds-row-cta\">استعلام بگیرید</button><button class=\"ds-row-ghost\">مسیر</button></div></article>",
+      "css": ".ds-row { direction: rtl; display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 16px; background: #fff; color: var(--foreground, #1e293b); font: 400 14px/24px 'Vazirmatn Variable', sans-serif; max-width: 344px; } .ds-row-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; } .ds-row-name { font: 700 16px/28px 'Vazirmatn Variable', sans-serif; color: inherit; text-decoration: none; } .ds-row-name:hover { text-decoration: underline; } .ds-row-badge { height: 20px; padding: 2px 8px; border-radius: 9999px; background: #f1f5f9; font: 700 12px/20px 'Vazirmatn Variable', sans-serif; } .ds-row-meta { margin: 0; font-size: 12px; line-height: 20px; color: #64748b; } .ds-dot { display: inline-block; width: 8px; height: 8px; margin-inline-end: 4px; border-radius: 9999px; background: var(--open, #4caf50); } .ds-ink { color: var(--foreground, #1e293b); } .ds-row-price { display: flex; justify-content: space-between; align-items: baseline; font-variant-numeric: tabular-nums; } .ds-row-price b { font: 700 16px/28px 'Vazirmatn Variable', sans-serif; } .ds-row-price span { font-size: 12px; color: #64748b; } .ds-slots { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--hairline, #e2e8f0); border-radius: 8px; } .ds-slots div { display: flex; flex-direction: column; padding: 8px 12px; } .ds-slots div + div { border-inline-start: 1px solid var(--hairline, #e2e8f0); } .ds-slots span { font-size: 12px; line-height: 20px; color: #64748b; } .ds-slots b { font-weight: 700; } .ds-unknown { color: #64748b; font-weight: 400 !important; } .ds-row-actions { display: flex; gap: 8px; } .ds-row-cta { height: 40px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--contact, #3468cc); color: #fff; font: 700 14px/24px 'Vazirmatn Variable', sans-serif; cursor: pointer; } .ds-row-cta:hover { background: color-mix(in srgb, var(--contact, #3468cc) 90%, transparent); } .ds-row-cta:focus-visible, .ds-row-ghost:focus-visible { outline: none; box-shadow: 0 0 0 3px rgb(52 104 204 / 0.5); } .ds-row-ghost { height: 40px; padding: 0 16px; border: 0; border-radius: 8px; background: transparent; color: var(--foreground, #1e293b); font: 700 14px/24px 'Vazirmatn Variable', sans-serif; cursor: pointer; } .ds-row-ghost:hover { background: #f1f5f9; }"
+    },
+    {
+      "name": "List/Map Toggle",
+      "kind": "nav",
+      "refersTo": "button-ink",
+      "description": "32px segmented toggle; ink fill when on.",
+      "html": "<div class=\"ds-seg\" role=\"group\"><button aria-pressed=\"true\">فهرست</button><button aria-pressed=\"false\">نقشه</button></div>",
+      "css": ".ds-seg { display: inline-flex; gap: 0; direction: rtl; border: 1px solid var(--input, #cbd5e1); border-radius: 8px; overflow: hidden; } .ds-seg button { height: 32px; padding: 0 10px; border: 0; background: #fff; color: var(--foreground, #1e293b); font: 400 14px/24px 'Vazirmatn Variable', sans-serif; cursor: pointer; } .ds-seg button:hover { background: #f1f5f9; } .ds-seg button:focus-visible { outline: none; box-shadow: inset 0 0 0 2px rgb(52 104 204 / 0.6); } .ds-seg button[aria-pressed=true] { background: var(--primary, #1e293b); color: #fff; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Bazaar Ledger",
+    "overview": "Pasazhgard reads like a ledger kept by someone who knows the pasaj: slate ink on a cool grey ground, white rows of facts, and every price written down with where it came from and how old it is. The look is Torob's own, carried from the online catalogue into in-person shopping, so a judge or a Torob user recognises it at once. Expression lives in exactness, not ornament: the right word for an unknown, the age of a price, the floor and unit.\n\nThe density is mobile and calm. At 360 px a screen holds a sticky filter chip bar, a stack of white cards 8 px apart, and one docked action. There is no dark theme, no gradient, no shadow on content, and no display type: the largest text is 16 px. Colour is rationed. Red marks the one buy or commit action per screen, blue marks talking to a seller or going there, and green and red only report open, closed and confirmed.",
+    "keyCharacteristics": [
+      "Torob's palette and type, light theme only, right-to-left Persian.",
+      "Flat white cards on a grey ground; the colour step is the edge.",
+      "Three type sizes (12, 14, 16) at two weights (400, 700).",
+      "One filled action per result, one red action per screen.",
+      "Every fact has a labelled slot; missing values read \"نامشخص\", never blank."
+    ],
+    "rules": [
+      { "name": "The One Red Rule", "body": "Torob Red appears on at most one control per screen. If a second action wants red, it is blue, outline or ghost.", "section": "colors" },
+      { "name": "The Talk-Is-Blue Rule", "body": "Any action that contacts a seller or leads to a shop is Inquiry Blue. Blue never means \"buy\".", "section": "colors" },
+      { "name": "The Muted-On-White Rule", "body": "Muted ink sits only on white surfaces. Text on the grey ground is ink. Placeholders in the grey search field are the one exception, as on Torob.", "section": "colors" },
+      { "name": "The Sixteen Ceiling Rule", "body": "No text is larger than 16 px. A screen that wants a bigger headline wants a clearer slot instead.", "section": "typography" },
+      { "name": "The Tabular Digits Rule", "body": "Every number uses `tabular-nums` and goes through `faDigits`: Persian digits with U+066B as the thousands separator (\"۳٫۳۴۰٫۰۰۰ تومان\").", "section": "typography" },
+      { "name": "The Paper-On-Grey Rule", "body": "Cards are white rectangles on grey: no shadow, no ring, no outline. If a card needs separating from another card, the 8 px gap does it.", "section": "elevation" }
+    ],
+    "dos": [
+      "**Do** give each result exactly one filled action and keep Torob Red to one control per screen.",
+      "**Do** write a missing value as \"نامشخص\" in muted ink, in its labelled slot (\"قیمت: نامشخص\", \"ساعت کاری: نامشخص\").",
+      "**Do** label price age \"آخرین تغییر قیمت\" and add \"، قدیمی\" in notice ink past 30 days.",
+      "**Do** colour the open state with the 8 px green dot and keep the words in ink.",
+      "**Do** check every new block at 360 px with no sideways page scroll."
+    ],
+    "donts": [
+      "**Don't** add a shadow, ring or border to a content card.",
+      "**Don't** set text above 16 px or use weights other than 400 and 700.",
+      "**Don't** use Open Green as a text colour or Torob Red for anything that isn't the screen's commit action.",
+      "**Don't** colour reason badges or show more than one per result.",
+      "**Don't** write \"به‌روز شده\" for a price, or \"موجود است\" before a seller confirmed it.",
+      "**Don't** use Torob's gradient buttons; the flat fill is the gradient's end colour."
+    ]
+  }
+}
