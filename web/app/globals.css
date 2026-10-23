@@ -41,6 +41,9 @@
   --color-confirmed: var(--confirmed);
   --color-confirmed-foreground: var(--confirmed-foreground);
   --color-notice-foreground: var(--notice-foreground);
+  --color-trust-confirmed: var(--trust-confirmed);
+  --color-trust-website: var(--trust-website);
+  --color-trust-foreground: var(--trust-foreground);
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
@@ -81,6 +84,10 @@
   --confirmed-foreground: #0b5124;
   /* old price (>30 days) */
   --notice-foreground: #92400e;
+  /* solid trust badges: confirmed by the seller, read from the seller's website */
+  --trust-confirmed: #0b5124;
+  --trust-website: #3468cc;
+  --trust-foreground: #ffffff;
   /* 8: buttons, inputs, image wells */
   --radius: 0.5rem;
 }
@@ -111,6 +118,8 @@
     --brand: #d74937;
     --closed: #f43f5e;
     --notice-foreground: #ffca32;
+    /* brighter solid green so the badge edge reads on the dark card; white text stays 5:1 */
+    --trust-confirmed: #15803d;
   }
 }
 
