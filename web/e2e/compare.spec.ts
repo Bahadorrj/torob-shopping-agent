@@ -54,6 +54,13 @@ test("compare tray holds up to three products and opens the compare table at 360
   const tray = page.getByRole("region", { name: "سبد مقایسه" });
   await expect(tray).toContainText("۳ از ۳");
   expect(await noOverflow(page)).toBe(0);
+  // a pick looks 24 px tall but takes taps over 44 px
+  const hit = await tray.getByRole("button", { name: "حذف کالای الف از مقایسه" }).evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2;
+    return [r.top - 9.5, r.bottom + 9.5].map((y) => el.contains(document.elementFromPoint(x, y)));
+  });
+  expect(hit).toEqual([true, true]);
 
   await tray.getByRole("link", { name: "مقایسه" }).click();
   await expect(page).toHaveURL(/\/compare\?ids=p1%2Cp2%2Cp3$/);

@@ -120,6 +120,9 @@
     --notice-foreground: #ffca32;
     /* brighter solid green so the badge edge reads on the dark card; white text stays 5:1 */
     --trust-confirmed: #15803d;
+    /* lighter blue so contact links and outlines reach 5:1 on the dark card; dark text on the filled button */
+    --contact: #6b9bf2;
+    --contact-foreground: #0f172b;
   }
 }
 

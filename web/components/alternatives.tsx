@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useBrief } from "@/components/brief-provider";
 import { Button } from "@/components/ui/button";
 import { askAlternative, type Alternative, type Alternatives as Block } from "@/lib/api";
+import { linkClass } from "@/lib/utils";
 
 const REASON: Record<Block["reason"], string> = {
   unavailable: "موجود نبود. به جایش:",
@@ -30,20 +31,20 @@ export function Alternatives({ block, onAsk }: { block: Block; onAsk: (a: Altern
 
   if (block.alternatives.length === 0) return <p className="text-xs text-muted-foreground">جایگزینی پیدا نشد.</p>;
   return (
-    <section className="flex flex-col gap-2 rounded-md bg-muted p-2" aria-label="جایگزین‌ها">
-      <h3 className="text-xs font-semibold">{REASON[block.reason]}</h3>
+    <section className="flex flex-col gap-2 rounded-xl bg-card p-3" aria-label="جایگزین‌ها">
+      <h3 className="text-xs font-bold">{REASON[block.reason]}</h3>
       <ul className="flex flex-col gap-2">
         {block.alternatives.map((a) => (
           <li key={`${a.shop_id}-${a.product_id}`} className="flex flex-col gap-1">
-            <Link href={`/shops/${a.shop_id}`} className="font-semibold text-primary underline-offset-4 hover:underline">
+            <Link href={`/shops/${a.shop_id}`} className={linkClass}>
               {a.shop_name}
             </Link>
             {a.kind === "similar_product" && <span className="text-xs">{a.product_title}</span>}
             <span className="text-xs text-muted-foreground">{a.tradeoff}</span>
             <Button
-              size="xs"
+              size="tap"
               variant="outline"
-              className="h-auto self-start py-1 whitespace-normal"
+              className="self-start"
               disabled={asked.includes(a.shop_id)}
               onClick={() => ask(a)}
             >

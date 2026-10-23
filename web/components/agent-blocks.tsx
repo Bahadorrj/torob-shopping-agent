@@ -41,6 +41,7 @@ import {
 import { faDigits, faText, locate, toman } from "@/lib/format";
 import { productReasons } from "@/lib/reasons";
 import { useEventStream } from "@/lib/use-event-stream";
+import { linkClass } from "@/lib/utils";
 
 // One renderer per block type. A block is an agent tool result: `{ block: "<type>", ...tool output }`
 // (backend/src/pasazhgard/agent.py). Numbers on screen come from these fields only, never from agent text.
@@ -81,14 +82,12 @@ function PlanLink({ plan }: { plan: VisitPlan }) {
   );
 }
 
-const linkClass = "text-sm font-medium text-primary underline-offset-4 hover:underline";
-
 const compareHref = (ids: string[]) => `/compare?${new URLSearchParams({ ids: ids.join(",") })}`;
 
 function Pick({ m }: { m: ModelPick }) {
   return (
     <Card className="gap-1.5 p-3">
-      <h3 className="line-clamp-2 text-sm font-semibold leading-6">{m.title}</h3>
+      <h3 className="line-clamp-2 text-sm font-bold leading-6">{m.title}</h3>
       {m.key_specs.length > 0 && (
         <p className="line-clamp-1 text-xs text-muted-foreground">{m.key_specs.map((s) => `${s.key}: ${s.value}`).join(" · ")}</p>
       )}
@@ -138,7 +137,7 @@ function MiniTable({ label, heads, rows }: { label: string; heads: string[]; row
         <tr className="border-b">
           <td className="w-16" />
           {heads.map((h, i) => (
-            <th key={i} scope="col" className="p-1 text-start align-top font-semibold break-words">
+            <th key={i} scope="col" className="p-1 text-start align-top font-bold break-words">
               <span className="line-clamp-3">{h}</span>
             </th>
           ))}
@@ -222,7 +221,7 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
       ))}
       {d.sellers.length === 0 && d.fast_delivery?.length > 0 && (
         <section aria-label={FAST_DELIVERY} className="flex flex-col gap-2">
-          <h3 className="text-sm font-semibold">{FAST_DELIVERY}</h3>
+          <h3 className="text-sm font-bold">{FAST_DELIVERY}</h3>
           {d.fast_delivery.slice(0, 3).map((s) => (
             <Seller key={s.offer_id} s={s} />
           ))}
@@ -234,16 +233,16 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
     </div>
   ),
   product: (d: { product_id: string; title: string }) => (
-    <div className="flex flex-col gap-1 text-sm">
+    <Card className="gap-1 p-3">
       <p>{d.title}</p>
       <Link href={`/products/${d.product_id}/sellers`} className={linkClass}>
         دیدن فروشنده‌ها
       </Link>
-    </div>
+    </Card>
   ),
   shop_details: (d: ShopDetails) => (
-    <div className="flex flex-col gap-1 text-sm">
-      <p className="font-semibold">{d.name}</p>
+    <Card className="gap-1 p-3">
+      <p className="font-bold">{d.name}</p>
       {(d.pasaj || d.floor || d.unit) && (
         <p className="break-words">
           {faText([d.pasaj && `پاساژ ${d.pasaj}`, d.floor && `طبقه ${d.floor}`, d.unit && `واحد ${d.unit}`].filter(Boolean).join("، "))}
@@ -253,14 +252,14 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
       <Link href={`/shops/${d.shop_id}`} className={linkClass}>
         ساعت کاری هفته و جزئیات فروشگاه
       </Link>
-    </div>
+    </Card>
   ),
   compare_table: (d: ProductCompare) => {
     const products = d.products.slice(0, 3);
     // the full page has every spec; the chat shows the first few that differ
     const specs = d.specs.filter((s) => s.differs).slice(0, 6);
     return (
-      <div className="flex flex-col gap-1.5">
+      <Card className="gap-1.5 p-3">
         <MiniTable
           label="مقایسه کالاها"
           heads={products.map((p) => p.title)}
@@ -273,11 +272,11 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
         <Link href={compareHref(d.products.map((p) => p.product_id))} className={linkClass}>
           دیدن جدول مقایسه
         </Link>
-      </div>
+      </Card>
     );
   },
   seller_compare: (d: SellerCompare) => (
-    <div className="flex flex-col gap-1.5">
+    <Card className="gap-1.5 p-3">
       <MiniTable
         label="مقایسه فروشنده‌ها"
         heads={d.sellers.slice(0, 3).map((s) => s.shop_name)}
@@ -294,11 +293,11 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
       >
         مقایسه فروشنده‌ها
       </Link>
-    </div>
+    </Card>
   ),
   inquiry_status: (d: InquiryStatus) => <Inquiries initial={d.inquiries} sites={d.site_prices ?? []} />,
   visit_plan: (d: VisitPlan) => (
-    <div className="flex flex-col gap-1.5 text-sm">
+    <Card className="gap-1.5 p-3">
       <ol className="flex flex-col gap-1">
         {d.stops.map((s, i) => (
           <li key={s.shop_id} className="flex flex-wrap items-center gap-1.5">
@@ -310,13 +309,13 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
         ))}
       </ol>
       <PlanLink plan={d} />
-    </div>
+    </Card>
   ),
   directions: (d: Directions) => (
-    <div className="flex flex-col gap-1.5 text-sm">
-      <p className="font-semibold">{d.shop_name}</p>
+    <Card className="gap-1.5 p-3">
+      <p className="font-bold">{d.shop_name}</p>
       <RouteDetails d={d} />
-    </div>
+    </Card>
   ),
   alternatives: (d: Alternatives) => <AgentAlternatives block={d} />,
   basket: (d: Basket) => <BasketView basket={d} />,
@@ -358,12 +357,12 @@ function ChipsBlock({ block, send }: { block: Chips; send: (text: string) => voi
           onChange={(e) => setQuery(e.target.value)}
           aria-label="جستجو در گزینه‌ها"
           placeholder="جستجو..."
-          className="h-9"
+          className="h-11"
         />
       )}
       <div className="flex flex-wrap gap-1.5" role="group" aria-label={block.question}>
         {shown.map((o) => (
-          <Button key={o} variant="outline" size="sm" onClick={() => pick(o)}>
+          <Button key={o} variant="outline" size="tap" onClick={() => pick(o)}>
             {o}
           </Button>
         ))}
@@ -435,5 +434,5 @@ export function Block({ content, send }: { content: string; send: (text: string)
   }
   // a result without a known block (an error for the model, a newer block type) shows nothing
   const render = data.block ? BLOCKS[data.block] : undefined;
-  return render ? render(data as never, send) : null;
+  return render ? <div data-block={data.block}>{render(data as never, send)}</div> : null;
 }

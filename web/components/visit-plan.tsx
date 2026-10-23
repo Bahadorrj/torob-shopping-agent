@@ -11,7 +11,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { getVisitPlan, visitPlanStreamUrl, type ClosingNudge, type Directions, type PriceNudge, type Stop, type StopInquiry, type VisitPlan as Plan } from "@/lib/api";
 import { distance, faDigits, faText, openLabel, UNKNOWN } from "@/lib/format";
 import { useEventStream } from "@/lib/use-event-stream";
-import { cn } from "@/lib/utils";
+import { cn, linkClass } from "@/lib/utils";
 
 // times come in Tehran's fixed +03:30 offset, so the clock time is read off the string
 export const clock = (iso: string) => faText(iso.slice(11, 16));
@@ -89,12 +89,12 @@ export function RouteDetails({ d }: { d: Directions }) {
             rel="noopener noreferrer"
             aria-label={`باز کردن در ${name}`}
             // cn drops the base border-transparent so the contact border shows
-            className={cn(buttonVariants({ size: "xs", variant: "contact-outline" }))}
+            className={cn(buttonVariants({ size: "tap", variant: "contact-outline" }))}
           >
             {name}
           </a>
         ))}
-        <Link href={`/shops/${d.shop_id}`} className={buttonVariants({ size: "xs", variant: "ghost" })}>
+        <Link href={`/shops/${d.shop_id}`} className={linkClass}>
           صفحه فروشگاه
         </Link>
       </div>
@@ -208,7 +208,7 @@ export function VisitPlan({ query }: { query: string }) {
               <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">
                 {faDigits(i + 1)}
               </span>
-              <span className="font-semibold">{s.shop_name}</span>
+              <span className="font-bold">{s.shop_name}</span>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
               <span>رسیدن {clock(s.eta)}</span>

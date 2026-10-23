@@ -59,7 +59,7 @@ function Sent({ sessionId, inquiry: i, original }: { sessionId: string; inquiry:
   return (
     <li className="flex flex-col gap-1.5 rounded-lg border p-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-semibold">{i.shop_name}</span>
+        <span className="font-bold">{i.shop_name}</span>
         <Badge variant={i.status === "confirmed" ? "default" : FELL_THROUGH.includes(i.status) ? "destructive" : "secondary"}>
           {STATUS[i.status]}
         </Badge>
@@ -90,7 +90,7 @@ function Sent({ sessionId, inquiry: i, original }: { sessionId: string; inquiry:
           ))}
       </ol>
       {i.status === "closed" && (
-        <Button size="xs" variant="outline" className="h-auto self-start py-1 whitespace-normal" onClick={() => confirmInquiries(sessionId, [i.inquiry_id], true)}>
+        <Button size="tap" variant="outline" className="self-start" onClick={() => confirmInquiries(sessionId, [i.inquiry_id], true)}>
           هنگام باز شدن بفرست
         </Button>
       )}
@@ -110,13 +110,13 @@ function SendYourself({ message }: { message: string }) {
   const share = () => (navigator.share ? navigator.share({ text: message }).catch(() => {}) : copy());
   return (
     <div className="flex flex-wrap gap-1.5">
-      <Button size="xs" variant="outline" onClick={copy}>
+      <Button size="tap" variant="outline" onClick={copy}>
         {copied ? "کپی شد" : "کپی پیام"}
       </Button>
-      <a href={`https://wa.me/?text=${encodeURIComponent(message)}`} target="_blank" rel="noreferrer" className={buttonVariants({ size: "xs", variant: "outline" })}>
+      <a href={`https://wa.me/?text=${encodeURIComponent(message)}`} target="_blank" rel="noreferrer" className={buttonVariants({ size: "tap", variant: "outline" })}>
         واتس‌اپ
       </a>
-      <Button size="xs" variant="outline" onClick={share}>
+      <Button size="tap" variant="outline" onClick={share}>
         بله و دیگر برنامه‌ها
       </Button>
     </div>
@@ -127,7 +127,7 @@ function SendYourself({ message }: { message: string }) {
 function Site({ sessionId, price: p }: { sessionId: string; price: SitePrice }) {
   return (
     <li className="flex flex-col gap-1.5 rounded-lg border p-3 text-sm">
-      <span className="font-semibold">{p.shop_name}</span>
+      <span className="font-bold">{p.shop_name}</span>
       {p.status === "found" && p.price_toman !== null ? (
         <p>
           قیمت سایت: <span className="font-bold">{faDigits(p.price_toman)} تومان</span> - ساعت {clock(p.fetched_at)} - موجودی تأیید نشده
@@ -136,9 +136,9 @@ function Site({ sessionId, price: p }: { sessionId: string; price: SitePrice }) 
         <>
           <p className="text-muted-foreground">قیمت سایت در دسترس نبود</p>
           <Button
-            size="xs"
+            size="tap"
             variant="outline"
-            className="h-auto self-start py-1 whitespace-normal"
+            className="self-start"
             onClick={() => composeInquiries(sessionId, [], [{ product_id: p.product_id, shop_id: p.shop_id }])}
           >
             استعلام از {p.shop_name}
@@ -188,13 +188,13 @@ export function InquiryTracker({
             {drafts.map((d) => (
               <li key={d.inquiry_id} className="flex flex-col gap-1.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-semibold">{d.shop_name}</span>
-                  <Button size="xs" variant="outline" disabled={sending} onClick={() => confirm([d.inquiry_id])}>
+                  <span className="font-bold">{d.shop_name}</span>
+                  <Button size="tap" variant="outline" disabled={sending} onClick={() => confirm([d.inquiry_id])}>
                     ارسال درخواست موجودی
                   </Button>
                 </div>
                 <details className="text-xs">
-                  <summary className="cursor-pointer text-muted-foreground">خودم می‌فرستم</summary>
+                  <summary className="cursor-pointer py-3 leading-5 text-muted-foreground">خودم می‌فرستم</summary>
                   <div className="flex flex-col gap-1.5 pt-1.5">
                     <SendYourself message={d.message} />
                     <p className="text-muted-foreground">شماره‌های تماس فروشگاه‌ها در داده‌های این دمو واقعی نیستند.</p>
@@ -204,7 +204,7 @@ export function InquiryTracker({
             ))}
           </ul>
           {drafts.length > 1 && (
-            <Button onClick={() => confirm(drafts.map((d) => d.inquiry_id))} disabled={sending} className="h-auto py-1.5 whitespace-normal">
+            <Button onClick={() => confirm(drafts.map((d) => d.inquiry_id))} disabled={sending} className="h-auto min-h-11 py-1.5 whitespace-normal">
               ارسال به {faDigits(drafts.length)} فروشنده
             </Button>
           )}
