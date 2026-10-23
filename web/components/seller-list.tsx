@@ -297,6 +297,24 @@ export function SellerList({ productId }: { productId: string }) {
   const [view, setView] = useState<"list" | "map">("list");
   const [selected, setSelected] = useState<string | null>(null);
   const [moreCategory, setMoreCategory] = useState(false);
+  // shops unknown only on hours get their own group; any other unknown keeps a shop in ask-them
+  const hoursOnly = list?.ask_them.filter((s) => s.unknown.length === 1 && s.unknown[0] === "hours") ?? [];
+  const askThem = list?.ask_them.filter((s) => !hoursOnly.includes(s)) ?? [];
+  const group = (id: string, title: string, note: string, shops: SellerRow[]) => (
+    <section aria-labelledby={id} className="flex flex-col gap-2">
+      <h2 id={id} className="text-sm font-semibold">
+        {title}
+      </h2>
+      <p className="text-xs">{note}</p>
+      <ul className="flex flex-col gap-2">
+        {shops.map((s) => (
+          <li key={s.offer_id} aria-current={pinKey(s) === selected || undefined} className={pickedClass}>
+            {card(s)}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
   const rows = useMemo(() => (list ? [...list.sellers, ...list.ask_them] : []), [list]);
   const mapPins = useMemo(() => pins(rows), [rows]);
   const picked = mapPins.find((p) => p.key === selected);
@@ -406,21 +424,8 @@ export function SellerList({ productId }: { productId: string }) {
         </ul>
       )}
 
-      {!showMap && list.ask_them.length > 0 && (
-        <section aria-labelledby="ask-them" className="flex flex-col gap-2">
-          <h2 id="ask-them" className="text-sm font-semibold">
-            از فروشنده بپرسید
-          </h2>
-          <p className="text-xs">این فروشگاه‌ها بعضی از شرایط شما را ثبت نکرده‌اند.</p>
-          <ul className="flex flex-col gap-2">
-            {list.ask_them.map((s) => (
-              <li key={s.offer_id} aria-current={pinKey(s) === selected || undefined} className={pickedClass}>
-                {card(s)}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      {!showMap && hoursOnly.length > 0 && group("unknown-hours", "ساعت کاری نامشخص", "ساعت کاری این فروشگاه‌ها ثبت نشده است.", hoursOnly)}
+      {!showMap && askThem.length > 0 && group("ask-them", "از فروشنده بپرسید", "این فروشگاه‌ها بعضی از شرایط شما را ثبت نکرده‌اند.", askThem)}
 
       {!showMap && list.category_only.length > 0 && (
         <section aria-labelledby="category-only" className="flex flex-col gap-2">
