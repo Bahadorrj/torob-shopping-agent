@@ -317,6 +317,8 @@ export type Inquiry = {
   reply: Reply;
   // question: the Seller Liaison's one follow-up to the seller after an ambiguous free-text reply
   events: { at: string; status: InquiryState; reply: ConsoleReply | null; question: string | null }[];
+  // an alternative asked in place of this inquiry of the session
+  instead_of: number | null;
 };
 
 // a price read from the shop's website: says nothing about stock; unavailable when the site failed or showed no price

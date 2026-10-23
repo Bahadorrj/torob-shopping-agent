@@ -8,7 +8,7 @@ import { AgentAlternatives } from "@/components/alternatives";
 import { BasketView } from "@/components/basket";
 import { fold } from "@/components/brief-bar";
 import { useBrief } from "@/components/brief-provider";
-import { InquiryTracker } from "@/components/inquiry-tracker";
+import { InquiryTracker, withAlternatives } from "@/components/inquiry-tracker";
 import { ListedPrice, ProductCard } from "@/components/product-card";
 import { Seller } from "@/components/seller-list";
 import { Button } from "@/components/ui/button";
@@ -49,7 +49,7 @@ function Inquiries({ initial, sites }: { initial: Inquiry[]; sites: SitePrice[] 
   // shortcut: one stream per block; share one per session if threads grow many inquiry blocks
   const live = useEventStream<InquiryStatus>(inquiriesStreamUrl(sid));
   const ids = new Set(initial.map((i) => i.inquiry_id));
-  const inquiries = live ? live.inquiries.filter((i) => ids.has(i.inquiry_id)) : initial;
+  const inquiries = live ? withAlternatives(live.inquiries, (i) => ids.has(i.inquiry_id)) : initial;
   const keys = new Set(sites.map((p) => `${p.shop_id} ${p.product_id}`));
   const sitePrices = live ? (live.site_prices ?? []).filter((p) => keys.has(`${p.shop_id} ${p.product_id}`)) : sites;
   return <InquiryTracker sessionId={sid} inquiries={inquiries} sitePrices={sitePrices} onConfirm={(inquiryIds) => confirmInquiries(sid, inquiryIds)} />;

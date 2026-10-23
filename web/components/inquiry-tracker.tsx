@@ -31,6 +31,14 @@ function FallenThrough({ sessionId, inquiry }: { sessionId: string; inquiry: Inq
   return block && <Alternatives block={block} onAsk={(a) => askAlternative(sessionId, a, inquiry_id)} />;
 }
 
+// the inquiries `keep` picks plus the alternatives asked in place of them, at any depth; `all` is oldest first,
+// so an alternative comes after the inquiry it stands in for
+export function withAlternatives(all: Inquiry[], keep: (i: Inquiry) => boolean) {
+  const ids = new Set(all.filter(keep).map((i) => i.inquiry_id));
+  for (const i of all) if (i.instead_of && ids.has(i.instead_of)) ids.add(i.inquiry_id);
+  return all.filter((i) => ids.has(i.inquiry_id));
+}
+
 // an ISO time from the API, in Tehran time, as HH:MM
 export const clock = (at: string) => faText(at.slice(11, 16));
 
@@ -45,7 +53,7 @@ export function replyText(r: ConsoleReply) {
   return parts.join("، ");
 }
 
-function Sent({ sessionId, inquiry: i }: { sessionId: string; inquiry: Inquiry }) {
+function Sent({ sessionId, inquiry: i, original }: { sessionId: string; inquiry: Inquiry; original?: Inquiry }) {
   const { reply } = i;
   const repliedAt = i.events.findLast((e) => e.reply)?.at;
   return (
@@ -57,6 +65,12 @@ function Sent({ sessionId, inquiry: i }: { sessionId: string; inquiry: Inquiry }
         </Badge>
         {i.simulated && <Badge variant="outline">شبیه‌سازی</Badge>}
       </div>
+      {original && (
+        <p className="text-xs text-muted-foreground">
+          به جای {original.shop_name}
+          {i.product_id !== original.product_id && ` - کالای مشابه: ${i.product_title}`}
+        </p>
+      )}
       {reply.latest_price_toman !== null && repliedAt && (
         <p>
           قیمت تأییدشده توسط فروشنده: <span className="font-bold">{faDigits(reply.latest_price_toman)} تومان</span> - ساعت{" "}
@@ -193,7 +207,7 @@ export function InquiryTracker({
           <h2 className="font-bold">پیگیری استعلام‌ها</h2>
           <ul className="flex flex-col gap-2">
             {sent.map((i) => (
-              <Sent key={i.inquiry_id} sessionId={sessionId} inquiry={i} />
+              <Sent key={i.inquiry_id} sessionId={sessionId} inquiry={i} original={inquiries.find((o) => o.inquiry_id === i.instead_of)} />
             ))}
           </ul>
           {sent.some((i) => i.simulated) && (

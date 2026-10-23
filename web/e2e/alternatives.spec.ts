@@ -1,6 +1,6 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-import { fakeSessions } from "./fake-session";
+import { askHome, fakeAgent, fakeSessions } from "./fake-session";
 
 const noReply = { available: "unknown", latest_price_toman: null, hold_until: null, installments: null, notes: null, confidence: null };
 
@@ -93,5 +93,51 @@ test("no reply and closed inquiries bring up alternatives with one-tap ask and q
     { path: "/confirm", body: { inquiry_ids: [7], queue: false } },
     { path: "/confirm", body: { inquiry_ids: [2], queue: true } },
   ]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+});
+
+// a stream that serves `pages` in turn, then the last one; each reconnect gets the next
+async function streamInquiries(page: Page, sid: string, pages: object[][]) {
+  let n = 0;
+  await page.route(`**/api/sessions/${sid}/inquiries**`, (route) => {
+    if (!new URL(route.request().url()).pathname.endsWith("/stream")) return route.fulfill({ json: { inquiry_id: 1, reason: "no_reply", alternatives: [] } });
+    const inquiries = pages[Math.min(n++, pages.length - 1)];
+    return route.fulfill({ contentType: "text/event-stream", body: `retry: 100\ndata: ${JSON.stringify({ inquiries })}\n\n` });
+  });
+}
+
+test("an alternative asked from the agent's inquiry block shows in that block and updates live at 360 px", async ({ page }) => {
+  await fakeSessions(page, {});
+  const original = inquiry(1, "دیسیلا مانسا", "no_reply");
+  await fakeAgent(page, [{ block: "inquiry_status", inquiries: [original] }]);
+  const stand = (status: string) => ({ ...inquiry(8, "نیکورا ویوان", status), instead_of: 1 });
+  const other = inquiry(9, "رامیلا رامیرا", "sent");
+  await streamInquiries(page, "s1", [[original], [original, stand("sent"), other], [original, stand("replied"), other]]);
+  await page.goto("/");
+  await askHome(page, "از این فروشنده بپرس");
+
+  const tracker = page.getByRole("region", { name: "استعلام‌ها" });
+  const card = tracker.getByRole("listitem").filter({ hasText: "نیکورا ویوان" });
+  await expect(card).toContainText("به جای دیسیلا مانسا");
+  await expect(card.getByText("پاسخ داد", { exact: true })).toBeVisible();
+  // another inquiry of the session stays out of this block
+  await expect(tracker).not.toContainText("رامیلا رامیرا");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+});
+
+test("a similar-product alternative shows in the seller list it was asked from, as the stand-in, at 360 px", async ({ page }) => {
+  const list = { product_id: "p1", title: "هندزفری انکر R50i", count: 0, sellers: [], ask_them: [], category_only: [], nearest_covered: null, areas: [], pasajs: [] };
+  await fakeSessions(page, { sellers: () => list });
+  const original = inquiry(1, "دیسیلا مانسا", "no_reply");
+  const similar = { ...inquiry(8, "نیکورا ویوان", "sent"), product_id: "p2", product_title: "هندزفری شیائومی", instead_of: 1 };
+  const other = { ...inquiry(9, "رامیلا رامیرا", "sent"), product_id: "p3" };
+  await streamInquiries(page, "s1", [[original, similar, other]]);
+  await page.goto("/products/p1/sellers");
+
+  const tracker = page.getByRole("region", { name: "استعلام‌ها" });
+  const card = tracker.getByRole("listitem").filter({ hasText: "نیکورا ویوان" });
+  await expect(card).toContainText("به جای دیسیلا مانسا");
+  await expect(card).toContainText("هندزفری شیائومی");
+  await expect(tracker).not.toContainText("رامیلا رامیرا");
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
 });
