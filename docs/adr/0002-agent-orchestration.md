@@ -46,6 +46,11 @@ The orchestrator and the Seller Liaison run on LangGraph, with LangChain chat mo
   check, `closed`), the seller channel port, the Seller Console and the inquiry SSE endpoint are plain
   FastAPI and Postgres. Inquiry events reach the orchestrator on its next turn; it then calls
   `find_alternatives` (#16).
+  *Amended (#76):* the agent also posts without a user turn. The session's inquiry stream, on every poll, writes a
+  `find_alternatives` call and its `alternatives` result into the thread (`graph.aupdate_state`, as the `degraded`
+  node so no run starts) for each inquiry that turned `no_reply`, `unavailable` or `closed`. Message ids come from the
+  inquiry, so a repeat replaces instead of doubling. The sheet reads the thread again on each inquiry event. A
+  `replied` inquiry that leaves availability unknown also turns `no_reply` N minutes after its last reply.
 - **Tests.** The scripted fake is a LangChain fake chat model (e.g. `GenericFakeChatModel`) fed scripted
   messages and tool calls. The grounding check reads tool messages from graph state.
 - **Degraded mode.** Without `LLM_API_KEY` the graph is not run: free text goes to deterministic search plus

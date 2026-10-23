@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 
 # closed: the shop was closed when the user consented; queued: it goes out when the shop opens
 Status = Literal["draft", "closed", "queued", "sent", "replied", "confirmed", "unavailable", "no_reply"]
-# an inquiry still sent this long after sending turns no_reply
+# an inquiry still sent, or replied without saying whether it is in stock, this long after its last step turns no_reply
 NO_REPLY_AFTER = dt.timedelta(minutes=float(os.environ.get("NO_REPLY_MINUTES", "2")))
 Question = Literal["available", "price", "hold", "installments"]
 
@@ -170,17 +170,17 @@ def _inquiry(row: dict) -> Inquiry:
 
 
 def _tick(conn, now: dt.datetime) -> None:
-    """The moves the clock makes, applied on every read: queued -> sent once the shop opens, sent -> no_reply after N."""
+    """The moves the clock makes, applied on every read: queued -> sent once the shop opens, sent or replied -> no_reply after N."""
     # shortcut: scans every waiting inquiry on each read; move to a scheduler if the table grows
     for row in conn.execute(
-        "SELECT i.*, s.hours FROM inquiries i LEFT JOIN shops s USING (shop_id) WHERE i.status IN ('queued', 'sent')"
+        "SELECT i.*, s.hours FROM inquiries i LEFT JOIN shops s USING (shop_id) WHERE i.status IN ('queued', 'sent', 'replied')"
     ).fetchall():
         i = _inquiry(row)
         if i.status == "queued" and row["hours"] and open_at(row["hours"], now):
             # shortcut: the Seller Console needs no send call; a channel that does needs a sender job here
             _move(conn, i, "sent", now, channel=SellerConsole.name)
-        elif i.status == "sent":
-            due = next(e.at for e in reversed(i.events) if e.status == "sent") + NO_REPLY_AFTER
+        elif i.status in ("sent", "replied"):
+            due = i.events[-1].at + NO_REPLY_AFTER
             if due <= now:
                 _move(conn, i, "no_reply", due)
 
@@ -279,6 +279,8 @@ def _move(conn, inquiry: Inquiry, to: Status, now: dt.datetime, **changes) -> No
         "sent": replied | {"no_reply"},
         "no_reply": replied,
         **dict.fromkeys(replied, replied),
+        # a reply that leaves availability unknown still times out
+        "replied": replied | {"no_reply"},
     }
     if to not in allowed[inquiry.status]:
         raise ValueError(f"{inquiry.status} -> {to}")

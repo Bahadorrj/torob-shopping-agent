@@ -141,3 +141,37 @@ test("a similar-product alternative shows in the seller list it was asked from, 
   await expect(tracker).not.toContainText("رامیلا رامیرا");
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
 });
+
+test("the agent posts alternatives in the open chat when an inquiry falls through, without a user turn, at 360 px", async ({ page }) => {
+  await fakeSessions(page, {}, { s9: {} });
+  await page.addInitScript(() => localStorage.setItem("pasazhgard.session", "s9"));
+  await streamInquiries(page, "s9", [[inquiry(1, "دیسیلا مانسا", "no_reply")]]);
+  const block = {
+    block: "alternatives",
+    inquiry_id: 1,
+    reason: "no_reply",
+    alternatives: [alternative("shop_x", "نیکورا ویوان", "o9", "۲۰۰ هزار تومان ارزان‌تر، همین پاساژ، الان باز است")],
+  };
+  const posted = [
+    { id: "u1", role: "user", content: "هدفون انکر" },
+    {
+      id: "fallback-1",
+      role: "assistant",
+      content: "«دیسیلا مانسا» دربارهٔ «هندزفری انکر R50i» جواب نداد. این‌ها را بپرسید:",
+      toolCalls: [{ id: "fallback-1", type: "function", function: { name: "find_alternatives", arguments: '{"inquiry_id":1}' } }],
+    },
+    { id: "fallback-1-result", role: "tool", toolCallId: "fallback-1", content: JSON.stringify(block) },
+  ];
+  // the reload reads the thread before the post; the stream's event reads it after
+  let reads = 0;
+  await page.route("**/api/sessions/s9/messages", (route) => route.fulfill({ json: reads++ === 0 ? posted.slice(0, 1) : posted }));
+  await page.goto("/");
+
+  const sheet = page.getByRole("region", { name: "دستیار" });
+  await expect(sheet.getByText("جواب نداد. این‌ها را بپرسید:")).toBeVisible();
+  const alternatives = sheet.getByRole("region", { name: "جایگزین‌ها" });
+  await expect(alternatives).toContainText("۲۰۰ هزار تومان ارزان‌تر، همین پاساژ، الان باز است");
+  await expect(alternatives.getByRole("button", { name: "از این فروشنده بپرس" })).toBeVisible();
+  await expect(sheet.getByText("هدفون انکر", { exact: true })).toHaveCount(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+});

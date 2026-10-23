@@ -28,6 +28,7 @@ from langgraph.prebuilt import InjectedState, ToolNode
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field
 
+from pasazhgard.alternatives import Alternatives
 from pasazhgard.alternatives import find_alternatives as _find_alternatives
 from pasazhgard.basket import BasketQuery
 from pasazhgard.basket import optimize_basket as _optimize_basket
@@ -36,7 +37,7 @@ from pasazhgard.compare import compare_products as _compare_products
 from pasazhgard.discovery import SuggestQuery
 from pasazhgard.discovery import suggest_models as _suggest_models
 from pasazhgard.embeddings import Embedder
-from pasazhgard.inquiries import Compose
+from pasazhgard.inquiries import Compose, Inquiry
 from pasazhgard.inquiries import contact_seller as _contact_seller
 from pasazhgard.inquiries import get_inquiries as _get_inquiries
 from pasazhgard.routing import Router
@@ -81,6 +82,14 @@ class Ports:
     connect: Callable[[], AbstractContextManager]
 
 
+class MustHavePatch(BaseModel):
+    """Seller conditions the user turns on (true) or off (false); null leaves one as it is."""
+
+    warranty: bool | None = Field(None, description="the item must come with a warranty, e.g. گارانتی دار, با گارانتی")
+    test_in_presence: bool | None = Field(None, description="the user can test the item in the shop")
+    fast_delivery: bool | None = None
+
+
 class BriefPatch(BaseModel):
     """Brief fields the user's latest message states or changes. Leave every other field null."""
 
@@ -92,12 +101,35 @@ class BriefPatch(BaseModel):
     visit_window: VisitWindow | None = None
     payment: Payment | None = None
     quantity: int | None = Field(None, gt=0)
+    priority: Literal["cheapest", "closest", "most_reliable"] | None = Field(
+        None, description="how to rank sellers, e.g. ارزون‌ترین is cheapest, نزدیک‌ترین closest, معتبرترین most_reliable"
+    )
+    must_have: MustHavePatch | None = None
+    travel_mode: Literal["walk", "transit", "car"] | None = Field(None, description="how the user gets there, e.g. با ماشین میرم is car")
 
 
 def block(kind: str, payload: BaseModel | dict) -> str:
     """A tool result the UI renders with the `kind` renderer."""
     data = payload.model_dump(mode="json") if isinstance(payload, BaseModel) else payload
     return json.dumps({"block": kind, **data}, ensure_ascii=False)
+
+
+def fallback_messages(inquiry: Inquiry, alternatives: Alternatives) -> list[AIMessage | ToolMessage]:
+    """The agent's own find_alternatives step for an inquiry that fell through, as if it had called the tool.
+
+    Ids come from the inquiry, so posting it again replaces it instead of adding a second copy."""
+    said = {
+        "unavailable": f"«{inquiry.shop_name}» گفت «{inquiry.product_title}» را ندارد.",
+        "no_reply": f"«{inquiry.shop_name}» دربارهٔ «{inquiry.product_title}» جواب نداد.",
+        "closed": f"«{inquiry.shop_name}» الان بسته است.",
+    }[alternatives.reason]
+    tail = " این‌ها را بپرسید:" if alternatives.alternatives else " جای دیگری برای پرسیدن پیدا نکردم."
+    key = f"fallback-{inquiry.inquiry_id}"
+    call = {"name": "find_alternatives", "args": {"inquiry_id": inquiry.inquiry_id}, "id": key, "type": "tool_call"}
+    return [
+        AIMessage(said + tail, tool_calls=[call], id=key),
+        ToolMessage(block("alternatives", alternatives), tool_call_id=key, name="find_alternatives", id=f"{key}-result"),
+    ]
 
 
 def error(message: str) -> str:
@@ -124,6 +156,8 @@ def load_brief(conn, sid: str) -> Brief:
 
 def apply_patch(brief: Brief, patch: BriefPatch) -> Brief:
     fields = {k: v for k, v in patch.model_dump().items() if v is not None and k != "quantity"}
+    if patch.must_have:
+        fields["must_have"] = {**brief.must_have.model_dump(), **patch.must_have.model_dump(exclude_none=True)}
     if patch.quantity:
         items = brief.items or [Item()]
         fields["items"] = [items[0].model_copy(update={"quantity": patch.quantity}), *items[1:]]

@@ -7,13 +7,15 @@ import { usePathname, useRouter } from "next/navigation";
 import { Fragment, useEffect, useState } from "react";
 
 import { AGENT_SEND, ToolRenderers } from "@/components/agent-blocks";
+import { FilterChipBar } from "@/components/brief-bar";
 import { forgetSession, recentSessionIds, useBrief } from "@/components/brief-provider";
 import { CompareTrayBar } from "@/components/compare-tray";
 import { CATEGORIES } from "@/components/home-start";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
-import { getSession, getThread } from "@/lib/api";
+import { getSession, getThread, inquiriesStreamUrl, type InquiryStatus } from "@/lib/api";
+import { useEventStream } from "@/lib/use-event-stream";
 
 export { AGENT_SEND };
 export const HELP_CHOOSE = "کمکم کن انتخاب کنم";
@@ -150,15 +152,19 @@ function Sheet({ threadId, open, setOpen }: { threadId: string; open: boolean; s
     setOpen(false);
   }
 
+  // the agent posts alternatives by itself when an inquiry falls through, so every inquiry change reads the thread again
+  const inquiries = useEventStream<InquiryStatus>(inquiriesStreamUrl(threadId));
   // the thread is checkpointed on the server; a reload or another route reads it back (the drawer waits for a tap)
   useEffect(() => {
     getThread(threadId).then(setThread, () => {});
-  }, [threadId]);
-  // the agent instance is swapped once the runtime registers it, so restore onto whichever is current
+  }, [threadId, inquiries]);
+  // the agent instance is swapped once the runtime registers it, so restore onto whichever is current; a message the
+  // server has and the sheet lacks is one the agent posted between turns
   useEffect(() => {
-    if (thread.length === 0 || agent.messages.length > 0) return;
+    const shown = new Set(agent.messages.map((m) => m.id));
+    if (agent.isRunning || !thread.some((m) => !shown.has(m.id))) return;
     agent.setMessages(thread);
-  }, [agent, thread]);
+  }, [agent, agent.isRunning, thread]);
 
   async function send(content: string) {
     if (!content.trim() || agent.isRunning) return;
@@ -170,6 +176,8 @@ function Sheet({ threadId, open, setOpen }: { threadId: string; open: boolean; s
     } finally {
       // the turn patched the brief on the server; the brief bar shows it now
       refresh();
+      // the server's thread now has this turn, so a stale read-back cannot stand in for it
+      getThread(threadId).then(setThread, () => {});
     }
   }
 
@@ -261,11 +269,14 @@ function Sheet({ threadId, open, setOpen }: { threadId: string; open: boolean; s
 
   if (pathname === "/") {
     return (
-      // fills the screen under home's 56 px app bar, with the input at the bottom
-      <section aria-label="دستیار" className="fixed inset-x-0 top-14 bottom-0 mx-auto flex w-full max-w-xl flex-col gap-2 px-4 pb-3">
-        <div className="flex justify-end pt-2">{actions}</div>
-        {body}
-      </section>
+      // fills the screen under home's 56 px app bar: the brief bar, then the thread with the input at the bottom
+      <div className="fixed inset-x-0 top-14 bottom-0 flex flex-col">
+        <FilterChipBar />
+        <section aria-label="دستیار" className="mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col gap-2 px-4 pb-3">
+          <div className="flex justify-end pt-2">{actions}</div>
+          {body}
+        </section>
+      </div>
     );
   }
 

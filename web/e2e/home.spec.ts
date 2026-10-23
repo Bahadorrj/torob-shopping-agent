@@ -29,7 +29,6 @@ test("home shows only the assistant: app bar, greeting, starter chips and the in
   // the input sits at the bottom of the screen
   const input = (await sheet(page).getByLabel("پیام به دستیار").boundingBox())!;
   expect(input.y + input.height).toBeGreaterThan(740 - 72);
-  await expect(page.getByRole("region", { name: "خلاصه خرید" })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "از یک دسته شروع کنید" })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "پاساژها" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "دستیار خرید" })).toHaveCount(0);
@@ -41,6 +40,23 @@ test("home shows only the assistant: app bar, greeting, starter chips and the in
   // the agent ran in place: no drawer opened
   await expect(page.locator("[data-slot=drawer-popup]")).toHaveCount(0);
   await expect(sheet(page).getByText("چه چیزی می‌خواهید حضوری بخرید؟")).toHaveCount(0);
+});
+
+test("the brief bar shows on home under the app bar without covering the chat input at 360 px", async ({ page }) => {
+  await fakeSessions(page, {});
+  await page.goto("/");
+  const bar = page.getByRole("region", { name: "خلاصه خرید" });
+  await expect(chip(page, "فیلترها")).toBeVisible();
+  const head = (await page.getByRole("banner").boundingBox())!;
+  const box = (await bar.boundingBox())!;
+  const input = (await sheet(page).getByLabel("پیام به دستیار").boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(head.y + head.height - 1);
+  expect(box.y + box.height).toBeLessThanOrEqual(input.y);
+  expect(input.y + input.height).toBeLessThanOrEqual(740);
+  // the greeting is not hidden under the bar
+  const greeting = (await sheet(page).getByText("چه چیزی می‌خواهید حضوری بخرید؟").boundingBox())!;
+  expect(greeting.y).toBeGreaterThanOrEqual(box.y + box.height);
+  await fits(page);
 });
 
 test("a sentence on home runs the agent in place and its chips answer it", async ({ page }) => {
