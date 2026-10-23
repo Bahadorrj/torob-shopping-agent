@@ -576,3 +576,40 @@ def test_no_origin_question_when_the_brief_has_the_origin(agent, client):
     )
 
     assert kinds(agent.turn("برنامهٔ رفتن")) == [None, "visit_plan"]
+
+
+def test_a_shop_question_is_answered_with_shop_details(agent):
+    agent.script(agent.brief(), agent.call("shop_details", shop_id=CHEAPEST_SHOP), "طبقه و ساعت کاری در کارت فروشگاه است.")
+
+    turn = agent.turn("کدوم طبقه است؟ پنجشنبه بازه؟")
+
+    [shop] = turn.blocks
+    assert (shop["block"], shop["shop_id"], shop["name"]) == ("shop_details", CHEAPEST_SHOP, "نیکورا ویوان")
+    assert [d["day"] for d in shop["hours"]["week"]][-2] == "thu"
+
+
+def test_the_agent_reads_a_product_with_get_product(agent):
+    agent.script(agent.brief(), agent.call("get_product", product_id=ANKER), "مشخصات در کارت کالا است.")
+
+    [product] = agent.turn("مشخصات این هدفون چیه؟").blocks
+
+    assert (product["block"], product["product_id"]) == ("product", ANKER)
+    assert product["specs"]
+
+
+def test_shop_details_and_get_product_say_not_found_to_the_model_only(agent):
+    agent.script(agent.brief(), agent.call("shop_details", shop_id="shop_missing"), agent.call("get_product", product_id="product_missing"), "پیدا نشد.")
+
+    assert [b.get("block") for b in agent.turn("این فروشگاه کجاست؟").blocks] == [None, None]
+
+
+def test_find_sellers_leaves_out_the_area_lists_and_caps_category_only_for_the_model(agent, client):
+    many = "product_0a040d1b11770040095cec15"  # 17 category-only shops
+    agent.script(agent.brief(), agent.call("find_sellers", product_id=many), "فروشنده‌ها.")
+
+    [sellers] = agent.turn("فروشنده‌های این کالا").blocks
+
+    assert "areas" not in sellers and "pasajs" not in sellers
+    full = client.get(f"/products/{many}/sellers").json()["category_only"]
+    assert len(full) > 5
+    assert sellers["category_only"] == full[:5]
