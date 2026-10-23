@@ -9,6 +9,7 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import type { Brief, Center, MustHave, PaymentKind, Priority, SessionPatch, TravelMode } from "@/lib/api";
 import { distance, faDigits, faText, localDate, locate } from "@/lib/format";
+import { useBackCloses } from "@/lib/use-back-closes";
 
 const RADII = [500, 1000, 2000, 5000];
 const BUDGETS = [2, 5, 10, 20].map((m) => m * 1000000);
@@ -180,7 +181,8 @@ function Group({ label, children }: { label: string; children: React.ReactNode }
 export function FilterChipBar() {
   const { session, patch } = useBrief();
   const [sheet, setSheet] = useState<Sheet>("all");
-  const [open, setOpen] = useState(false);
+  const [open, setSheetOpen] = useState(false);
+  const setOpen = useBackCloses("briefSheet", setSheetOpen);
   const [geoError, setGeoError] = useState(false);
   useEffect(() => {
     const onOpen = () => {
@@ -189,7 +191,7 @@ export function FilterChipBar() {
     };
     window.addEventListener(OPEN_AREA, onOpen);
     return () => window.removeEventListener(OPEN_AREA, onOpen);
-  }, []);
+  }, [setOpen]);
   if (!session) return null;
   const { brief, centers } = session;
   const set = (b: SessionPatch["brief"]) => patch({ brief: b });
