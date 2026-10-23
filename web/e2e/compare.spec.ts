@@ -92,3 +92,37 @@ test("the compare table re-runs when the brief area changes", async ({ page }) =
   await page.getByRole("dialog", { name: "محدوده" }).getByRole("button", { name: "فردوسی", exact: true }).click();
   await expect(sellersRow).toContainText("فروشنده‌ای در این محدوده نیست");
 });
+
+test("compare picks belong to their chat: a new chat starts empty, a resumed or reloaded chat brings them back", async ({ page }) => {
+  await fakeSessions(page, {}, { a: { messages: [{ id: "u1", role: "user", content: "هدفون" }] } });
+  await page.addInitScript(() => {
+    if (localStorage.getItem("pasazhgard.session")) return;
+    localStorage.setItem("pasazhgard.session", "a");
+    localStorage.setItem("pasazhgard.sessions", JSON.stringify(["a"]));
+  });
+  await searchAll(page);
+  const sheet = page.getByRole("region", { name: "دستیار" });
+  const tray = page.getByRole("region", { name: "سبد مقایسه" });
+  const history = page.getByRole("dialog", { name: "تاریخچه" });
+  await result(page, "کالای الف").getByRole("button", { name: "افزودن به مقایسه" }).click();
+  await expect(tray).toContainText("۱ از ۳");
+
+  await page.reload();
+  await expect(tray).toContainText("۱ از ۳");
+
+  await sheet.getByRole("button", { name: "گفتگوی جدید" }).click();
+  await expect(sheet.getByText("چه چیزی می‌خواهید حضوری بخرید؟")).toBeVisible();
+  await expect(tray).toHaveCount(0);
+
+  await sheet.getByRole("button", { name: "تاریخچه" }).click();
+  await history.getByRole("button", { name: "هدفون" }).click();
+  await expect(tray).toContainText("۱ از ۳");
+  await expect(tray.getByRole("button", { name: "حذف کالای الف از مقایسه" })).toBeVisible();
+  expect(await noOverflow(page)).toBe(0);
+
+  // forgetting the chat drops its stored picks
+  await sheet.getByRole("button", { name: "گفتگوی جدید" }).click();
+  await sheet.getByRole("button", { name: "تاریخچه" }).click();
+  await history.getByRole("button", { name: "حذف از تاریخچه" }).click();
+  expect(await page.evaluate(() => localStorage.getItem("pasazhgard.compare.a"))).toBeNull();
+});
