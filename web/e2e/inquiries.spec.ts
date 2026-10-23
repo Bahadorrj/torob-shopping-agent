@@ -140,6 +140,7 @@ test("ask three sellers: drafts first, send on consent, replies update the track
   await expect(row("موجودی")).toContainText("موجود است - ساعت ۱۲:۰۵");
   await expect(row("پرداخت و اقساط")).toContainText("اقساط یا ترب‌پی (تأیید فروشنده)");
   await expect(row("اعتبار قیمت")).toContainText("تأییدشده");
+  await expect(row("اعتبار قیمت").locator('[data-slot="badge"]').first()).toHaveCSS("background-color", "rgb(11, 81, 36)");
   // the compare reads this session's inquiries
   expect(compareRequests.at(-1)!.get("session_id")).toBe("s9");
   expect(await noOverflow(page)).toBe(0);

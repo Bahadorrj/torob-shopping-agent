@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { PriceFlag, PriceRange, ProductCard as Product } from "@/lib/api";
 import { faDigits, fromToman, priceAge, toman, UNKNOWN } from "@/lib/format";
-import { productReasons } from "@/lib/reasons";
+import { productReasons, productWhy } from "@/lib/reasons";
 
 const FLAG_LABELS: Partial<Record<PriceFlag, string>> = {
   placeholder: "قیمت صوری کنار گذاشته شد",
@@ -53,6 +53,7 @@ export function ProductCard({ product, reason }: { product: Product; reason?: st
   if (product.price_flags.includes("missing") && price.trust_level === "listed") notes.push("برخی فروشنده‌ها قیمت ثبت نکرده‌اند");
   if (product.price_flags.includes("per_meter") && !price.per_meter) notes.push("برخی قیمت‌ها هر متر است");
 
+  const why = productWhy(product);
   return (
     // the sellers link stretches over the whole card; the compare toggle sits above it
     <Card className="relative flex-row gap-3 p-3">
@@ -66,9 +67,19 @@ export function ProductCard({ product, reason }: { product: Product; reason?: st
         <Badge variant="secondary" className="rounded-full font-bold">
           {reason ?? productReasons([product])[0]}
         </Badge>
+        {why.chips.length > 0 && (
+          <div role="group" data-slot="why" aria-label="چرا این کالا؟" className="flex flex-wrap gap-1">
+            {why.chips.map((c) => (
+              <Badge key={c} variant="outline" className="h-auto py-0.5 whitespace-normal">
+                {c}
+              </Badge>
+            ))}
+          </div>
+        )}
         <h2 className="line-clamp-2 text-sm font-bold leading-6">{product.title}</h2>
         <FromPrice price={price} />
         <p className="text-xs text-muted-foreground tabular-nums">در {faDigits(product.offer_count)} فروشگاه</p>
+        {why.chips.length > 0 && <p className="text-xs leading-5 text-muted-foreground">{why.sentence}</p>}
         {notes.length > 0 && <p className="text-xs text-muted-foreground">{notes.join("، ")}</p>}
         <div className="flex w-full items-center justify-between gap-2 text-sm">
           {product.offer_count > 0 ? (

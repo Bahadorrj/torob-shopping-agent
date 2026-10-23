@@ -1,51 +1,27 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { Brief, ProductCard, Reason, SellerRow } from "./api.ts";
-import { productReasons, sellerReasons } from "./reasons.ts";
+import type { ProductCard, Reason, SellerRow } from "./api.ts";
+import { productReasons, productWhy, sellerChips } from "./reasons.ts";
 
 const reason = (kind: Reason["kind"], extra: Partial<Reason> = {}): Reason => ({ kind, months: null, provider: null, ...extra });
 
 const seller = (reasons: Reason[], extra: Partial<SellerRow> = {}) =>
   ({ reasons, pasaj: null, payment_options: [], ...extra }) as SellerRow;
 
-const brief = (extra: Partial<Brief> = {}) =>
-  ({ priority: "most_reliable", payment: { kind: "any", provider: null }, ...extra }) as Brief;
-
-// one row with the reason under test beside a bare row, so the reason is not shared
-const one = (row: SellerRow, b = brief()) => sellerReasons([row, seller([])], b)[0];
-
-test("seller rows: each rule of the table", () => {
-  assert.equal(one(seller([reason("cheapest"), reason("warranty", { months: 18 })])), "ارزان‌ترین");
-  assert.equal(one(seller([reason("closest"), reason("open_now")])), "نزدیک‌ترین");
-  assert.equal(one(seller([reason("open_now"), reason("fresh_price")])), "الان باز");
-  const pay = seller([reason("installments", { provider: "ترب‌پی" }), reason("warranty", { months: 18 })], {
-    payment_options: [{ provider: "ترب‌پی", channel: "in_person" }],
-  });
-  assert.equal(one(pay, brief({ payment: { kind: "torob_pay", provider: null } })), "ترب‌پی حضوری");
-  assert.equal(one(pay, brief({ payment: { kind: "installment", provider: null } })), "ترب‌پی حضوری");
-  assert.equal(one(pay), "گارانتی ۱۸ ماهه", "installments counts only when the brief asks for it");
-  assert.equal(one(seller([reason("fresh_price"), reason("declared_hours")])), "قیمت این هفته");
-  assert.equal(one(seller([reason("declared_hours")], { pasaj: "علاءالدین" })), "ساعت کاری مشخص");
-  assert.equal(one(seller([], { pasaj: "علاءالدین 2" })), "پاساژ علاءالدین ۲");
-  assert.equal(one(seller([])), "فروشنده این کالا");
+test("seller chips: every reason, in a fixed order", () => {
+  const row = seller(
+    [reason("declared_hours"), reason("warranty", { months: 18 }), reason("installments", { provider: "ترب‌پی" }), reason("open_now"), reason("closest"), reason("cheapest"), reason("fresh_price")],
+    { payment_options: [{ provider: "ترب‌پی", channel: "in_person" }] },
+  );
+  assert.deepEqual(sellerChips(row), ["ارزان‌ترین", "نزدیک‌ترین", "الان باز", "ترب‌پی حضوری", "گارانتی ۱۸ ماهه", "قیمت این هفته", "ساعت کاری مشخص"]);
+  assert.deepEqual(sellerChips(seller([reason("installments", { provider: "تارا" })])), ["تارا"]);
+  assert.deepEqual(sellerChips(seller([reason("warranty")])), ["گارانتی"]);
 });
 
-test("seller rows: the brief's priority moves its reason first", () => {
-  const row = seller([reason("cheapest"), reason("closest")]);
-  assert.equal(one(row, brief({ priority: "cheapest" })), "ارزان‌ترین");
-  assert.equal(one(row, brief({ priority: "closest" })), "نزدیک‌ترین");
-  assert.equal(one(row, brief({ priority: "most_reliable" })), "ارزان‌ترین");
-});
-
-test("seller rows: a reason every row shares is skipped", () => {
-  const rows = [
-    seller([reason("cheapest"), reason("open_now")], { pasaj: "علاءالدین" }),
-    seller([reason("open_now"), reason("fresh_price")], { pasaj: "علاءالدین" }),
-    seller([reason("open_now")], { pasaj: "علاءالدین" }),
-  ];
-  assert.deepEqual(sellerReasons(rows, brief()), ["ارزان‌ترین", "قیمت این هفته", "فروشنده این کالا"]);
-  assert.deepEqual(sellerReasons([rows[2]], brief()), ["الان باز"], "a lone row shares nothing");
+test("seller chips: a row without reasons names its pasaj, else the product", () => {
+  assert.deepEqual(sellerChips(seller([], { pasaj: "علاءالدین 2" })), ["پاساژ علاءالدین ۲"]);
+  assert.deepEqual(sellerChips(seller([])), ["فروشنده این کالا"]);
 });
 
 const price = { trust_level: "listed", min_toman: null, max_toman: null, per_meter: false, last_price_changed_at: null, price_age_days: null, price_age_bucket: null };
@@ -71,4 +47,13 @@ test("product cards: each rule of the table", () => {
 
 test("product cards: a reason every card shares is skipped", () => {
   assert.deepEqual(productReasons([card({ meaning_match: true, bucket: "<=7" }), card({ meaning_match: true })]), ["قیمت این هفته", "در ۱ فروشگاه"]);
+});
+
+test("product why: chips and the sentence come from the score parts", () => {
+  const parts = [{ word: "هدفون", matched: true }, { word: "انکر", matched: true }, { word: "قرمز", matched: false }];
+  assert.deepEqual(productWhy(card({ score_parts: parts, meaning_match: true, offer_count: 8 })), {
+    chips: ["«هدفون» در عنوان یا برند", "«انکر» در عنوان یا برند", "«قرمز» پیدا نشد", "هم‌معنا با جستجو"],
+    sentence: "«هدفون» و «انکر» در عنوان یا برند این کالا هست؛ «قرمز» در آن پیدا نشد؛ از نظر معنی به جستجوی شما نزدیک است؛ ۸ فروشگاه آن را دارند.",
+  });
+  assert.deepEqual(productWhy(card()), { chips: [], sentence: "۱ فروشگاه آن را دارند." });
 });
