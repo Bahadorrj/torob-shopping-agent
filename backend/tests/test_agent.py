@@ -485,3 +485,58 @@ def test_a_use_question_without_options_goes_back_to_the_model(agent):
     turn = agent.turn("هندزفری")
 
     assert turn.blocks == [{"error": "give 3-5 short options"}, {"block": "chips", "field": "use", "question": "برای چه کاری؟", "options": ["ورزش", "تماس"]}]
+
+
+def test_a_radius_without_an_origin_does_not_fail_the_turn_and_asks_for_the_location(agent, client):
+    agent.script(
+        agent.brief(need="هندزفری", area={"radius_m": 1000}),
+        agent.call("ask_user", field="origin", question="از کجا شروع می‌کنید؟"),
+    )
+
+    turn = agent.turn("هندزفری نزدیک من")
+
+    assert kinds(turn) == ["chips"]
+    assert turn.blocks[0]["field"] == "origin"
+    assert turn.blocks[0]["options"][0] == "موقعیت من"
+    assert {"فردوسی", "علاالدین"} <= set(turn.blocks[0]["options"])
+    brief = client.get(f"/sessions/{agent.session_id}").json()["brief"]
+    assert (brief["need"], brief["area"], brief["origin"]) == ("هندزفری", None, None)
+
+
+def test_a_radius_with_an_origin_still_applies(agent, client):
+    client.patch(f"/sessions/{agent.session_id}", json={"brief": {"origin": ALADDIN}})
+    agent.script(agent.brief(area={"radius_m": 1000}), "باشه.")
+
+    agent.turn("نزدیک من")
+
+    assert client.get(f"/sessions/{agent.session_id}").json()["brief"]["area"]["radius_m"] == 1000
+
+
+def test_the_origin_set_through_the_question_lets_the_visit_plan_come_back(agent, client):
+    agent.script(
+        agent.brief(),
+        agent.call("plan_visit", shop_ids=[VIVAN]),
+        agent.call("ask_user", field="origin", question="از کجا شروع می‌کنید؟"),
+    )
+    first = agent.turn("برنامهٔ رفتن به این فروشگاه")
+    # the error for the model says to ask, and the question ends the turn
+    assert kinds(first) == [None, "chips"]
+
+    # the chip's tap patches the origin, then sends its text as the next turn
+    client.patch(f"/sessions/{agent.session_id}", json={"brief": {"origin": ALADDIN}})
+    agent.script(agent.brief(), agent.call("plan_visit", shop_ids=[VIVAN]), "برنامهٔ مراجعه آماده است.")
+    second = agent.turn("مبدأ من: علاالدین")
+
+    assert kinds(second) == ["visit_plan"]
+
+
+def test_no_origin_question_when_the_brief_has_the_origin(agent, client):
+    client.patch(f"/sessions/{agent.session_id}", json={"brief": {"origin": ALADDIN}})
+    agent.script(
+        agent.brief(),
+        agent.call("ask_user", field="origin", question="از کجا؟"),
+        agent.call("plan_visit", shop_ids=[VIVAN]),
+        "آماده است.",
+    )
+
+    assert kinds(agent.turn("برنامهٔ رفتن")) == [None, "visit_plan"]
