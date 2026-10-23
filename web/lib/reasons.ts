@@ -1,6 +1,6 @@
 // Reason badge per result: the first match in priority order, skipping a reason every visible row shares.
 // No "@/" imports and type-only imports, so `node --test` runs it with plain type stripping.
-import type { Brief, ProductCard, SellerRow } from "./api";
+import type { ProductCard, SellerRow } from "./api";
 
 const fa = (s: string | number) => String(s).replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)]);
 
@@ -12,31 +12,36 @@ function pick(candidates: Candidate[][]): string[] {
   return candidates.map((c) => (c.slice(0, -1).find((x) => !shared(x.key)) ?? c[c.length - 1]).label);
 }
 
-export function sellerReasons(rows: SellerRow[], brief: Pick<Brief, "priority" | "payment">): string[] {
-  const installments = brief.payment.kind === "torob_pay" || brief.payment.kind === "installment";
-  return pick(
-    rows.map((s) => {
-      const has = (kind: string) => s.reasons.find((r) => r.kind === kind);
-      const c: (Candidate | null)[] = [
-        has("cheapest") ? { key: "cheapest", label: "ارزان‌ترین" } : null,
-        has("closest") ? { key: "closest", label: "نزدیک‌ترین" } : null,
-      ];
-      if (brief.priority === "closest") c.reverse();
-      const pay = installments ? has("installments") : undefined;
-      const inPerson = pay && s.payment_options.some((p) => p.provider === pay.provider && p.channel === "in_person");
-      const warranty = has("warranty");
-      c.push(
-        has("open_now") ? { key: "open_now", label: "الان باز" } : null,
-        pay?.provider ? { key: `pay:${pay.provider}`, label: inPerson ? `${pay.provider} حضوری` : pay.provider } : null,
-        warranty ? { key: `warranty:${warranty.months}`, label: warranty.months ? `گارانتی ${fa(warranty.months)} ماهه` : "گارانتی" } : null,
-        has("fresh_price") ? { key: "fresh_price", label: "قیمت این هفته" } : null,
-        has("declared_hours") ? { key: "declared_hours", label: "ساعت کاری مشخص" } : null,
-        s.pasaj ? { key: `pasaj:${s.pasaj}`, label: fa(`پاساژ ${s.pasaj}`) } : null,
-        { key: "seller", label: "فروشنده این کالا" },
-      );
-      return c.filter((x): x is Candidate => x !== null);
-    }),
-  );
+// every reason of one seller row, as short chips in a fixed order
+export function sellerChips(s: SellerRow): string[] {
+  const label = (r: SellerRow["reasons"][number]) =>
+    ({
+      cheapest: "ارزان‌ترین",
+      closest: "نزدیک‌ترین",
+      open_now: "الان باز",
+      installments: r.provider ? `${r.provider}${s.payment_options.some((p) => p.provider === r.provider && p.channel === "in_person") ? " حضوری" : ""}` : "اقساط",
+      warranty: r.months ? `گارانتی ${fa(r.months)} ماهه` : "گارانتی",
+      fresh_price: "قیمت این هفته",
+      declared_hours: "ساعت کاری مشخص",
+    })[r.kind];
+  const order = ["cheapest", "closest", "open_now", "installments", "warranty", "fresh_price", "declared_hours"];
+  const chips = order.flatMap((k) => s.reasons.filter((r) => r.kind === k).map(label));
+  return chips.length > 0 ? chips : [s.pasaj ? fa(`پاساژ ${s.pasaj}`) : "فروشنده این کالا"];
+}
+
+// score parts as chips plus one sentence built from the same values
+export function productWhy(p: ProductCard): { chips: string[]; sentence: string } {
+  const found = p.score_parts.filter((w) => w.matched).map((w) => w.word);
+  const missed = p.score_parts.filter((w) => !w.matched).map((w) => w.word);
+  const chips = [...found.map((w) => `«${w}» در عنوان یا برند`), ...missed.map((w) => `«${w}» پیدا نشد`), ...(p.meaning_match ? ["هم‌معنا با جستجو"] : [])];
+  const list = (ws: string[]) => ws.map((w) => `«${w}»`).join(" و ");
+  const parts = [
+    found.length > 0 && `${list(found)} در عنوان یا برند این کالا هست`,
+    missed.length > 0 && `${list(missed)} در آن پیدا نشد`,
+    p.meaning_match && "از نظر معنی به جستجوی شما نزدیک است",
+    `${fa(p.offer_count)} فروشگاه آن را دارند`,
+  ];
+  return { chips, sentence: `${parts.filter(Boolean).join("؛ ")}.` };
 }
 
 export function productReasons(cards: ProductCard[]): string[] {
