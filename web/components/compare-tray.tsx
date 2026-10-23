@@ -86,9 +86,10 @@ export function CompareTrayBar() {
           <span className="text-xs text-muted-foreground">کالای دیگری اضافه کنید</span>
         )}
       </div>
-      <div className="flex flex-wrap gap-1.5">
+      {/* the picks stay 24 px so the docked bar keeps its height; each hit area reaches 44 px without covering its neighbours */}
+      <div className="flex flex-wrap gap-x-1.5 gap-y-5 py-0.5">
         {items.map((i) => (
-          <Button key={i.product_id} variant="outline" size="xs" className="max-w-40" aria-label={`حذف ${i.title} از مقایسه`} onClick={() => toggle(i)}>
+          <Button key={i.product_id} variant="outline" size="xs" className="relative max-w-40 after:absolute after:inset-x-0 after:-inset-y-[11px]" aria-label={`حذف ${i.title} از مقایسه`} onClick={() => toggle(i)}>
             <span className="truncate">{i.title}</span> ×
           </Button>
         ))}

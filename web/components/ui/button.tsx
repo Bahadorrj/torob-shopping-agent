@@ -34,6 +34,8 @@ const buttonVariants = cva(
           "size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
         "icon-lg": "size-9",
         row: "h-10 gap-1.5 px-4 text-sm font-bold",
+        // 44 px tap target for controls in chat blocks
+        tap: "min-h-11 gap-1 px-3 py-1 text-sm whitespace-normal",
       },
     },
     defaultVariants: {

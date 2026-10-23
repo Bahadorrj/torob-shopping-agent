@@ -46,6 +46,32 @@ test("the agent sheet renders blocks at 360 px and a chip answers the question",
   await expect(sheet.getByText("این هدفون را پیدا کردم.")).toHaveCount(2);
 });
 
+// the blocks' controls and links, product cards aside (their own issue)
+const blockControls = (page: Page) =>
+  page.locator("[data-block]:not([data-block=product_cards])").locator("a, button, summary, input").evaluateAll((els) =>
+    els
+      .filter((e) => e.checkVisibility())
+      .map((e) => ({ text: e.textContent?.trim(), tag: e.tagName, height: e.getBoundingClientRect().height, color: getComputedStyle(e).color })),
+  );
+
+for (const [scheme, contact] of [["light", "rgb(52, 104, 204)"], ["dark", "rgb(107, 155, 242)"]] as const)
+  test(`a ${scheme} agent turn at 360 px: block controls are 44 px tall and links are contact blue`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    await fakeSessions(page, {});
+    await page.goto("/");
+    const sheet = page.getByRole("region", { name: "دستیار" });
+    await sheet.getByLabel("پیام به دستیار").fill("هدفون انکر");
+    await sheet.getByRole("button", { name: "بفرست" }).click();
+    await expect(sheet.getByRole("link", { name: "دیدن برنامه روی نقشه" })).toBeVisible();
+
+    const controls = await blockControls(page);
+    expect(controls.length).toBeGreaterThan(10);
+    expect(controls.filter((c) => c.height < 44)).toEqual([]);
+    const links = controls.filter((c) => c.tag === "A");
+    expect(links.length).toBeGreaterThan(4);
+    expect(links.filter((c) => c.color !== contact)).toEqual([]);
+  });
+
 // same file as the test above: the runtime refuses two runs on one fake session thread at once
 test("help me choose on the home screen shows the model shortlist at 360 px", async ({ page }) => {
   await fakeSessions(page, {});
