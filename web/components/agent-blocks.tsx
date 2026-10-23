@@ -33,7 +33,7 @@ import {
   type Shortlist,
   type VisitPlan,
 } from "@/lib/api";
-import { faDigits, faText } from "@/lib/format";
+import { faDigits, faText, locate } from "@/lib/format";
 import { productReasons } from "@/lib/reasons";
 import { useEventStream } from "@/lib/use-event-stream";
 
@@ -196,6 +196,26 @@ export const BLOCKS: Record<string, (data: never, send: (text: string) => void) 
 // A long list (every area and pasaj) shows 8 chips and a search box, so it does not fill the thread
 function ChipsBlock({ block, send }: { block: Chips; send: (text: string) => void }) {
   const [query, setQuery] = useState("");
+  const [geoError, setGeoError] = useState(false);
+  const { session, patch } = useBrief();
+  // an origin chip sets the brief's origin first, so the agent's next turn has it
+  async function pick(o: string) {
+    if (block.field !== "origin") return send(o);
+    let origin: { lat: number; lon: number } | undefined;
+    if (o === "موقعیت من") {
+      try {
+        origin = await locate();
+      } catch {
+        return setGeoError(true);
+      }
+    } else {
+      const c = session?.centers.find((c) => c.name === o);
+      origin = c && { lat: c.lat, lon: c.lon };
+    }
+    setGeoError(false);
+    if (origin) await patch({ brief: { origin } });
+    send(`مبدأ من: ${o}`);
+  }
   const q = fold(query);
   const shown = block.options.filter((o) => fold(o).includes(q)).slice(0, 8);
   return (
@@ -213,12 +233,13 @@ function ChipsBlock({ block, send }: { block: Chips; send: (text: string) => voi
       )}
       <div className="flex flex-wrap gap-1.5" role="group" aria-label={block.question}>
         {shown.map((o) => (
-          <Button key={o} variant="outline" size="sm" onClick={() => send(o)}>
+          <Button key={o} variant="outline" size="sm" onClick={() => pick(o)}>
             {o}
           </Button>
         ))}
       </div>
       {!shown.length && <p className="text-sm text-muted-foreground">گزینه‌ای با این نام پیدا نشد</p>}
+      {geoError && <p role="alert" className="text-sm text-destructive">موقعیت شما در دسترس نیست. محله یا پاساژ را انتخاب کنید.</p>}
     </div>
   );
 }

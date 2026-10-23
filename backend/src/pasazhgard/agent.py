@@ -127,6 +127,9 @@ def apply_patch(brief: Brief, patch: BriefPatch) -> Brief:
     if patch.quantity:
         items = brief.items or [Item()]
         fields["items"] = [items[0].model_copy(update={"quantity": patch.quantity}), *items[1:]]
+    # "near me" before any origin: keep the old area; the agent asks for the origin instead
+    if patch.area and patch.area.radius_m is not None and brief.origin is None:
+        del fields["area"]
     return Brief.model_validate({**brief.model_dump(), **fields})
 
 
@@ -210,7 +213,7 @@ def build_graph(ports: Ports) -> StateGraph:
         inquiry; confirmed shops first, an alternative asked in place of a shop that fell through takes its stop. Shows the plan."""
         brief, now = brief_of(config), ports.now()
         if brief.origin is None:
-            return error("the brief has no origin: ask the user to share their location")
+            return error("the brief has no origin: call ask_user for origin")
         try:
             q = PlanQuery(
                 shop_id=shop_ids,
@@ -232,7 +235,7 @@ def build_graph(ports: Ports) -> StateGraph:
         """Route from the user's location to one shop, map app links, then pasaj, floor and unit. Shows directions."""
         brief = brief_of(config)
         if brief.origin is None:
-            return error("the brief has no origin: ask the user to share their location")
+            return error("the brief has no origin: call ask_user for origin")
         q = DirectionsQuery(lat=brief.origin.lat, lon=brief.origin.lon, mode=brief.travel_mode or "walk")
         with ports.connect() as conn:
             result = _get_directions(conn, shop_id, q, ports.router())
@@ -250,7 +253,7 @@ def build_graph(ports: Ports) -> StateGraph:
 
     @tool
     def ask_user(
-        field: Literal["area", "budget", "visit_window", "payment", "quantity", "need", "use", "features"],
+        field: Literal["origin", "area", "budget", "visit_window", "payment", "quantity", "need", "use", "features"],
         question: str,
         state: Annotated[dict, InjectedState],
         call_id: Annotated[str, InjectedToolCallId],
@@ -264,6 +267,7 @@ def build_graph(ports: Ports) -> StateGraph:
             return error("one question per turn")
         brief = brief_of(config)
         answered = {
+            "origin": brief.origin is not None,
             "area": brief.area is not None,
             "budget": brief.budget != Budget(),
             "visit_window": brief.visit_window != VisitWindow(),
@@ -290,10 +294,11 @@ def build_graph(ports: Ports) -> StateGraph:
             options = options or ["تا ۱ میلیون تومان", "تا ۵ میلیون تومان", "تا ۲۰ میلیون تومان", "فرقی نمی‌کند"]
         elif field == "quantity":
             options = ["۱", "۲", "۳"]
-        elif field == "area":
+        elif field in ("area", "origin"):
             with ports.connect() as conn:
                 found = area_options(conn)
-            options = ["نزدیک من", *found["areas"], *found["pasajs"]]
+            # the web answers "موقعیت من" with geolocation and an area or pasaj with its center
+            options = ["موقعیت من" if field == "origin" else "نزدیک من", *found["areas"], *found["pasajs"]]
         elif field == "payment":
             options = ["نقدی", "اقساطی", "ترب‌پی", "فرقی نمی‌کند"]
         elif field == "visit_window":
@@ -390,7 +395,9 @@ def build_graph(ports: Ports) -> StateGraph:
               was sent or a seller answered unless get_inquiries shows it.
             - A website price (fetch_site_price) is the shop's site, not a seller's word: never say it is in stock from it.
             - When an inquiry turns unavailable, no_reply or closed, call find_alternatives for it; to ask an alternative,
-              call contact_seller with its offer id and instead_of set to that inquiry."""
+              call contact_seller with its offer id and instead_of set to that inquiry.
+            - When the user wants shops near them, a visit plan or directions and the brief has no origin,
+              call ask_user for origin."""
         )
         prompt = SystemMessage(prompt.format(now=ports.now().isoformat(), brief=brief.model_dump_json()))
         messages = [prompt, *state["messages"]]

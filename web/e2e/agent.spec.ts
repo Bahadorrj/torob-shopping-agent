@@ -175,3 +175,40 @@ test("the drawer has a handle, closes by swipe or the close button and keeps the
   await page.mouse.up();
   await expect(sheet).toHaveCount(0);
 });
+
+const originChips = { block: "chips", field: "origin", question: "از کجا شروع می‌کنید؟", options: ["موقعیت من", "فردوسی", "علاالدین"] };
+
+test("origin chips at 360 px: my location sets the origin from geolocation, then the chip text goes to the agent", async ({ page, context }) => {
+  await context.grantPermissions(["geolocation"]);
+  await context.setGeolocation({ latitude: 35.7, longitude: 51.4 });
+  const { patches } = await fakeSessions(page, {});
+  const sent: string[] = [];
+  await fakeAgent(page, [originChips], "", ({ messages }) => sent.push(String(messages.at(-1)?.content)));
+  await page.goto("/");
+  const sheet = page.getByRole("region", { name: "دستیار" });
+  await sheet.getByLabel("پیام به دستیار").fill("برنامهٔ رفتن");
+  await sheet.getByRole("button", { name: "بفرست" }).click();
+
+  const chips = sheet.getByRole("group", { name: "از کجا شروع می‌کنید؟" });
+  await expect(chips.getByRole("button")).toHaveCount(3);
+  expect(await overflow(page)).toBe(0);
+  await chips.getByRole("button", { name: "موقعیت من" }).click();
+
+  await expect.poll(() => sent.at(-1)).toBe("مبدأ من: موقعیت من");
+  expect(patches.at(-1)).toEqual({ brief: { origin: { lat: 35.7, lon: 51.4 } } });
+});
+
+test("an area origin chip sets the origin to that area's center", async ({ page }) => {
+  const { patches } = await fakeSessions(page, {});
+  const sent: string[] = [];
+  await fakeAgent(page, [originChips], "", ({ messages }) => sent.push(String(messages.at(-1)?.content)));
+  await page.goto("/");
+  const sheet = page.getByRole("region", { name: "دستیار" });
+  await sheet.getByLabel("پیام به دستیار").fill("برنامهٔ رفتن");
+  await sheet.getByRole("button", { name: "بفرست" }).click();
+
+  await sheet.getByRole("group", { name: "از کجا شروع می‌کنید؟" }).getByRole("button", { name: "فردوسی" }).click();
+
+  await expect.poll(() => sent.at(-1)).toBe("مبدأ من: فردوسی");
+  expect(patches.at(-1)).toEqual({ brief: { origin: { lat: 35.6905, lon: 51.4172 } } });
+});
