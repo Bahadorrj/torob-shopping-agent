@@ -304,3 +304,40 @@ test("directions without an origin ask for one", async ({ page }) => {
   await card.getByRole("button", { name: "مسیر", exact: true }).click();
   await expect(card).toContainText("برای مسیر، مبدأ را در خلاصه خرید انتخاب کنید.");
 });
+
+test("a streamed seller reply changes the card without a reload at 360 px", async ({ page }) => {
+  const today = new Date().toLocaleDateString("en-CA");
+  const at = `${today}T11:42:00+03:30`;
+  const waiting = { inquiry_id: 1, status: "sent", available: "unknown", latest_price_toman: null, hold_until: null, installments: null, replied_at: null };
+  let seller: object = { ...row, inquiry: waiting };
+  const sent = {
+    inquiry_id: 1, offer_id: "o1", product_id: "p1", product_title: list.title, shop_id: "shop_a", shop_name: row.shop_name,
+    status: "sent", message: "سلام", channel: "seller_console", simulated: true,
+    reply: { available: "unknown", latest_price_toman: null, hold_until: null, installments: null, notes: null, confidence: null },
+    events: [{ at, status: "sent", reply: null }] as { at: string; status: string; reply: object | null }[],
+  };
+  await fakeSessions(page, { sellers: () => ({ ...list, count: 1, sellers: [seller], ask_them: [] }) }, { s9: {} });
+  await page.addInitScript(() => localStorage.setItem("pasazhgard.session", "s9"));
+  await page.route("**/api/sessions/*/inquiries**", (route) =>
+    route.fulfill({ contentType: "text/event-stream", body: `retry: 100\ndata: ${JSON.stringify({ inquiries: [sent] })}\n\n` }),
+  );
+  await page.goto("/products/p1/sellers");
+
+  const card = page.locator("li").filter({ has: page.locator('[data-slot="price"]') });
+  await expect(card.locator('[data-slot="availability"]')).toContainText("در انتظار پاسخ");
+  await expect(card.locator('[data-slot="price"]')).toContainText("قیمت ثبت‌شده");
+
+  // the seller confirms a new price from the console
+  seller = {
+    ...row,
+    latest_price: { status: "confirmed", price_toman: 3400000, trust_level: "confirmed", at },
+    inquiry: { inquiry_id: 1, status: "confirmed", available: "yes", latest_price_toman: 3400000, hold_until: null, installments: null, replied_at: at },
+  };
+  sent.events.push({ at, status: "confirmed", reply: { available: "yes" } });
+
+  await expect(card.locator('[data-slot="price"]')).toContainText("۳٫۴۰۰٫۰۰۰ تومان");
+  await expect(card.locator('[data-slot="price"]')).toContainText("قیمت فروشنده، ساعت ۱۱:۴۲");
+  await expect(card.locator('[data-slot="availability"]')).toContainText("موجود است");
+  await expect(card).toContainText("قیمت ثبت‌شده ۳٫۵۰۰٫۰۰۰ تومان بود.");
+  expect(await noOverflow(page)).toBe(0);
+});

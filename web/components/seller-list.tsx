@@ -259,10 +259,12 @@ export function SellerList({ productId }: { productId: string }) {
     );
   };
 
+  // a seller reply adds an event; patching the step again refetches the cards with the confirmed price
+  const replies = inquiries.map((i) => i.events.length).join();
   // entering this step keeps the brief; the response carries this product's sellers filtered by it
   useEffect(() => {
     patch({ step: { kind: "sellers", product_id: productId } });
-  }, [productId, patch]);
+  }, [productId, patch, replies]);
 
   const step = session?.step;
   const results = session?.results;
