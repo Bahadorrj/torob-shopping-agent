@@ -63,6 +63,42 @@ def test_a_patch_keeps_the_fields_the_user_did_not_mention(agent, client):
     assert (brief["area"]["pasaj"], brief["budget"]["max_total_toman"]) == ("علاالدین", 3_000_000)
 
 
+def test_a_turn_patches_the_priority(agent, client):
+    agent.script(agent.brief(priority="closest"), "باشه.")
+
+    agent.turn("نزدیک‌ترین رو میخوام")
+
+    assert client.get(f"/sessions/{agent.session_id}").json()["brief"]["priority"] == "closest"
+
+
+def test_a_turn_patches_the_travel_mode(agent, client):
+    agent.script(agent.brief(travel_mode="car"), "باشه.")
+
+    agent.turn("با ماشین میرم")
+
+    assert client.get(f"/sessions/{agent.session_id}").json()["brief"]["travel_mode"] == "car"
+
+
+def test_a_turn_turns_on_a_must_have_and_keeps_the_others(agent, client):
+    # the "با گارانتی" suggestion chip sends "فقط با گارانتی"
+    agent.script(agent.brief(must_have={"test_in_presence": True}), "باشه.", agent.brief(must_have={"warranty": True}), "باشه.")
+
+    agent.turn("باید جلوی خودم تست کنم")
+    agent.turn("فقط با گارانتی")
+
+    must_have = client.get(f"/sessions/{agent.session_id}").json()["brief"]["must_have"]
+    assert must_have == {"warranty": True, "test_in_presence": True, "fast_delivery": False}
+
+
+def test_a_turn_can_turn_off_a_must_have(agent, client):
+    agent.script(agent.brief(must_have={"fast_delivery": True}), "باشه.", agent.brief(must_have={"fast_delivery": False}), "باشه.")
+
+    agent.turn("ارسال سریع میخوام")
+    agent.turn("ارسال سریع لازم نیست")
+
+    assert client.get(f"/sessions/{agent.session_id}").json()["brief"]["must_have"]["fast_delivery"] is False
+
+
 def test_tool_results_stream_as_blocks_before_the_text(agent):
     agent.script(agent.brief(need="هدفون"), agent.call("search_products", query="هدفون انکر"), "این‌ها را پیدا کردم.")
 

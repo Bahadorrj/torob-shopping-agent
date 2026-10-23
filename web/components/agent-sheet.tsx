@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Fragment, useEffect, useState } from "react";
 
 import { AGENT_SEND, ToolRenderers } from "@/components/agent-blocks";
+import { FilterChipBar } from "@/components/brief-bar";
 import { forgetSession, recentSessionIds, useBrief } from "@/components/brief-provider";
 import { CompareTrayBar } from "@/components/compare-tray";
 import { CATEGORIES } from "@/components/home-start";
@@ -261,11 +262,14 @@ function Sheet({ threadId, open, setOpen }: { threadId: string; open: boolean; s
 
   if (pathname === "/") {
     return (
-      // fills the screen under home's 56 px app bar, with the input at the bottom
-      <section aria-label="دستیار" className="fixed inset-x-0 top-14 bottom-0 mx-auto flex w-full max-w-xl flex-col gap-2 px-4 pb-3">
-        <div className="flex justify-end pt-2">{actions}</div>
-        {body}
-      </section>
+      // fills the screen under home's 56 px app bar: the brief bar, then the thread with the input at the bottom
+      <div className="fixed inset-x-0 top-14 bottom-0 flex flex-col">
+        <FilterChipBar />
+        <section aria-label="دستیار" className="mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col gap-2 px-4 pb-3">
+          <div className="flex justify-end pt-2">{actions}</div>
+          {body}
+        </section>
+      </div>
     );
   }
 
