@@ -75,6 +75,8 @@ async function open(page: Page, respond: (brief: Record<string, unknown>) => obj
   return patches;
 }
 
+const COVERAGE = "داده‌ها بخشی از فروشگاه‌های تهران، بیشتر مرکز شهر، را پوشش می‌دهند.";
+
 const area = (brief: Record<string, unknown>) => brief.area as Area;
 const bar = (page: Page) => page.getByRole("region", { name: "خلاصه خرید" });
 
@@ -212,7 +214,51 @@ test("condition chips, the declared installment channel and the ask-them group a
 test("filters that leave no seller say so instead of suggesting another area", async ({ page }) => {
   await open(page, () => ({ ...list, count: 0, sellers: [], category_only: [], nearest_covered: null }));
   await expect(page.getByText("فروشنده‌ای با همه شرایط شما پیدا نشد")).toBeVisible();
+  await expect(page.getByText(COVERAGE)).toBeVisible();
   await expect(page.getByText("این محدوده پوشش داده نشده")).toHaveCount(0);
+});
+
+test("only ask-them shops: a count of shops to ask, no not-found text, at 360 px", async ({ page }) => {
+  const payment = { ...unpriced, unknown: ["payment"] };
+  const hours = { ...row, offer_id: "o3", shop_id: "shop_h", unknown: ["hours"] };
+  await open(page, () => ({ ...list, count: 0, sellers: [], category_only: [], ask_them: [payment, hours] }));
+  await expect(page.getByText("۲ فروشگاه این کالا را دارند ولی شرایط شما را ثبت نکرده‌اند. از آن‌ها بپرسید.")).toBeVisible();
+  await expect(page.getByText("پیدا نشد")).toHaveCount(0);
+  await expect(page.getByText(COVERAGE)).toBeVisible();
+  await expect(page.getByRole("region", { name: "از فروشنده بپرسید" })).toContainText(unpriced.shop_name);
+  expect(await noOverflow(page)).toBe(0);
+});
+
+test("a no-coverage area offers the nearest covered area and fast-delivery shops, at 360 px", async ({ page }) => {
+  await open(page, () => ({ ...empty, fast_delivery: [{ ...unpriced, shop_name: "تندرو ارسال" }] }));
+  await expect(page.getByText("این محدوده پوشش داده نشده")).toBeVisible();
+  await expect(page.getByText(COVERAGE)).toBeVisible();
+  await expect(page.getByRole("button", { name: /نزدیک‌ترین محدوده با فروشنده: بهارستان/ })).toBeVisible();
+  await expect(page.getByRole("region", { name: "ارسال سریع از محدوده‌های دیگر" })).toContainText("تندرو ارسال");
+  expect(await noOverflow(page)).toBe(0);
+});
+
+test("the agent seller block with nothing ranked shows the ask-them count and coverage, not just a link", async ({ page }) => {
+  await fakeSessions(page, {});
+  await fakeAgent(page, [{ block: "seller_list", ...list, count: 0, sellers: [], ask_them: [{ ...unpriced, unknown: ["payment"] }] }]);
+  await page.goto("/");
+  await askHome(page, "فروشنده");
+  await expect(page.getByText("۱ فروشگاه این کالا را دارند ولی شرایط شما را ثبت نکرده‌اند. از آن‌ها بپرسید.")).toBeVisible();
+  await expect(page.getByText(COVERAGE)).toBeVisible();
+  await expect(page.getByRole("link", { name: `همه فروشنده‌های ${list.title}` })).toBeVisible();
+  expect(await noOverflow(page)).toBe(0);
+});
+
+test("the agent seller block for a no-coverage area offers the nearest area and fast-delivery shops", async ({ page }) => {
+  const { patches } = await fakeSessions(page, {});
+  await fakeAgent(page, [{ block: "seller_list", ...empty, fast_delivery: [{ ...row, shop_name: "تندرو ارسال" }] }]);
+  await page.goto("/");
+  await askHome(page, "فروشنده");
+  await expect(page.getByText("این محدوده پوشش داده نشده")).toBeVisible();
+  await expect(page.getByRole("region", { name: "ارسال سریع از محدوده‌های دیگر" })).toContainText("تندرو ارسال");
+  await page.getByRole("button", { name: /نزدیک‌ترین محدوده با فروشنده: بهارستان/ }).click();
+  await expect.poll(() => patches.at(-1)?.brief?.area).toEqual({ name: "بهارستان" });
+  expect(await noOverflow(page)).toBe(0);
 });
 
 test("product card links to its sellers", async ({ page }) => {

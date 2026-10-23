@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import { useBrief } from "@/components/brief-provider";
 import { getPasaj, type PasajView as View } from "@/lib/api";
-import { faDigits, faText, toman, UNKNOWN } from "@/lib/format";
+import { COVERAGE, faDigits, faText, toman, UNKNOWN } from "@/lib/format";
 
 type State = { status: "loading" } | { status: "error" } | { status: "missing" } | { status: "done"; view: View };
 
@@ -38,7 +38,12 @@ export function PasajView({ pasaj, productIds }: { pasaj: string; productIds: st
         <h1 className="text-xl font-bold">{faText(`پاساژ ${view.pasaj}`)}</h1>
         <p className="text-sm">{faDigits(view.count)} فروشگاه</p>
       </header>
-      {view.count === 0 && <p className="rounded-lg border p-3 text-sm">در این پاساژ فروشگاهی کالاهای شما را ثبت نکرده است.</p>}
+      {view.count === 0 && (
+        <div className="flex flex-col gap-2 rounded-lg border p-3 text-sm">
+          <p>در این پاساژ فروشگاهی کالاهای شما را ثبت نکرده است.</p>
+          <p className="text-muted-foreground">{COVERAGE}</p>
+        </div>
+      )}
       {view.floors.map((f, i) => {
         const title = f.floor === null ? `طبقه: ${UNKNOWN}` : faText(`طبقه ${f.floor}`);
         const id = `floor-${i}`;

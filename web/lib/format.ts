@@ -6,6 +6,9 @@ export const faDigits = (n: number) => faNumber.format(n).replaceAll("٬", "٫")
 // the only word for a missing value; render it muted
 export const UNKNOWN = "نامشخص";
 
+// every empty seller, basket and pasaj state says how much of the city the data covers
+export const COVERAGE = "داده‌ها بخشی از فروشگاه‌های تهران، بیشتر مرکز شهر، را پوشش می‌دهند.";
+
 export const toman = (n: number) => `${faDigits(n)} تومان`;
 
 // the lowest of several prices

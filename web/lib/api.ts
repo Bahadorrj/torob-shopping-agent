@@ -140,6 +140,8 @@ export type SellerList = {
   ask_them: SellerRow[];
   category_only: CategoryShop[];
   nearest_covered: { area: string | null; pasaj: string | null; distance_m: number | null } | null;
+  // sellers outside an area without sellers that declared fast delivery
+  fast_delivery: SellerRow[];
   areas: string[];
   pasajs: string[];
 };
