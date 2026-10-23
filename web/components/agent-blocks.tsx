@@ -342,7 +342,7 @@ function ChipsBlock({ block, send }: { block: Chips; send: (text: string) => voi
           onChange={(e) => setQuery(e.target.value)}
           aria-label="جستجو در گزینه‌ها"
           placeholder="جستجو..."
-          className="h-9"
+          className="h-11"
         />
       )}
       <div className="flex flex-wrap gap-1.5" role="group" aria-label={block.question}>

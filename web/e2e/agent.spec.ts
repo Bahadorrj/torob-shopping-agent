@@ -232,6 +232,19 @@ test("origin chips at 360 px: my location sets the origin from geolocation, then
   expect(patches.at(-1)).toEqual({ brief: { origin: { lat: 35.7, lon: 51.4 } } });
 });
 
+test("a long chips list shows a search input that is 44 px tall", async ({ page }) => {
+  await fakeSessions(page, {});
+  const options = Array.from({ length: 12 }, (_, i) => `پاساژ ${i + 1}`);
+  await fakeAgent(page, [{ ...originChips, options }], "", () => {});
+  await page.goto("/");
+  const sheet = page.getByRole("region", { name: "دستیار" });
+  await sheet.getByLabel("پیام به دستیار").fill("برنامهٔ رفتن");
+  await sheet.getByRole("button", { name: "بفرست" }).click();
+
+  const box = await sheet.getByRole("searchbox", { name: "جستجو در گزینه‌ها" }).boundingBox();
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+});
+
 test("an area origin chip sets the origin to that area's center", async ({ page }) => {
   const { patches } = await fakeSessions(page, {});
   const sent: string[] = [];
